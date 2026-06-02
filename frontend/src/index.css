@@ -1,0 +1,43 @@
+/* Chama Manager — Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=DM+Mono:wght@400;500&display=swap');
+
+:root {
+  --bg:          #f5f3ee;
+  --surface:     #ffffff;
+  --surface2:    #f0ede6;
+  --border:      #e2ddd4;
+  --text:        #1a1814;
+  --muted:       #7a7168;
+  --accent:      #2d5a3d;
+  --accent-lt:   #e8f0ea;
+  --accent2:     #8b4513;
+  --danger:      #c0392b;
+  --danger-lt:   #fdecea;
+  --warn:        #b8860b;
+  --warn-lt:     #fef9e7;
+  --r:           10px;
+  --r-lg:        16px;
+  --shadow:      0 1px 4px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Utility */
+.mono { font-family: 'DM Mono', monospace; }
+.muted { color: var(--muted); }
+.flex { display: flex; align-items: center; }
+.gap-2 { gap: 8px; }
