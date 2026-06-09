@@ -48,29 +48,29 @@ async function bootstrap() {
   // Seed default rules based on group type
   const rules = [
     // Universal
-    { category:'contributions', name:'Monthly Contribution', description:'Regular monthly savings deposit', penalty_amount:100, frequency:'monthly', is_mandatory:true },
-    { category:'attendance',    name:'Meeting Attendance',   description:'Members must attend all meetings', penalty_amount:100, frequency:'per_meeting', is_mandatory:true },
-    { category:'attendance',    name:'Lateness Fine',        description:'Fine for arriving late to meetings', penalty_amount:50, frequency:'per_occurrence', is_mandatory:true },
-    { category:'conduct',       name:'Respectful Conduct',   description:'Members must maintain respectful conduct at all times', penalty_amount:200, frequency:'per_occurrence', is_mandatory:true },
+    { num:'01', category:'contributions', title:'Monthly Contribution', description:'Regular monthly savings deposit', penalty_amount:100 },
+    { num:'02', category:'general',       title:'Meeting Attendance',   description:'Members must attend all meetings', penalty_amount:100 },
+    { num:'03', category:'general',       title:'Lateness Fine',        description:'Fine for arriving late to meetings', penalty_amount:50 },
+    { num:'04', category:'general',       title:'Respectful Conduct',   description:'Members must maintain respectful conduct at all times', penalty_amount:200 },
   ]
 
   if (['chama','hybrid'].includes(groupType)) {
     rules.push(
-      { category:'loans', name:'Loan Interest Rate', description:'Interest charged on member loans', penalty_amount:0, frequency:'per_loan', is_mandatory:false },
-      { category:'loans', name:'Late Loan Repayment', description:'Fine for missing loan repayment deadline', penalty_amount:500, frequency:'per_month', is_mandatory:true }
+      { num:'05', category:'loans', title:'Loan Interest Rate',    description:'Interest charged on member loans', penalty_amount:0 },
+      { num:'06', category:'loans', title:'Late Loan Repayment',   description:'Fine for missing loan repayment deadline', penalty_amount:500 }
     )
   }
   if (['welfare','hybrid'].includes(groupType)) {
     rules.push(
-      { category:'welfare', name:'Welfare Contribution', description:'Monthly welfare fund contribution', penalty_amount:50, frequency:'monthly', is_mandatory:true }
+      { num:'07', category:'general', title:'Welfare Contribution', description:'Monthly welfare fund contribution', penalty_amount:50 }
     )
   }
 
   for (const r of rules) {
     await pool.query(
-      `INSERT INTO rules (group_id, category, name, description, penalty_amount, frequency, is_mandatory)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [groupId, r.category, r.name, r.description, r.penalty_amount, r.frequency, r.is_mandatory]
+      `INSERT INTO rules (group_id, rule_number, category, title, description, penalty_amount)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [groupId, r.num, r.category, r.title, r.description, r.penalty_amount]
     )
   }
 
