@@ -17,7 +17,7 @@ import Users         from './pages/Users'
 import Meetings      from './pages/Meetings'
 
 function Guard() {
-  const { auth, loading, isStaff } = useAuth()
+  const { auth, loading, isStaff, isAdmin } = useAuth()
   const { data: group } = useGroup()
 
   if (loading) return null
