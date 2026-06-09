@@ -241,48 +241,66 @@ export default function Layout({ children }) {
 
       {/* ── Desktop sidebar ── */}
       <aside className="sidebar-desktop" style={{
-        width:220, position:'fixed', top:0, bottom:0, left:0, zIndex:100,
+        width:'var(--sidebar-w)', position:'fixed', top:0, bottom:0, left:0, zIndex:100,
         background:'linear-gradient(180deg, #1e4d2b 0%, #2d5a3d 100%)',
         display:'flex', flexDirection:'column',
-        boxShadow:'2px 0 12px rgba(0,0,0,0.12)',
+        boxShadow:'2px 0 16px rgba(0,0,0,.14)',
       }}>
         <SidebarContent />
       </aside>
 
       {/* ── Mobile top bar ── */}
       <div className="mobile-topbar" style={{
-        display:'none', position:'fixed', top:0, left:0, right:0, zIndex:200,
+        position:'fixed', top:0, left:0, right:0, zIndex:200,
+        height:'var(--topbar-h)',
         background:'linear-gradient(90deg,#1e4d2b,#2d5a3d)',
-        padding:'12px 16px', alignItems:'center', gap:12,
-        boxShadow:'0 2px 8px rgba(0,0,0,.15)',
+        padding:'0 14px', alignItems:'center', gap:12,
+        boxShadow:'0 2px 12px rgba(0,0,0,.18)',
       }}>
-        <button onClick={() => setMobileOpen(o => !o)} style={{
-          background:'rgba(255,255,255,.12)', border:'none', borderRadius:8,
-          padding:'6px 10px', color:'#fff', fontSize:18, cursor:'pointer',
-        }}>☰</button>
-        <span style={{ flex:1, fontWeight:700, fontSize:14, color:'#fff' }}>🤝 Chama Manager</span>
-        <Avatar name={userName} size={30} />
+        <button
+          onClick={() => setMobileOpen(o => !o)}
+          aria-label="Open menu"
+          style={{
+            background:'rgba(255,255,255,.12)', border:'none', borderRadius:8,
+            width:36, height:36, display:'flex', alignItems:'center', justifyContent:'center',
+            color:'#fff', fontSize:18, cursor:'pointer', flexShrink:0,
+          }}
+        >☰</button>
+        <span style={{ flex:1, fontWeight:800, fontSize:15, color:'#fff', letterSpacing:'-.2px' }}>🤝 Chama</span>
+        <Avatar name={userName} size={32} />
       </div>
 
       {/* ── Mobile drawer overlay ── */}
       {mobileOpen && (
-        <div style={{
-          position:'fixed', inset:0, zIndex:300, display:'flex',
-        }}>
+        <div
+          style={{ position:'fixed', inset:0, zIndex:300, display:'flex' }}
+          onClick={e => { if (e.target === e.currentTarget) setMobileOpen(false) }}
+        >
+          {/* Slide-in drawer */}
           <div style={{
-            width:240, background:'linear-gradient(180deg,#1e4d2b 0%,#2d5a3d 100%)',
-            display:'flex', flexDirection:'column', height:'100%', overflowY:'auto',
+            width:'min(260px, 80vw)',
+            background:'linear-gradient(180deg,#1e4d2b 0%,#2d5a3d 100%)',
+            display:'flex', flexDirection:'column', height:'100%',
+            overflowY:'auto', boxShadow:'4px 0 24px rgba(0,0,0,.25)',
+            animation:'drawerIn .22s cubic-bezier(.16,1,.3,1) both',
           }}>
+            {/* Drawer close row */}
+            <div style={{ display:'flex', justifyContent:'flex-end', padding:'12px 12px 0' }}>
+              <button onClick={() => setMobileOpen(false)} style={{
+                background:'rgba(255,255,255,.1)', border:'none', borderRadius:7,
+                color:'rgba(255,255,255,.7)', fontSize:16, width:30, height:30,
+                display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer',
+              }}>✕</button>
+            </div>
             <SidebarContent />
           </div>
-          <div style={{ flex:1, background:'rgba(0,0,0,.4)' }} onClick={() => setMobileOpen(false)} />
+          <div style={{ flex:1, background:'rgba(0,0,0,.45)', backdropFilter:'blur(2px)' }}
+            onClick={() => setMobileOpen(false)} />
         </div>
       )}
 
       {/* ── Main content ── */}
-      <main className="main-content" style={{
-        marginLeft:220, flex:1, padding:28, maxWidth:'100%', minWidth:0,
-      }}>
+      <main className="main-content" style={{ minWidth:0 }}>
         {children}
       </main>
 
