@@ -40,12 +40,21 @@ export const reviewMembership = (gid, mid, data) => put(`/api/groups/${gid}/memb
 export const getSettings     = ()                => get('/api/settings')
 export const updateSettings  = (data)            => put('/api/settings', data)
 
-// ── MGR Cycles ────────────────────────────────────────────────
-export const getMgrCycles    = ()                => get('/api/mgr/cycles')
-export const createMgrCycle  = (data)            => post('/api/mgr/cycles', data)
-export const closeMgrCycle   = (id)              => put(`/api/mgr/cycles/${id}/close`, {})
-export const getMgrAgreement = ()                => get('/api/mgr/agreement')
-export const signMgrAgreement = (data)           => post('/api/mgr/agreement', data)
+// ── MGR ───────────────────────────────────────────────────────
+export const getMgrConfig       = ()             => get('/api/mgr/config')
+export const updateMgrConfig    = (data)         => put('/api/mgr/config', data)
+export const getMgrSchedule     = ()             => get('/api/mgr/schedule')
+export const generateMgrSchedule = ()            => post('/api/mgr/generate', {})
+export const getMgrTurns        = ()             => get('/api/mgr/turns')
+export const setMgrTurns        = (data)         => post('/api/mgr/turns', data)
+export const claimMgrSlot       = (id)           => post(`/api/mgr/slots/${id}/claim`, {})
+export const updateMgrSlot      = (id, data)     => put(`/api/mgr/slots/${id}`, data)
+export const autoAssignMgr      = ()             => post('/api/mgr/auto-assign', {})
+export const getMgrCycles       = ()             => get('/api/mgr/cycles')
+export const createMgrCycle     = (data)         => post('/api/mgr/cycles', data)
+export const closeMgrCycle      = (id)           => put(`/api/mgr/cycles/${id}/close`, {})
+export const getMgrAgreement    = ()             => get('/api/mgr/agreement')
+export const signMgrAgreement   = (data)         => post('/api/mgr/agreement', data)
 
 // ── Payments ──────────────────────────────────────────────────
 export const chargePlatformFee = (data)          => post('/api/payments/platform-fee', data)

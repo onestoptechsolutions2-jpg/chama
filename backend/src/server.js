@@ -105,6 +105,7 @@ async function start() {
   try {
     await runMigration('001_initial.sql')
     await runMigration('002_multi_group.sql')
+    await runMigration('003_mgr_dynamic.sql')
     await bootstrap()
   } catch (err) {
     console.error('❌ Startup error:', err.message)
