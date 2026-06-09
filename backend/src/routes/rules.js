@@ -13,7 +13,7 @@ router.get('/', authenticate, async (req, res) => {
 
   try {
     const { rows } = await query(
-      `SELECT * FROM rules WHERE ${filters.join(' AND ')} ORDER BY rule_number ASC`,
+      `SELECT * FROM rules r WHERE ${filters.join(' AND ')} ORDER BY r.rule_number ASC`,
       vals
     )
     res.json(rows)
