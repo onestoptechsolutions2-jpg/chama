@@ -8,7 +8,7 @@ services:
       POSTGRES_USER:     ${DB_USER:-chama}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-chama_secret_2024}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_v2:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chama}"]
       interval: 5s
@@ -55,4 +55,4 @@ services:
       - "7020:80"
 
 volumes:
-  pgdata:
+  pgdata_v2:

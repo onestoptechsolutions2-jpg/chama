@@ -84,6 +84,7 @@ async function start() {
     console.log('✅ Database connected')
   } catch (err) {
     console.error('❌ Database connection failed:', err.message)
+    console.error('   DB_HOST:', process.env.DB_HOST, '  DB_USER:', process.env.DB_USER, '  DB_NAME:', process.env.DB_NAME)
     process.exit(1)
   }
 
