@@ -64,7 +64,7 @@ router.post('/', authenticate, authorize('admin', 'treasurer'), async (req, res)
       const hash = await bcrypt.hash(password, 10)
       const ur = await client.query(
         `INSERT INTO users (group_id, name, email, phone, id_number, role, password_hash, joined_date)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,COALESCE($8, CURRENT_DATE)) RETURNING id`,
         [req.user.group_id, name, email || null, phone || null, id_number || null,
          user_role, hash, joined_date || null]
       )
@@ -75,7 +75,7 @@ router.post('/', authenticate, authorize('admin', 'treasurer'), async (req, res)
       `INSERT INTO members
          (group_id, user_id, name, phone, email, id_number,
           capital, security, personal_savings, welfare_balance, notes, joined_date)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12, CURRENT_DATE))
        RETURNING *`,
       [req.user.group_id, userId, name, phone || null, email || null,
        id_number || null, capital, security, personal_savings, welfare_balance,
