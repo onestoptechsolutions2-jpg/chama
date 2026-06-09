@@ -9,8 +9,9 @@ export default function MyLoan() {
 
   if (isLoading) return <Loader />
 
-  const m    = members.find(x => x.documentId === auth?.memberDocId)
-  const loan = m ? activeLoans(loans).find(l => l.member?.documentId === m.documentId) : null
+  const memberId = auth?.user?.member_id
+  const m    = memberId ? members.find(x => x.id === memberId) : null
+  const loan = m ? activeLoans(loans).find(l => l.member_id === m.id) : null
 
   if (!loan) return (
     <div>
@@ -24,16 +25,16 @@ export default function MyLoan() {
     </div>
   )
 
-  const monthly = Math.round((loan.totalRepayable||0) / 3)
+  const monthly = Math.round((loan.total_repayable||0) / 3)
   const rows = [
     ['Principal',          ksh(loan.principal)],
-    ['Interest rate',      `${loan.interestRate}%`],
-    ['Total repayable',    ksh(loan.totalRepayable)],
+    ['Interest rate',      `${loan.interest_rate}%`],
+    ['Total repayable',    ksh(loan.total_repayable)],
     ['Monthly instalment', ksh(monthly)],
-    ['Balance remaining',  <span style={{ color:'var(--danger)', fontWeight:700 }}>{ksh(loan.amountRemaining)}</span>],
-    ['Status',             <Badge variant={loan.loanstatus==='extended'?'warn':loan.loanstatus==='overdue'?'danger':'info'}>{loan.loanstatus}</Badge>],
-    ['Issued',             loan.issuedDate||'—'],
-    ['Due date',           loan.dueDate||'—'],
+    ['Balance remaining',  <span style={{ color:'var(--danger)', fontWeight:700 }}>{ksh(loan.amount_remaining)}</span>],
+    ['Status',             <Badge variant={loan.status==='extended'?'warn':loan.status==='overdue'?'danger':'info'}>{loan.status}</Badge>],
+    ['Issued',             loan.issued_date||'—'],
+    ['Due date',           loan.due_date||'—'],
   ]
   if (loan.extended) rows.push(['Extension note', <span style={{ color:'var(--warn)', fontSize:12 }}>Extended — future limit reduced 50%</span>])
 

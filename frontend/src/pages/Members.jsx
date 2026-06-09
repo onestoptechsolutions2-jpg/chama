@@ -18,7 +18,7 @@ export default function Members() {
   const handleAdd = async () => {
     if (!form.name) { notify('Name is required','err'); return }
     try {
-      await createM.mutateAsync({ name:form.name, phone:form.phone, email:form.email, capital:Number(form.capital), security:Number(form.security), personalSavings:0, totalFines:0, active:true })
+      await createM.mutateAsync({ name:form.name, phone:form.phone, email:form.email, capital:Number(form.capital), security:Number(form.security) })
       notify('Member added!')
       setForm({ name:'', phone:'', email:'', capital:10000, security:3000 })
       setShowForm(false)
@@ -29,10 +29,10 @@ export default function Members() {
     if (!savForm.memberId) { notify('Select a member','err'); return }
     const amt = Number(savForm.amount)
     if (amt < 500) { notify('Minimum is Ksh 500','err'); return }
-    const m = members.find(x => x.documentId === savForm.memberId)
+    const m = members.find(x => x.id === Number(savForm.memberId))
     if (!m) return
     try {
-      await updateM.mutateAsync({ id: m.documentId, data: { personalSavings: (m.personalSavings||0) + amt } })
+      await updateM.mutateAsync({ id: m.id, data: { personal_savings: (Number(m.personal_savings)||0) + amt } })
       notify('Savings recorded!')
       setSavForm({ memberId:'', amount:500 })
     } catch(e) { notify('Failed: '+e.message,'err') }
@@ -72,16 +72,16 @@ export default function Members() {
           heads={['Member','Capital','Security','Savings','Total','Loan Limit','Loan']}
           empty="No members yet"
           rows={members.map(m => {
-            const loan = al.find(l => l.member?.documentId === m.documentId)
+            const loan = al.find(l => l.member_id === m.id)
             return (
-              <Tr key={m.documentId}>
+              <Tr key={m.id}>
                 <Td><div style={{ display:'flex', alignItems:'center', gap:8 }}><Avatar name={m.name} /><div><div style={{ fontWeight:500 }}>{m.name}</div><div style={{ fontSize:11, color:'var(--muted)' }}>{m.phone}</div></div></div></Td>
                 <Td mono>{ksh(m.capital)}</Td>
                 <Td mono>{ksh(m.security)}</Td>
-                <Td mono>{ksh(m.personalSavings)}</Td>
+                <Td mono>{ksh(m.personal_savings)}</Td>
                 <Td mono bold>{ksh(totalSavings(m))}</Td>
                 <Td mono><span style={{ color:'var(--accent)' }}>{ksh(loanLimit(m))}</span></Td>
-                <Td>{loan ? <Badge variant={loan.loanstatus==='extended'?'warn':'info'}>{loan.loanstatus}</Badge> : <Badge variant="ok">Clear</Badge>}</Td>
+                <Td>{loan ? <Badge variant={loan.status==='extended'?'warn':'info'}>{loan.status}</Badge> : <Badge variant="ok">Clear</Badge>}</Td>
               </Tr>
             )
           })}
@@ -93,7 +93,7 @@ export default function Members() {
         <Grid2>
           <Sel label="Member" value={savForm.memberId} onChange={e=>setSavForm(f=>({...f,memberId:e.target.value}))}>
             <option value="">— Select member —</option>
-            {members.map(m => <option key={m.documentId} value={m.documentId}>{m.name}</option>)}
+            {members.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
           </Sel>
           <Input label="Amount (min Ksh 500)" type="number" min="500" value={savForm.amount} onChange={e=>setSavForm(f=>({...f,amount:e.target.value}))} />
         </Grid2>

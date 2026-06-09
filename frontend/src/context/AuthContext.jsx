@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import * as apiModule from '../api'
 
 const Ctx = createContext(null)
 
@@ -12,10 +13,13 @@ export function AuthProvider({ children }) {
     setLoading(false)
   }, [])
 
-  const login = (data) => {
+  // login({ email/phone, password }) → calls API, stores result
+  const login = async ({ email, phone, password }) => {
+    const data = await apiModule.login({ email, phone, password })
     localStorage.setItem('chama_token', data.token)
     localStorage.setItem('chama_auth',  JSON.stringify(data))
     setAuth(data)
+    return data
   }
 
   const logout = () => {
@@ -24,7 +28,18 @@ export function AuthProvider({ children }) {
     setAuth(null)
   }
 
-  return <Ctx.Provider value={{ auth, login, logout, loading }}>{children}</Ctx.Provider>
+  // Helpers derived from the JWT payload
+  const isAdmin      = auth?.user?.role === 'admin'
+  const isTreasurer  = auth?.user?.role === 'treasurer'
+  const isSecretary  = auth?.user?.role === 'secretary'
+  const isStaff      = isAdmin || isTreasurer || isSecretary
+  const role         = auth?.user?.role || 'member'
+
+  return (
+    <Ctx.Provider value={{ auth, login, logout, loading, role, isAdmin, isTreasurer, isSecretary, isStaff }}>
+      {children}
+    </Ctx.Provider>
+  )
 }
 
 export const useAuth = () => useContext(Ctx)

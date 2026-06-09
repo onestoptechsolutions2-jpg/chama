@@ -1,60 +1,99 @@
 import axios from 'axios'
 
-// VITE_STRAPI_URL is baked in at build time by Vite from .env.production
-// Production (Vercel):  https://chama.laitor.co.ke  (direct call to Strapi)
-// Development (local):  ''  (Vite proxy rewrites /api-backend → Strapi)
-const BASE = import.meta.env.VITE_STRAPI_URL || ''
+// VITE_API_URL — set in .env or .env.development
+// Dev: '' (Vite proxy rewrites /api → http://localhost:4000)
+// Prod: full URL of your Express backend
+const BASE = import.meta.env.VITE_API_URL || ''
 
 const api = axios.create({
   baseURL: BASE,
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach API token from localStorage on every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('chama_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
-const get  = (path, params = {}) => api.get(path,  { params }).then(r => r.data)
-const post = (path, body)        => api.post(path,  { data: body }).then(r => r.data)
-const put  = (path, body)        => api.put(path,   { data: body }).then(r => r.data)
+const get = (path, params = {}) => api.get(path,   { params }).then(r => r.data)
+const post = (path, body)       => api.post(path,   body).then(r => r.data)
+const put  = (path, body)       => api.put(path,    body).then(r => r.data)
+const del  = (path)             => api.delete(path).then(r => r.data)
 
-// ── Members ───────────────────────────────────────────────────────────────────
-export const getMembers   = () => get('/api/members', { 'pagination[pageSize]': 100, sort: 'name:asc' })
-export const createMember = (data) => post('/api/members', data)
-export const updateMember = (docId, data) => put(`/api/members/${docId}`, data)
+// ── Auth ──────────────────────────────────────────────────────
+export const login           = (creds)           => post('/api/auth/login', creds)
+export const getMe           = ()                => get('/api/auth/me')
+export const changePassword  = (body)            => post('/api/auth/change-password', body)
 
-// ── Loans ─────────────────────────────────────────────────────────────────────
-// Field is "loanstatus" in your Strapi schema (not "status")
-export const getLoans   = () => get('/api/loans', { populate: 'member', 'pagination[pageSize]': 100 })
-export const createLoan = (data) => post('/api/loans', data)
-export const updateLoan = (docId, data) => put(`/api/loans/${docId}`, data)
+// ── Group ─────────────────────────────────────────────────────
+export const getGroup        = ()                => get('/api/group')
+export const updateGroup     = (data)            => put('/api/group', data)
 
-// ── Contributions ─────────────────────────────────────────────────────────────
-export const getContributions   = () => get('/api/contributions', { populate: 'member', 'pagination[pageSize]': 200 })
-export const createContribution = (data) => post('/api/contributions', data)
-export const updateContribution = (docId, data) => put(`/api/contributions/${docId}`, data)
+// ── Users ─────────────────────────────────────────────────────
+export const getUsers        = ()                => get('/api/users')
+export const createUser      = (data)            => post('/api/users', data)
+export const updateUser      = (id, data)        => put(`/api/users/${id}`, data)
+export const resetPassword   = (id, body)        => post(`/api/users/${id}/reset-password`, body)
 
-// ── MGR Schedule ──────────────────────────────────────────────────────────────
-// Your schema uses "member" and "member2" (not recipientOne/Two)
-export const getMgrSchedule = () => get('/api/mgr-schedules', {
-  'populate[member][fields]':  'name',
-  'populate[member2][fields]': 'name',
-  sort: 'monthIndex:asc',
-  'pagination[pageSize]': 20,
-})
-export const updateMgr = (docId, data) => put(`/api/mgr-schedules/${docId}`, data)
-export const createMgr = (data) => post('/api/mgr-schedules', data)
+// ── Members ───────────────────────────────────────────────────
+export const getMembers      = ()                => get('/api/members')
+export const getMember       = (id)              => get(`/api/members/${id}`)
+export const createMember    = (data)            => post('/api/members', data)
+export const updateMember    = (id, data)        => put(`/api/members/${id}`, data)
+export const deleteMember    = (id)              => del(`/api/members/${id}`)
 
-// ── Fines ─────────────────────────────────────────────────────────────────────
-export const getFines   = () => get('/api/fines', { populate: 'member', 'pagination[pageSize]': 200, sort: 'createdAt:desc' })
-export const createFine = (data) => post('/api/fines', data)
-export const updateFine = (docId, data) => put(`/api/fines/${docId}`, data)
+// ── Contributions ─────────────────────────────────────────────
+export const getContributions    = (params)      => get('/api/contributions', params)
+export const createContribution  = (data)        => post('/api/contributions', data)
+export const updateContribution  = (id, data)    => put(`/api/contributions/${id}`, data)
+export const getContribSummary   = ()            => get('/api/contributions/summary')
 
-// ── Meetings ──────────────────────────────────────────────────────────────────
-export const getMeetings   = () => get('/api/meetings', { sort: 'meetingDate:desc', 'pagination[pageSize]': 20 })
-export const createMeeting = (data) => post('/api/meetings', data)
+// ── Loans ─────────────────────────────────────────────────────
+export const getLoans        = (params)          => get('/api/loans', params)
+export const createLoan      = (data)            => post('/api/loans', data)
+export const updateLoan      = (id, data)        => put(`/api/loans/${id}`, data)
+export const repayLoan       = (id, data)        => post(`/api/loans/${id}/repay`, data)
+export const getLoanRepayments = (id)            => get(`/api/loans/${id}/repayments`)
+
+// ── MGR ───────────────────────────────────────────────────────
+export const getMgrSchedule  = ()                => get('/api/mgr')
+export const createMgr       = (data)            => post('/api/mgr', data)
+export const updateMgr       = (id, data)        => put(`/api/mgr/${id}`, data)
+export const deleteMgr       = (id)              => del(`/api/mgr/${id}`)
+
+// ── Fines ─────────────────────────────────────────────────────
+export const getFines        = (params)          => get('/api/fines', params)
+export const createFine      = (data)            => post('/api/fines', data)
+export const updateFine      = (id, data)        => put(`/api/fines/${id}`, data)
+
+// ── Meetings ──────────────────────────────────────────────────
+export const getMeetings     = ()                => get('/api/meetings')
+export const createMeeting   = (data)            => post('/api/meetings', data)
+export const updateMeeting   = (id, data)        => put(`/api/meetings/${id}`, data)
+export const getAttendance   = (meetingId)       => get(`/api/meetings/${meetingId}/attendance`)
+export const saveAttendance  = (meetingId, data) => post(`/api/meetings/${meetingId}/attendance`, data)
+
+// ── Welfare ───────────────────────────────────────────────────
+export const getWelfareClaims   = (params)       => get('/api/welfare', params)
+export const createWelfareClaim = (data)         => post('/api/welfare', data)
+export const updateWelfareClaim = (id, data)     => put(`/api/welfare/${id}`, data)
+export const getWelfareFund     = ()             => get('/api/welfare/fund')
+
+// ── Projects ──────────────────────────────────────────────────
+export const getProjects        = ()             => get('/api/projects')
+export const createProject      = (data)         => post('/api/projects', data)
+export const updateProject      = (id, data)     => put(`/api/projects/${id}`, data)
+export const getProjectContribs = (id)           => get(`/api/projects/${id}/contributions`)
+export const addProjectContrib  = (id, data)     => post(`/api/projects/${id}/contributions`, data)
+
+// ── Rules ─────────────────────────────────────────────────────
+export const getRules        = (params)          => get('/api/rules', params)
+export const createRule      = (data)            => post('/api/rules', data)
+export const updateRule      = (id, data)        => put(`/api/rules/${id}`, data)
+export const deleteRule      = (id)              => del(`/api/rules/${id}`)
+
+// ── Dashboard ─────────────────────────────────────────────────
+export const getDashboard    = ()                => get('/api/dashboard')
 
 export default api

@@ -3,20 +3,22 @@ import { useMembers, useLoans, useMgr, ksh, totalSavings, loanLimit, activeLoans
 import { Card, CardTitle, Grid2, Avatar, Badge, Loader } from '../components/UI'
 
 export default function MyProfile() {
-  const { auth }             = useAuth()
-  const { data: members=[], isLoading } = useMembers()
-  const { data: loans=[] }   = useLoans()
-  const { data: mgr=[] }     = useMgr()
+  const { auth }                         = useAuth()
+  const { data: members=[], isLoading }  = useMembers()
+  const { data: loans=[] }               = useLoans()
+  const { data: mgr=[] }                 = useMgr()
 
   if (isLoading) return <Loader />
 
-  const m     = members.find(x => x.documentId === auth?.memberDocId)
-  if (!m) return <div style={{ padding:40, color:'var(--muted)', textAlign:'center' }}>Profile not found. Ask the Treasurer to add your record.</div>
+  // Match by member_id stored in auth (set during login)
+  const memberId = auth?.user?.member_id
+  const m = memberId ? members.find(x => x.id === memberId) : null
+  if (!m) return <div style={{ padding:40, color:'var(--muted)', textAlign:'center' }}>Profile not found. Ask your admin to link your account.</div>
 
-  const ts    = totalSavings(m)
-  const ll    = loanLimit(m)
-  const loan  = activeLoans(loans).find(l => l.member?.documentId === m.documentId)
-  const mgrSlot = mgr.find(s => s.member?.documentId===m.documentId || s.member2?.documentId===m.documentId)
+  const ts      = totalSavings(m)
+  const ll      = loanLimit(m)
+  const loan    = activeLoans(loans).find(l => l.member_id === m.id)
+  const mgrSlot = mgr.find(s => s.member1_id === m.id || s.member2_id === m.id)
 
   const row = (label, value) => (
     <tr key={label}>
@@ -40,11 +42,11 @@ export default function MyProfile() {
           <CardTitle>Savings Breakdown</CardTitle>
           <table style={{ width:'100%' }}>
             <tbody>
-              {row('Capital',         <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.capital)}</span>)}
-              {row('Security',        <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.security)}</span>)}
-              {row('Personal savings',<span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.personalSavings)}</span>)}
-              {row('Total savings',   <span style={{ fontFamily:"'DM Mono',monospace", fontWeight:700, color:'var(--accent)' }}>{ksh(ts)}</span>)}
-              {row('Loan limit',      <span style={{ fontFamily:"'DM Mono',monospace", color:'var(--accent2)' }}>{ksh(ll)}</span>)}
+              {row('Capital',          <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.capital)}</span>)}
+              {row('Security',         <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.security)}</span>)}
+              {row('Personal savings', <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.personal_savings)}</span>)}
+              {row('Total savings',    <span style={{ fontFamily:"'DM Mono',monospace", fontWeight:700, color:'var(--accent)' }}>{ksh(ts)}</span>)}
+              {row('Loan limit',       <span style={{ fontFamily:"'DM Mono',monospace", color:'var(--accent)' }}>{ksh(ll)}</span>)}
             </tbody>
           </table>
         </Card>
@@ -52,15 +54,16 @@ export default function MyProfile() {
           <CardTitle>Status</CardTitle>
           <table style={{ width:'100%' }}>
             <tbody>
-              {row('Active loan',     loan ? <Badge variant="warn">{ksh(loan.amountRemaining)} remaining</Badge> : <Badge variant="ok">None</Badge>)}
-              {row('MGR month',       mgrSlot ? <Badge variant="purple">{mgrSlot.month}</Badge> : <Badge variant="grey">Not scheduled yet</Badge>)}
-              {row('Security early',  m.securityPaidEarly ? <Badge variant="ok">Yes — full payout</Badge> : <Badge variant="grey">Not yet</Badge>)}
-              {row('Total fines',     <span style={{ fontFamily:"'DM Mono',monospace" }}>{ksh(m.totalFines)}</span>)}
+              {row('Active loan',  loan ? <Badge variant="warn">{ksh(loan.amount_remaining)} remaining</Badge> : <Badge variant="ok">None</Badge>)}
+              {row('MGR month',    mgrSlot ? <Badge variant="info">{mgrSlot.month}</Badge> : <Badge>Not scheduled</Badge>)}
+              {row('Total fines',  <span style={{ fontFamily:"'DM Mono',monospace", color: m.total_fines>0?'var(--danger)':'inherit' }}>{ksh(m.total_fines)}</span>)}
             </tbody>
           </table>
-          <div style={{ marginTop:14, padding:'10px 12px', background:'var(--accent-lt)', borderRadius:'var(--r)', fontSize:12, color:'var(--accent)', lineHeight:1.7 }}>
-            Your MGR payout is <strong>independent</strong> of any loan. You always receive your full amount regardless.
-          </div>
+          {loan && (
+            <div style={{ marginTop:14, padding:'10px 12px', background:'var(--accent-lt)', borderRadius:'var(--r)', fontSize:12, color:'var(--accent)', lineHeight:1.7 }}>
+              Your MGR payout is <strong>independent</strong> of any loan.
+            </div>
+          )}
         </Card>
       </Grid2>
     </div>

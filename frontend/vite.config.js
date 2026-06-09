@@ -5,13 +5,11 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    // Local dev proxy — only active when running `npm run dev`
-    // Points /api-backend → your live Strapi so you can dev without CORS issues
+    // In dev, proxy all /api calls to the Express backend
     proxy: {
-      '/api-backend': {
-        target: 'https://chama.laitor.co.ke',
+      '/api': {
+        target: 'http://localhost:4000',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api-backend/, ''),
       },
     },
   },

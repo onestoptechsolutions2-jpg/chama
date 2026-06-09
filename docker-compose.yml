@@ -1,0 +1,60 @@
+version: '3.9'
+
+services:
+  # ── PostgreSQL ─────────────────────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${DB_NAME:-chama_db}
+      POSTGRES_USER:     ${DB_USER:-chama}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chama} -d ${DB_NAME:-chama_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (Node/Express) ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV:       production
+      PORT:           4000
+      DB_HOST:        db
+      DB_PORT:        5432
+      DB_NAME:        ${DB_NAME:-chama_db}
+      DB_USER:        ${DB_USER:-chama}
+      DB_PASSWORD:    ${DB_PASSWORD}
+      JWT_SECRET:     ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      # Bootstrap — creates default group + admin if DB is empty
+      GROUP_NAME:     ${GROUP_NAME:-My Chama}
+      GROUP_TYPE:     ${GROUP_TYPE:-chama}
+      ADMIN_NAME:     ${ADMIN_NAME:-Admin}
+      ADMIN_EMAIL:    ${ADMIN_EMAIL:-admin@chama.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-Admin1234!}
+    expose:
+      - "4000"
+
+  # ── Frontend (React + nginx) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:-80}:80"
+
+volumes:
+  pgdata:
