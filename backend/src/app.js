@@ -23,7 +23,9 @@ app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }))
 
 // Routes
 app.use('/api/auth',          require('./routes/auth'))
+app.use('/api/groups',        require('./routes/groups'))
 app.use('/api/group',         require('./routes/group'))
+app.use('/api/settings',      require('./routes/settings'))
 app.use('/api/users',         require('./routes/users'))
 app.use('/api/members',       require('./routes/members'))
 app.use('/api/contributions', require('./routes/contributions'))
@@ -35,6 +37,8 @@ app.use('/api/welfare',       require('./routes/welfare'))
 app.use('/api/projects',      require('./routes/projects'))
 app.use('/api/rules',         require('./routes/rules'))
 app.use('/api/dashboard',     require('./routes/dashboard'))
+app.use('/api/payments',      require('./routes/payments'))
+app.use('/api/super-admin',   require('./routes/superAdmin'))
 
 // 404
 app.use((req, res) => res.status(404).json({ error: `Route ${req.method} ${req.path} not found` }))

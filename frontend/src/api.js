@@ -11,8 +11,10 @@ const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('chama_token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  const token   = localStorage.getItem('chama_token')
+  const groupId = localStorage.getItem('chama_group_id')
+  if (token)   config.headers.Authorization = `Bearer ${token}`
+  if (groupId) config.headers['X-Group-Id'] = groupId
   return config
 })
 
@@ -23,8 +25,31 @@ const del  = (path)             => api.delete(path).then(r => r.data)
 
 // ── Auth ──────────────────────────────────────────────────────
 export const login           = (creds)           => post('/api/auth/login', creds)
+export const register        = (data)            => post('/api/auth/register', data)
 export const getMe           = ()                => get('/api/auth/me')
 export const changePassword  = (body)            => post('/api/auth/change-password', body)
+
+// ── Public Groups ─────────────────────────────────────────────
+export const getPublicGroups = ()                => get('/api/groups')
+export const getPublicGroup  = (id)              => get(`/api/groups/${id}`)
+export const requestJoin     = (id, data)        => post(`/api/groups/${id}/join`, data)
+export const getPendingMembers = (id)            => get(`/api/groups/${id}/pending`)
+export const reviewMembership = (gid, mid, data) => put(`/api/groups/${gid}/members/${mid}`, data)
+
+// ── Settings ──────────────────────────────────────────────────
+export const getSettings     = ()                => get('/api/settings')
+export const updateSettings  = (data)            => put('/api/settings', data)
+
+// ── MGR Cycles ────────────────────────────────────────────────
+export const getMgrCycles    = ()                => get('/api/mgr/cycles')
+export const createMgrCycle  = (data)            => post('/api/mgr/cycles', data)
+export const closeMgrCycle   = (id)              => put(`/api/mgr/cycles/${id}/close`, {})
+export const getMgrAgreement = ()                => get('/api/mgr/agreement')
+export const signMgrAgreement = (data)           => post('/api/mgr/agreement', data)
+
+// ── Payments ──────────────────────────────────────────────────
+export const chargePlatformFee = (data)          => post('/api/payments/platform-fee', data)
+export const getPayments       = ()              => get('/api/payments')
 
 // ── Group ─────────────────────────────────────────────────────
 export const getGroup        = ()                => get('/api/group')
