@@ -5,10 +5,11 @@ const cors    = require('cors')
 const app = express()
 
 // CORS
-const origins = (process.env.CORS_ORIGINS || 'http://localhost:5173').split(',').map(s => s.trim())
+const originsEnv = process.env.CORS_ORIGINS || '*'
+const origins = originsEnv.split(',').map(s => s.trim())
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin || origins.includes(origin) || origins.includes('*')) return cb(null, true)
+    if (!origin || origins.includes('*') || origins.includes(origin)) return cb(null, true)
     cb(new Error('Not allowed by CORS'))
   },
   credentials: true,
