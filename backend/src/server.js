@@ -30,7 +30,7 @@ async function bootstrap() {
 
   // Create group
   const gRes = await pool.query(
-    `INSERT INTO groups (name, type, registration_date)
+    `INSERT INTO groups (name, type, founded_date)
      VALUES ($1, $2, CURRENT_DATE) RETURNING id`,
     [groupName, groupType]
   )
