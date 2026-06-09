@@ -9,7 +9,7 @@ async function authenticate(req, res, next) {
   }
   const token = header.slice(7)
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET)
+    const payload = jwt.verify(token, process.env.JWT_SECRET || 'changeme_jwt_secret_2024')
     const { rows } = await query(
       'SELECT id, group_id, name, email, role, active FROM users WHERE id = $1',
       [payload.userId]
