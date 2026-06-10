@@ -6,6 +6,7 @@ import RegisterPage       from './pages/RegisterPage'
 import LandingPage        from './pages/LandingPage'
 import SuperAdminPage     from './pages/SuperAdminPage'
 import Layout             from './components/Layout'
+import { TourProvider }  from './components/AppTour'
 import Dashboard          from './pages/Dashboard'
 import Members            from './pages/Members'
 import Loans              from './pages/Loans'
@@ -38,6 +39,7 @@ function Guard() {
   const showProj   = ['selfhelp','hybrid'].includes(type)
 
   return (
+    <TourProvider>
     <Layout>
       <Routes>
         {isStaff ? (
@@ -68,6 +70,7 @@ function Guard() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
+    </TourProvider>
   )
 }
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { TourHelpButton } from './AppTour'
 
 function Avatar({ name='?', size=28 }) {
   const ini = (name||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
@@ -23,9 +24,9 @@ const navLink = ({ isActive }) => ({
   fontWeight: isActive ? 500                      : 400,
 })
 
-function NavItem({ to, icon, label, end }) {
+function NavItem({ to, icon, label, end, tourId }) {
   return (
-    <NavLink to={to} style={navLink} end={end}>
+    <NavLink to={to} style={navLink} end={end} {...(tourId ? { 'data-tour': tourId } : {})}>
       <span style={{ fontSize:15, width:18, textAlign:'center', flexShrink:0 }}>{icon}</span>
       {label}
     </NavLink>
@@ -50,7 +51,7 @@ function GroupSwitcher({ groups, activeGroup, switchGroup }) {
   if (!groups || groups.length <= 1) return null
 
   return (
-    <div style={{ position:'relative', margin:'8px 8px 4px' }}>
+    <div data-tour="group-switcher" style={{ position:'relative', margin:'8px 8px 4px' }}>
       <button onClick={() => setOpen(o => !o)} style={{
         width:'100%', display:'flex', alignItems:'center', gap:8,
         background:'rgba(255,255,255,0.08)', border:'1px solid rgba(255,255,255,0.12)',
@@ -185,32 +186,32 @@ export default function Layout({ children }) {
         {isStaff ? (
           <>
             <Divider label="Overview" />
-            <NavItem to="/"            icon="📊" label="Dashboard" end />
+            <NavItem to="/"            icon="📊" label="Dashboard"       end   tourId="nav-dashboard" />
 
             <Divider label="Management" />
-            <NavItem to="/members"     icon="👥" label="Members" />
-            {showLoans   && <NavItem to="/loans"       icon="💰" label="Loans" />}
-            {showMgr     && <NavItem to="/mgr"         icon="🔄" label="Merry-Go-Round" />}
-            <NavItem to="/fines"       icon="⚠️" label="Fines" />
-            {showWelfare && <NavItem to="/welfare"     icon="🏥" label="Welfare" />}
-            {showProj    && <NavItem to="/projects"    icon="🏗️" label="Projects" />}
-            <NavItem to="/meetings"    icon="📅" label="Meetings" />
+            <NavItem to="/members"     icon="👥" label="Members"               tourId="nav-members" />
+            {showLoans   && <NavItem to="/loans"       icon="💰" label="Loans"           tourId="nav-loans" />}
+            {showMgr     && <NavItem to="/mgr"         icon="🔄" label="Merry-Go-Round"  tourId="nav-mgr" />}
+            <NavItem to="/fines"       icon="⚠️" label="Fines"                tourId="nav-fines" />
+            {showWelfare && <NavItem to="/welfare"     icon="🏥" label="Welfare"         tourId="nav-welfare" />}
+            {showProj    && <NavItem to="/projects"    icon="🏗️" label="Projects"        tourId="nav-projects" />}
+            <NavItem to="/meetings"    icon="📅" label="Meetings"              tourId="nav-meetings" />
 
             <Divider label="Admin" />
-            <NavItem to="/rules"       icon="📋" label="Rules" />
-            <NavItem to="/settings"    icon="⚙️" label="Settings" />
-            {isAdmin && <NavItem to="/pending-members" icon="🔔" label="Join Requests" />}
-            {isAdmin && <NavItem to="/users"           icon="🔑" label="Users" />}
+            <NavItem to="/rules"       icon="📋" label="Rules"                 tourId="nav-rules" />
+            <NavItem to="/settings"    icon="⚙️" label="Settings"              tourId="nav-settings" />
+            {isAdmin && <NavItem to="/pending-members" icon="🔔" label="Join Requests" tourId="nav-pending" />}
+            {isAdmin && <NavItem to="/users"           icon="🔑" label="Users"         tourId="nav-users" />}
           </>
         ) : (
           <>
             <Divider label="My Account" />
-            <NavItem to="/"            icon="👤" label="My Profile" end />
-            {showLoans   && <NavItem to="/my-loan"    icon="💰" label="My Loan" />}
-            {showMgr     && <NavItem to="/mgr"        icon="🔄" label="Merry-Go-Round" />}
-            {showWelfare && <NavItem to="/welfare"    icon="🏥" label="Welfare" />}
-            {showProj    && <NavItem to="/projects"   icon="🏗️" label="Projects" />}
-            <NavItem to="/rules"       icon="📋" label="Rules" />
+            <NavItem to="/"            icon="👤" label="My Profile"  end    tourId="nav-profile" />
+            {showLoans   && <NavItem to="/my-loan"    icon="💰" label="My Loan"         tourId="nav-my-loan" />}
+            {showMgr     && <NavItem to="/mgr"        icon="🔄" label="Merry-Go-Round"  tourId="nav-mgr" />}
+            {showWelfare && <NavItem to="/welfare"    icon="🏥" label="Welfare"         tourId="nav-welfare" />}
+            {showProj    && <NavItem to="/projects"   icon="🏗️" label="Projects"        tourId="nav-projects" />}
+            <NavItem to="/rules"       icon="📋" label="Rules"                 tourId="nav-rules" />
           </>
         )}
       </nav>
@@ -240,7 +241,7 @@ export default function Layout({ children }) {
     <div style={{ display:'flex', minHeight:'100vh' }}>
 
       {/* ── Desktop sidebar ── */}
-      <aside className="sidebar-desktop" style={{
+      <aside data-tour="sidebar" className="sidebar-desktop" style={{
         width:'var(--sidebar-w)', position:'fixed', top:0, bottom:0, left:0, zIndex:100,
         background:'linear-gradient(180deg, #1e4d2b 0%, #2d5a3d 100%)',
         display:'flex', flexDirection:'column',
@@ -304,6 +305,7 @@ export default function Layout({ children }) {
         {children}
       </main>
 
+      <TourHelpButton />
       <InstallBanner />
     </div>
   )

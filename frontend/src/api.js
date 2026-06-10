@@ -90,12 +90,6 @@ export const updateLoan      = (id, data)        => put(`/api/loans/${id}`, data
 export const repayLoan       = (id, data)        => post(`/api/loans/${id}/repay`, data)
 export const getLoanRepayments = (id)            => get(`/api/loans/${id}/repayments`)
 
-// ── MGR ───────────────────────────────────────────────────────
-export const getMgrSchedule  = ()                => get('/api/mgr')
-export const createMgr       = (data)            => post('/api/mgr', data)
-export const updateMgr       = (id, data)        => put(`/api/mgr/${id}`, data)
-export const deleteMgr       = (id)              => del(`/api/mgr/${id}`)
-
 // ── Fines ─────────────────────────────────────────────────────
 export const getFines        = (params)          => get('/api/fines', params)
 export const createFine      = (data)            => post('/api/fines', data)
