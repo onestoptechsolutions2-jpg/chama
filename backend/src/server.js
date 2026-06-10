@@ -92,10 +92,23 @@ async function bootstrap() {
   console.log(`✅ Bootstrapped: group "${groupName}" (${groupType}), admin: ${adminEmail}`)
 }
 
+async function waitForDb(maxRetries = 30, delayMs = 2000) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await pool.query('SELECT 1')
+      console.log('✅ Database connected')
+      return
+    } catch (err) {
+      console.log(`⏳ Waiting for database... (${i + 1}/${maxRetries}) — ${err.message}`)
+      await new Promise(r => setTimeout(r, delayMs))
+    }
+  }
+  throw new Error(`Database unavailable after ${maxRetries} attempts`)
+}
+
 async function start() {
   try {
-    await pool.query('SELECT 1')
-    console.log('✅ Database connected')
+    await waitForDb()
   } catch (err) {
     console.error('❌ Database connection failed:', err.message)
     console.error('   DB_HOST:', process.env.DB_HOST, '  DB_USER:', process.env.DB_USER)

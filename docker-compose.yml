@@ -11,10 +11,10 @@ services:
       - pgdata_v2:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-chama}"]
-      interval: 5s
+      interval: 3s
       timeout: 5s
-      retries: 20
-      start_period: 40s
+      retries: 30
+      start_period: 10s
 
   # ── Backend (Node/Express) ─────────────────────────────────────────────────
   backend:

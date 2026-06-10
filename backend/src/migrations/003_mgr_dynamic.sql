@@ -16,6 +16,11 @@ ALTER TABLE mgr_cycles
   ADD COLUMN IF NOT EXISTS payout_per_slot       DECIMAL(12,2),
   ADD COLUMN IF NOT EXISTS total_contributions   DECIMAL(12,2);
 
+-- Widen the status check to include 'planned' (used by the schedule generator)
+ALTER TABLE mgr_cycles DROP CONSTRAINT IF EXISTS mgr_cycles_status_check;
+ALTER TABLE mgr_cycles ADD CONSTRAINT mgr_cycles_status_check
+  CHECK (status IN ('active','planned','completed','closed'));
+
 -- ── 3. Member turns table ──────────────────────────────────────────────────
 -- Tracks how many turns each member has requested / been assigned
 CREATE TABLE IF NOT EXISTS mgr_member_turns (
