@@ -167,4 +167,220 @@ router.get('/:id/repayments', authenticate, async (req, res) => {
   }
 })
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOAN APPLICATIONS (member self-service)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// POST /api/loans/apply  — member submits application
+router.post('/apply', authenticate, async (req, res) => {
+  const { amount_requested, purpose, repayment_months = 3 } = req.body
+  if (!amount_requested) return res.status(400).json({ error: 'amount_requested required' })
+
+  const memberId = req.user.member_id
+  if (!memberId) return res.status(400).json({ error: 'No member profile linked to your account' })
+
+  try {
+    // Block if already has active loan
+    const { rows: active } = await query(
+      `SELECT id FROM loans WHERE member_id = $1 AND status IN ('active','extended','pending')`,
+      [memberId]
+    )
+    if (active.length > 0) return res.status(400).json({ error: 'You already have an active loan' })
+
+    // Block if already has a pending application
+    const { rows: pending } = await query(
+      `SELECT id FROM loan_applications WHERE member_id = $1 AND status = 'pending'`,
+      [memberId]
+    )
+    if (pending.length > 0) return res.status(400).json({ error: 'You already have a pending application' })
+
+    // Check limit
+    const { rows: [m] } = await query(
+      'SELECT capital, security, personal_savings, limit_reduced FROM members WHERE id = $1 AND group_id = $2',
+      [memberId, req.user.group_id]
+    )
+    if (!m) return res.status(404).json({ error: 'Member not found' })
+
+    const savings = parseFloat(m.capital) + parseFloat(m.security) + parseFloat(m.personal_savings)
+    const limit   = m.limit_reduced ? savings : savings * 2
+    if (parseFloat(amount_requested) > limit) {
+      return res.status(400).json({ error: `Exceeds your loan limit of Ksh ${limit.toLocaleString()}` })
+    }
+
+    const { rows } = await query(
+      `INSERT INTO loan_applications (group_id, member_id, amount_requested, purpose, repayment_months)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.user.group_id, memberId, amount_requested, purpose || null, repayment_months]
+    )
+    res.status(201).json(rows[0])
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// GET /api/loans/applications  — admin/treasurer sees all, member sees own
+router.get('/applications', authenticate, async (req, res) => {
+  const isStaff = ['admin', 'treasurer', 'secretary'].includes(req.user.role)
+  try {
+    let rows
+    if (isStaff) {
+      const result = await query(
+        `SELECT la.*, m.name AS member_name, m.phone AS member_phone,
+                u.name AS reviewed_by_name
+         FROM loan_applications la
+         JOIN members m ON m.id = la.member_id
+         LEFT JOIN users u ON u.id = la.reviewed_by
+         WHERE la.group_id = $1
+         ORDER BY la.created_at DESC`,
+        [req.user.group_id]
+      )
+      rows = result.rows
+    } else {
+      const memberId = req.user.member_id
+      if (!memberId) return res.json([])
+      const result = await query(
+        `SELECT la.*, u.name AS reviewed_by_name
+         FROM loan_applications la
+         LEFT JOIN users u ON u.id = la.reviewed_by
+         WHERE la.member_id = $1
+         ORDER BY la.created_at DESC`,
+        [memberId]
+      )
+      rows = result.rows
+    }
+    res.json(rows)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// PATCH /api/loans/applications/:id  — admin approves or rejects
+router.patch('/applications/:id', authenticate, authorize('admin', 'treasurer'), async (req, res) => {
+  const { status, review_notes, interest_rate = 20, due_date } = req.body
+  if (!['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ error: 'status must be approved or rejected' })
+  }
+
+  const client = await require('../config/database').pool.connect()
+  try {
+    await client.query('BEGIN')
+
+    const { rows: [app] } = await client.query(
+      'SELECT * FROM loan_applications WHERE id = $1 AND group_id = $2',
+      [req.params.id, req.user.group_id]
+    )
+    if (!app) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Application not found' }) }
+    if (app.status !== 'pending') { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Application already reviewed' }) }
+
+    let loanId = null
+    if (status === 'approved') {
+      // Compute total repayable
+      const totalRepayable = Math.round(parseFloat(app.amount_requested) * (1 + parseFloat(interest_rate) / 100))
+      const dueD = due_date || (() => {
+        const d = new Date()
+        d.setMonth(d.getMonth() + parseInt(app.repayment_months))
+        return d.toISOString().split('T')[0]
+      })()
+
+      const { rows: [loan] } = await client.query(
+        `INSERT INTO loans
+           (group_id, member_id, principal, interest_rate, total_repayable, amount_remaining,
+            status, purpose, issued_date, due_date, approved_by)
+         VALUES ($1,$2,$3,$4,$5,$5,'active',$6,CURRENT_DATE,$7,$8) RETURNING id`,
+        [req.user.group_id, app.member_id, app.amount_requested, interest_rate,
+         totalRepayable, app.purpose, dueD, req.user.id]
+      )
+      loanId = loan.id
+    }
+
+    const { rows: [updated] } = await client.query(
+      `UPDATE loan_applications
+       SET status = $1, reviewed_by = $2, reviewed_at = NOW(),
+           review_notes = $3, loan_id = $4, updated_at = NOW()
+       WHERE id = $5 RETURNING *`,
+      [status, req.user.id, review_notes || null, loanId, req.params.id]
+    )
+
+    await client.query('COMMIT')
+    res.json(updated)
+  } catch (err) {
+    await client.query('ROLLBACK')
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  } finally {
+    client.release()
+  }
+})
+
+// DELETE /api/loans/applications/:id  — member cancels own pending application
+router.delete('/applications/:id', authenticate, async (req, res) => {
+  const memberId = req.user.member_id
+  try {
+    const { rows: [app] } = await query(
+      'SELECT * FROM loan_applications WHERE id = $1',
+      [req.params.id]
+    )
+    if (!app) return res.status(404).json({ error: 'Not found' })
+    const isStaff = ['admin', 'treasurer'].includes(req.user.role)
+    if (!isStaff && app.member_id !== memberId) return res.status(403).json({ error: 'Forbidden' })
+    if (app.status !== 'pending') return res.status(400).json({ error: 'Only pending applications can be cancelled' })
+
+    await query(
+      `UPDATE loan_applications SET status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+      [req.params.id]
+    )
+    res.json({ message: 'Cancelled' })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
+// GET /api/loans/statement  — member's full financial statement
+router.get('/statement', authenticate, async (req, res) => {
+  const memberId = req.user.member_id
+  const isStaff  = ['admin', 'treasurer', 'secretary'].includes(req.user.role)
+  const targetId = isStaff && req.query.member_id ? parseInt(req.query.member_id) : memberId
+  if (!targetId) return res.status(400).json({ error: 'No member profile' })
+
+  try {
+    const [member, contributions, loans, repayments, fines] = await Promise.all([
+      query('SELECT * FROM members WHERE id = $1 AND group_id = $2', [targetId, req.user.group_id])
+        .then(r => r.rows[0]),
+      query(
+        `SELECT 'contribution' AS type, c.amount, c.payment_date AS date,
+                c.reference, c.notes, c.month_label AS description
+         FROM contributions c WHERE c.member_id = $1 ORDER BY c.payment_date DESC`,
+        [targetId]
+      ).then(r => r.rows),
+      query(
+        `SELECT * FROM loans WHERE member_id = $1 AND group_id = $2 ORDER BY issued_date DESC`,
+        [targetId, req.user.group_id]
+      ).then(r => r.rows),
+      query(
+        `SELECT 'repayment' AS type, r.amount, r.created_at AS date,
+                r.reference, r.notes, CONCAT('Loan repayment #', r.loan_id) AS description
+         FROM loan_repayments r
+         JOIN loans l ON l.id = r.loan_id
+         WHERE l.member_id = $1 ORDER BY r.created_at DESC`,
+        [targetId]
+      ).then(r => r.rows),
+      query(
+        `SELECT 'fine' AS type, f.amount, f.created_at AS date,
+                NULL AS reference, f.notes, f.reason AS description, f.status
+         FROM fines f WHERE f.member_id = $1 ORDER BY f.created_at DESC`,
+        [targetId]
+      ).then(r => r.rows),
+    ])
+
+    if (!member) return res.status(404).json({ error: 'Member not found' })
+    res.json({ member, contributions, loans, repayments, fines })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Server error' })
+  }
+})
+
 module.exports = router

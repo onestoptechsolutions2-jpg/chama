@@ -4,6 +4,7 @@ const path   = require('path')
 const bcrypt = require('bcryptjs')
 const app    = require('./app')
 const { pool } = require('./config/database')
+const { startEnforcementJobs } = require('./jobs/enforcement')
 
 const PORT = process.env.PORT || 4000
 
@@ -119,6 +120,7 @@ async function start() {
     await runMigration('001_initial.sql')
     await runMigration('002_multi_group.sql')
     await runMigration('003_mgr_dynamic.sql')
+    await runMigration('004_member_selfservice.sql')
     await bootstrap()
   } catch (err) {
     console.error('❌ Startup error:', err.message)
@@ -128,6 +130,7 @@ async function start() {
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`)
     console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`)
+    startEnforcementJobs()
   })
 }
 

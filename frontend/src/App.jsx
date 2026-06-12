@@ -20,7 +20,8 @@ import Projects           from './pages/Projects'
 import Users              from './pages/Users'
 import Meetings           from './pages/Meetings'
 import SettingsPage       from './pages/SettingsPage'
-import PendingMembersPage from './pages/PendingMembersPage'
+import PendingMembersPage  from './pages/PendingMembersPage'
+import MemberStatement    from './pages/MemberStatement'
 
 function Guard() {
   const { auth, loading, isStaff, isAdmin, activeGroup } = useAuth()
@@ -61,6 +62,7 @@ function Guard() {
           <>
             <Route path="/"                  element={<MyProfile />} />
             {showLoans   && <Route path="/my-loan"   element={<MyLoan />} />}
+            <Route path="/statement"         element={<MemberStatement />} />
             {showMgr     && <Route path="/mgr"       element={<MGR />} />}
             {showWelfare && <Route path="/welfare"   element={<Welfare />} />}
             {showProj    && <Route path="/projects"  element={<Projects />} />}

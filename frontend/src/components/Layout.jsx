@@ -208,6 +208,7 @@ export default function Layout({ children }) {
             <Divider label="My Account" />
             <NavItem to="/"            icon="👤" label="My Profile"  end    tourId="nav-profile" />
             {showLoans   && <NavItem to="/my-loan"    icon="💰" label="My Loan"         tourId="nav-my-loan" />}
+            <NavItem to="/statement"   icon="📄" label="My Statement"        tourId="nav-statement" />
             {showMgr     && <NavItem to="/mgr"        icon="🔄" label="Merry-Go-Round"  tourId="nav-mgr" />}
             {showWelfare && <NavItem to="/welfare"    icon="🏥" label="Welfare"         tourId="nav-welfare" />}
             {showProj    && <NavItem to="/projects"   icon="🏗️" label="Projects"        tourId="nav-projects" />}

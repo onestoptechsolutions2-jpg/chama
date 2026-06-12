@@ -84,11 +84,16 @@ export const updateContribution  = (id, data)    => put(`/api/contributions/${id
 export const getContribSummary   = ()            => get('/api/contributions/summary')
 
 // ── Loans ─────────────────────────────────────────────────────
-export const getLoans        = (params)          => get('/api/loans', params)
-export const createLoan      = (data)            => post('/api/loans', data)
-export const updateLoan      = (id, data)        => put(`/api/loans/${id}`, data)
-export const repayLoan       = (id, data)        => post(`/api/loans/${id}/repay`, data)
-export const getLoanRepayments = (id)            => get(`/api/loans/${id}/repayments`)
+export const getLoans            = (params)      => get('/api/loans', params)
+export const createLoan          = (data)        => post('/api/loans', data)
+export const updateLoan          = (id, data)    => put(`/api/loans/${id}`, data)
+export const repayLoan           = (id, data)    => post(`/api/loans/${id}/repay`, data)
+export const getLoanRepayments   = (id)          => get(`/api/loans/${id}/repayments`)
+export const applyForLoan        = (data)        => post('/api/loans/apply', data)
+export const getLoanApplications = ()            => get('/api/loans/applications')
+export const reviewLoanApplication = (id, data) => api.patch(`/api/loans/applications/${id}`, data).then(r => r.data)
+export const cancelLoanApplication = (id)       => del(`/api/loans/applications/${id}`)
+export const getMemberStatement  = (params)     => get('/api/loans/statement', params)
 
 // ── Fines ─────────────────────────────────────────────────────
 export const getFines        = (params)          => get('/api/fines', params)
