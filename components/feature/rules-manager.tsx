@@ -98,7 +98,15 @@ function AddRuleForm() {
   );
 }
 
-export function RulesManager({ rules, isAdmin }: { rules: Rule[]; isAdmin: boolean }) {
+export function RulesManager({
+  rules,
+  isAdmin,
+  rulesAcceptedAt,
+}: {
+  rules: Rule[];
+  isAdmin: boolean;
+  rulesAcceptedAt: Date | null;
+}) {
   const byCategory = new Map<string, Rule[]>();
   for (const rule of rules) {
     const list = byCategory.get(rule.category) ?? [];
@@ -108,6 +116,12 @@ export function RulesManager({ rules, isAdmin }: { rules: Rule[]; isAdmin: boole
 
   return (
     <div className="space-y-6">
+      {rulesAcceptedAt && (
+        <p className="text-sm text-muted-foreground">
+          You accepted these rules on {new Date(rulesAcceptedAt).toLocaleDateString()}, the day
+          you joined this group — binding automatically, not a separate step.
+        </p>
+      )}
       {isAdmin && <AddRuleForm />}
 
       {rules.length === 0 && (

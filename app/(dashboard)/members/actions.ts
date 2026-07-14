@@ -1,19 +1,38 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
-import { withTenant } from "@/lib/db/rls";
-import { members, contributions, users, groupMemberships } from "@/lib/db/schema";
+import { withTenant, type Tx } from "@/lib/db/rls";
+import { members, contributions, users, groupMemberships, groups } from "@/lib/db/schema";
 import {
   createMemberSchema,
   recordContributionSchema,
   createLoginSchema,
 } from "@/lib/validation/members";
 import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
+import { computeRegistrationComplete, type MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
 
 export type MemberActionState = { error: string } | null;
+
+/**
+ * Recomputes groups.registrationComplete from the group's actual current
+ * active roles — called after every role change rather than trusted to
+ * stay in sync, so it can't go stale if e.g. a treasurer is later demoted.
+ * Shared by updateMemberRoleAction and anything else that changes a
+ * membership's role or status (join approval, login creation for a member).
+ */
+async function refreshRegistrationStatus(tx: Tx, groupId: number): Promise<void> {
+  const active = await tx
+    .select({ role: groupMemberships.role })
+    .from(groupMemberships)
+    .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.status, "active")));
+
+  const complete = computeRegistrationComplete(active.map((r) => r.role as MembershipRole));
+
+  await tx.update(groups).set({ registrationComplete: complete }).where(eq(groups.id, groupId));
+}
 
 export async function createMemberAction(
   _prev: MemberActionState,
@@ -148,7 +167,13 @@ export async function createLoginForMemberAction(
       groupId,
       role: "member",
       status: "active",
+      // Automatic, same reasoning as approveMembershipAction — this
+      // membership goes straight to active without a separate approval
+      // step (staff are creating it directly), but rule acceptance still
+      // applies the moment it exists.
+      rulesAcceptedAt: new Date(),
     });
+    await refreshRegistrationStatus(tx, groupId);
 
     return { ok: true };
   });
@@ -170,4 +195,68 @@ export async function deactivateMemberAction(memberId: number): Promise<void> {
   );
 
   revalidatePath("/members");
+}
+
+const ASSIGNABLE_ROLES: MembershipRole[] = ["admin", "treasurer", "secretary", "member"];
+
+/**
+ * Governance change — deliberately admin-only, stricter than the
+ * admin+treasurer gate used for day-to-day member operations elsewhere in
+ * this file. Recomputes groups.registrationComplete afterward (see
+ * refreshRegistrationStatus above) since this is the only place a role can
+ * actually change post-creation.
+ */
+export async function updateMemberRoleAction(
+  membershipId: number,
+  role: string,
+): Promise<{ error: string } | null> {
+  const session = await requireRole("admin");
+  const groupId = session.activeMembership.groupId;
+
+  if (!ASSIGNABLE_ROLES.includes(role as MembershipRole)) {
+    return { error: "Invalid role" };
+  }
+  const newRole = role as MembershipRole;
+
+  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+    const membership = await tx.query.groupMemberships.findFirst({
+      where: and(
+        eq(groupMemberships.id, membershipId),
+        eq(groupMemberships.groupId, groupId),
+        eq(groupMemberships.status, "active"),
+      ),
+    });
+    if (!membership) return { error: "Membership not found" };
+
+    if (membership.role === "admin" && newRole !== "admin") {
+      const [{ otherAdmins }] = await tx
+        .select({ otherAdmins: sql<number>`count(*)::int` })
+        .from(groupMemberships)
+        .where(
+          and(
+            eq(groupMemberships.groupId, groupId),
+            eq(groupMemberships.status, "active"),
+            eq(groupMemberships.role, "admin"),
+            ne(groupMemberships.id, membershipId),
+          ),
+        );
+      if (otherAdmins === 0) {
+        return { error: "The group must always have at least one admin" };
+      }
+    }
+
+    await tx
+      .update(groupMemberships)
+      .set({ role: newRole, roleAssignedAt: new Date(), updatedAt: new Date() })
+      .where(eq(groupMemberships.id, membershipId));
+
+    await refreshRegistrationStatus(tx, groupId);
+
+    return { ok: true };
+  });
+
+  if ("error" in result) return { error: result.error };
+  revalidatePath("/members");
+  revalidatePath("/");
+  return null;
 }

@@ -155,6 +155,20 @@
       "when": 1784008814313,
       "tag": "0021_phase7_mgr_slot_events_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784026543134,
+      "tag": "0022_officials_kyc_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784026558722,
+      "tag": "0023_officials_groups_public_read_gate",
+      "breakpoints": true
     }
   ]
 }

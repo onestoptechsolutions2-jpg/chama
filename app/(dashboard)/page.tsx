@@ -2,7 +2,7 @@ import Link from "next/link";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { members, fines, meetings } from "@/lib/db/schema";
+import { members, fines, meetings, groups } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -47,7 +47,9 @@ export default async function DashboardPage() {
   const { groupId, groupName, groupType, role } = session.activeMembership;
   const showWelfare = groupType === "welfare" || groupType === "hybrid";
 
-  const [totals, pendingFines, nextMeeting] = await withTenant(groupId, (tx) =>
+  const isStaff = ["admin", "treasurer", "secretary"].includes(role);
+
+  const [totals, pendingFines, nextMeeting, group] = await withTenant(groupId, (tx) =>
     Promise.all([
       tx
         .select({
@@ -73,6 +75,7 @@ export default async function DashboardPage() {
         ),
         orderBy: (m, { asc }) => [asc(m.meetingDate)],
       }),
+      tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
     ]),
   );
 
@@ -87,6 +90,21 @@ export default async function DashboardPage() {
           <span className="capitalize">{role}</span>
         </p>
       </div>
+
+      {isStaff && group && !group.registrationComplete && (
+        <Card className="border-amber-500/50 bg-amber-500/5">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+            <p className="text-sm">
+              This group&apos;s registration isn&apos;t complete — it needs a Treasurer and
+              Secretary assigned before it&apos;s publicly discoverable or can approve new
+              members.
+            </p>
+            <Link href="/members" className={buttonVariants({ size: "sm", variant: "outline" })}>
+              Assign officials
+            </Link>
+          </CardContent>
+        </Card>
+      )}
 
       <div className={`grid gap-4 sm:grid-cols-2 ${showWelfare ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <Metric label="Members" value={String(totals.memberCount)} />

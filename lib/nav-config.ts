@@ -14,6 +14,7 @@ import {
   Hammer,
   RefreshCw,
   HelpCircle,
+  UserCircle,
 } from "lucide-react";
 import type { GroupType, MembershipRole } from "@/lib/auth/session";
 
@@ -146,6 +147,13 @@ export const navItems: NavItem[] = [
     roles: ["admin", "treasurer", "secretary"],
     guide:
       "The group's configurable business rules — share price, contribution day, loan interest/limit multiplier, fine amounts, meeting defaults. Changing these here is what actually takes effect; nothing else overrides them.",
+  },
+  {
+    href: "/profile",
+    label: "My Profile",
+    icon: UserCircle,
+    guide:
+      "Your own KYC details — ID number, ID document, photo, and (for admins/treasurers/secretaries) address and signature. Filled in once here, it's reused automatically for every other group you belong to, not re-collected each time.",
   },
   {
     href: "/guide",

@@ -233,7 +233,15 @@ describe("RLS: groups (special-cased policies, not the standard tenant pattern)"
     const [pub] = await withPlatformAdmin((tx) =>
       tx
         .insert(groups)
-        .values({ name: "RLS Test Public Group", type: "chama", isPublic: true })
+        .values({
+          name: "RLS Test Public Group",
+          type: "chama",
+          isPublic: true,
+          // groups_public_read requires both — a group missing its
+          // officials isn't publicly discoverable even if isPublic is
+          // true (see lib/domain/officials.ts, 0023_..._public_read_gate.sql).
+          registrationComplete: true,
+        })
         .returning({ id: groups.id }),
     );
     try {

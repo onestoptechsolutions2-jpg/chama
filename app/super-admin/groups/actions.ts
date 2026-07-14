@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { groups, groupMemberships, members, users } from "@/lib/db/schema";
 import { requirePlatformAdmin } from "@/lib/auth/session";
 import { createGroupSchema } from "@/lib/validation/groups";
+import { isKycComplete } from "@/lib/domain/officials";
 
 export type CreateGroupState = { error: string } | null;
 
@@ -46,14 +47,38 @@ export async function createGroupAction(
       status: "active",
       reviewedBy: session.user.id,
       reviewedAt: new Date(),
+      // Same automatic acceptance as approveMembershipAction — the
+      // founding admin is bound by the group's rules from the moment
+      // their membership exists, same as anyone else who joins.
+      rulesAcceptedAt: new Date(),
     });
+
+    // Cross-group KYC reuse (this admin may already have KYC on file from
+    // another group) — already inside withPlatformAdmin, no separate call
+    // needed. See lib/db/schema.ts's members KYC comment.
+    const existingKyc = await tx.query.members.findFirst({
+      where: and(eq(members.userId, admin.id), isNotNull(members.kycCompletedAt)),
+      orderBy: (m, { desc }) => [desc(m.updatedAt)],
+    });
+    const kycFields = {
+      idType: existingKyc?.idType ?? null,
+      idNumber: existingKyc?.idNumber ?? null,
+      idDocumentUrl: existingKyc?.idDocumentUrl ?? null,
+      photoUrl: existingKyc?.photoUrl ?? null,
+      signatureUrl: existingKyc?.signatureUrl ?? null,
+      address: existingKyc?.address ?? null,
+    };
 
     await tx.insert(members).values({
       groupId: group.id,
       userId: admin.id,
       name: admin.name,
-      phone: admin.phone,
+      phone: existingKyc?.phone ?? admin.phone,
       email: admin.email,
+      ...kycFields,
+      // The founding admin holds the admin office, which requires the
+      // full field set (see lib/domain/officials.ts).
+      kycCompletedAt: isKycComplete("admin", kycFields) ? new Date() : null,
     });
 
     return { ok: true };

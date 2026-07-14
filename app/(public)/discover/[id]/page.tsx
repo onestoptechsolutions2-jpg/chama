@@ -19,7 +19,12 @@ export default async function GroupDetailPage({
   if (!Number.isInteger(groupId)) notFound();
 
   const group = await db.query.groups.findFirst({
-    where: and(eq(groups.id, groupId), eq(groups.isPublic, true), eq(groups.active, true)),
+    where: and(
+      eq(groups.id, groupId),
+      eq(groups.isPublic, true),
+      eq(groups.active, true),
+      eq(groups.registrationComplete, true),
+    ),
     columns: {
       id: true,
       name: true,

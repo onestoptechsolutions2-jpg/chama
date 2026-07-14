@@ -1,17 +1,20 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import type { members as membersTable } from "@/lib/db/schema";
+import { useActionState, useState, useTransition } from "react";
+import { toast } from "sonner";
+import type { members as membersTable, groupMemberships as groupMembershipsTable } from "@/lib/db/schema";
 import { contributionTypes } from "@/lib/validation/members";
 import {
   createMemberAction,
   recordContributionAction,
   createLoginForMemberAction,
+  updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/members/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -36,7 +39,16 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type Member = typeof membersTable.$inferSelect;
+type Membership = typeof groupMembershipsTable.$inferSelect;
+type Member = typeof membersTable.$inferSelect & { membership: Membership | null };
+
+const ASSIGNABLE_ROLES = ["admin", "treasurer", "secretary", "member"] as const;
+const ROLE_LABELS: Record<(typeof ASSIGNABLE_ROLES)[number], string> = {
+  admin: "Admin",
+  treasurer: "Treasurer",
+  secretary: "Secretary",
+  member: "Member",
+};
 
 function ksh(n: string | number) {
   return `Ksh ${Number(n).toLocaleString()}`;
@@ -210,6 +222,50 @@ function CreateLoginDialog({ member }: { member: Member }) {
   );
 }
 
+function RoleCell({ member, editable }: { member: Member; editable: boolean }) {
+  const [isPending, startTransition] = useTransition();
+
+  if (!member.membership) {
+    return <span className="text-sm text-muted-foreground">No login</span>;
+  }
+
+  if (!editable) {
+    return (
+      <Badge variant="secondary" className="capitalize">
+        {member.membership.role}
+      </Badge>
+    );
+  }
+
+  function change(role: (typeof ASSIGNABLE_ROLES)[number] | null) {
+    if (!role) return;
+    startTransition(async () => {
+      const result = await updateMemberRoleAction(member.membership!.id, role);
+      if (result?.error) toast.error(result.error);
+      else toast.success(`${member.name} is now ${ROLE_LABELS[role]}`);
+    });
+  }
+
+  return (
+    <Select
+      value={member.membership.role}
+      onValueChange={change}
+      items={ROLE_LABELS}
+    >
+      <SelectTrigger className="w-32" disabled={isPending}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {ASSIGNABLE_ROLES.map((r) => (
+          <SelectItem key={r} value={r}>
+            {ROLE_LABELS[r]}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export function MembersManager({
   members,
   canEdit,
@@ -231,6 +287,8 @@ export function MembersManager({
             <TableHeader>
               <TableRow>
                 <TableHead>Name</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Rules</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead className="text-right">Capital</TableHead>
                 <TableHead className="text-right">Security</TableHead>
@@ -244,7 +302,7 @@ export function MembersManager({
             <TableBody>
               {members.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={canEdit ? 9 : 8} className="text-center text-muted-foreground">
+                  <TableCell colSpan={canEdit ? 11 : 10} className="text-center text-muted-foreground">
                     No members yet.
                   </TableCell>
                 </TableRow>
@@ -252,6 +310,18 @@ export function MembersManager({
               {members.map((m) => (
                 <TableRow key={m.id}>
                   <TableCell className="font-medium">{m.name}</TableCell>
+                  <TableCell>
+                    <RoleCell member={m} editable={isAdmin} />
+                  </TableCell>
+                  <TableCell>
+                    {m.membership?.rulesAcceptedAt ? (
+                      <Badge variant="secondary" title={new Date(m.membership.rulesAcceptedAt).toLocaleString()}>
+                        Accepted
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
                   <TableCell>{m.phone ?? "—"}</TableCell>
                   <TableCell className="text-right">{ksh(m.capital)}</TableCell>
                   <TableCell className="text-right">{ksh(m.security)}</TableCell>

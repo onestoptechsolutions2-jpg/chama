@@ -8,7 +8,15 @@ import { buttonVariants } from "@/components/ui/button";
 
 export default async function DiscoverPage() {
   const publicGroups = await db.query.groups.findMany({
-    where: and(eq(groups.isPublic, true), eq(groups.active, true)),
+    // registrationComplete: a group without Chair/Treasurer/Secretary all
+    // assigned isn't publicly discoverable yet — see lib/domain/officials.ts
+    // and the matching groups_public_read RLS policy (defense-in-depth,
+    // not just this app-level filter).
+    where: and(
+      eq(groups.isPublic, true),
+      eq(groups.active, true),
+      eq(groups.registrationComplete, true),
+    ),
     columns: {
       id: true,
       name: true,

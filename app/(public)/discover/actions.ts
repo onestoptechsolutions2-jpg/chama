@@ -21,7 +21,12 @@ export async function requestToJoinAction(
   const { groupId, message } = parsed.data;
 
   const group = await db.query.groups.findFirst({
-    where: and(eq(groups.id, groupId), eq(groups.isPublic, true), eq(groups.active, true)),
+    where: and(
+      eq(groups.id, groupId),
+      eq(groups.isPublic, true),
+      eq(groups.active, true),
+      eq(groups.registrationComplete, true),
+    ),
   });
   if (!group) {
     return { error: "This group isn't accepting join requests" };

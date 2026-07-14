@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { toast } from "sonner";
 import type { groupMemberships as groupMembershipsTable, users as usersTable } from "@/lib/db/schema";
 import {
   approveMembershipAction,
@@ -35,7 +36,12 @@ function Row({ membership }: { membership: Membership }) {
           <Button
             size="sm"
             disabled={isPending}
-            onClick={() => startTransition(() => approveMembershipAction(membership.id))}
+            onClick={() =>
+              startTransition(async () => {
+                const result = await approveMembershipAction(membership.id);
+                if (result?.error) toast.error(result.error);
+              })
+            }
           >
             Approve
           </Button>

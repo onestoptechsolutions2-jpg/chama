@@ -37,6 +37,8 @@ export const membershipStatusEnum = pgEnum("membership_status", [
 
 export const platformRoleEnum = pgEnum("platform_role", ["owner", "support"]);
 
+export const kycIdTypeEnum = pgEnum("kyc_id_type", ["national_id", "passport"]);
+
 export const ruleCategoryEnum = pgEnum("rule_category", [
   "general",
   "contributions",
@@ -201,6 +203,12 @@ export const groups = pgTable("groups", {
   isPublic: boolean("is_public").notNull().default(true),
   requireApproval: boolean("require_approval").notNull().default(true),
   maxMembers: integer("max_members"),
+  // Recomputed (not just set-once) by lib/domain/officials.ts's
+  // computeRegistrationComplete whenever a role changes — true once the
+  // group has at least one active admin, treasurer, and secretary. Gates
+  // public discoverability and new-member approval; existing operations
+  // for the founding admin are NOT blocked by this (see docs/architecture.md).
+  registrationComplete: boolean("registration_complete").notNull().default(false),
 
   // Contribution settings
   sharePrice: numeric("share_price", { precision: 14, scale: 2 })
@@ -301,6 +309,21 @@ export const members = pgTable(
     email: text("email"),
     idNumber: text("id_number"),
 
+    // KYC — captured once per person, propagated across every group a user
+    // belongs to (see updateMyKycAction / approveMembershipAction /
+    // createGroupAction) rather than re-collected per group. Lives here
+    // (not on `users`) because a members row is the canonical "real person
+    // in this group" even before they have a login — staff can add a
+    // member with no account yet. All nullable: a member can exist before
+    // KYC is complete; kycCompletedAt is stamped once the required set for
+    // their current role (see lib/domain/officials.ts) is present.
+    idType: kycIdTypeEnum("id_type"),
+    idDocumentUrl: text("id_document_url"),
+    photoUrl: text("photo_url"),
+    signatureUrl: text("signature_url"),
+    address: text("address"),
+    kycCompletedAt: timestamp("kyc_completed_at", { withTimezone: true }),
+
     capital: numeric("capital", { precision: 14, scale: 2 }).notNull().default("0"),
     security: numeric("security", { precision: 14, scale: 2 }).notNull().default("0"),
     personalSavings: numeric("personal_savings", { precision: 14, scale: 2 })
@@ -335,12 +358,23 @@ export const groupMemberships = pgTable(
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
     role: membershipRoleEnum("role").notNull().default("member"),
+    // Distinct from createdAt (date joined the group) — a member can join
+    // as a plain member and be appointed to an office later; this tracks
+    // when their *current* role was actually assigned.
+    roleAssignedAt: timestamp("role_assigned_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     status: membershipStatusEnum("status").notNull().default("pending"),
     joinMessage: text("join_message"),
     reviewedBy: integer("reviewed_by").references(() => users.id, {
       onDelete: "set null",
     }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    // Stamped automatically the moment this membership becomes active
+    // (approveMembershipAction, or the founding admin's own insert in
+    // createGroupAction) — the group's rule set applies inherently, not
+    // via a separate opt-in consent step like the MGR agreement gate.
+    rulesAcceptedAt: timestamp("rules_accepted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
