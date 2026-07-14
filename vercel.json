@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/contribution-dues", "schedule": "0 5 * * *" },
+    { "path": "/api/cron/loan-overdue", "schedule": "15 5 * * *" }
+  ]
+}
