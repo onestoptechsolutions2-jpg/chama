@@ -644,12 +644,50 @@ export const mgrSlots = pgTable(
     scheduledDate: date("scheduled_date"),
     claimedAt: timestamp("claimed_at", { withTimezone: true }),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    // The actual MGR payout happens outside the app (cash/M-Pesa between
+    // members directly) — this is the one piece of evidence the app can
+    // capture that it really happened, e.g. an M-Pesa confirmation code.
+    // Optional (not every group will use it), but strongly encouraged in
+    // the UI when marking a slot paid. See mgrSlotEvents below for the
+    // immutable log of who set this and when.
+    payoutReference: text("payout_reference"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique("mgr_slots_group_cycle_slot_unique").on(t.groupId, t.cycleNumber, t.slotNumber),
   ],
 );
+
+// ── MGR slot events — immutable audit log, not just app convention ────────
+// No UPDATE or DELETE policy exists for this table at all (see
+// drizzle/0020_phase7_mgr_slot_events.sql) — under RLS with FORCE, a
+// command with no matching policy is denied outright, for every role
+// except one with BYPASSRLS (which chama_app deliberately doesn't have).
+// This means even a compromised admin session, or a bug in this app's own
+// code, cannot rewrite MGR history — only ever append to it. The actual
+// payout still happens outside the app and nothing here can stop an admin
+// from lying about it, but every claim/reassignment/paid-marking is now
+// permanently attributed to a real user at a real time, which is the
+// realistic, achievable "fraud prevention" for a system that can't itself
+// move the money.
+export const mgrSlotEvents = pgTable("mgr_slot_events", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  slotId: integer("slot_id")
+    .notNull()
+    .references(() => mgrSlots.id, { onDelete: "cascade" }),
+  actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+  actorRole: membershipRoleEnum("actor_role"),
+  action: text("action").notNull(),
+  fromStatus: mgrSlotStatusEnum("from_status"),
+  toStatus: mgrSlotStatusEnum("to_status"),
+  fromMemberId: integer("from_member_id").references(() => members.id, { onDelete: "set null" }),
+  toMemberId: integer("to_member_id").references(() => members.id, { onDelete: "set null" }),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
 
 // ── MGR member turns ─────────────────────────────────────────────────────
 export const mgrMemberTurns = pgTable(
@@ -888,10 +926,27 @@ export const mgrCyclesRelations = relations(mgrCycles, ({ one, many }) => ({
   agreements: many(mgrAgreements),
 }));
 
-export const mgrSlotsRelations = relations(mgrSlots, ({ one }) => ({
+export const mgrSlotsRelations = relations(mgrSlots, ({ one, many }) => ({
   group: one(groups, { fields: [mgrSlots.groupId], references: [groups.id] }),
   cycle: one(mgrCycles, { fields: [mgrSlots.cycleId], references: [mgrCycles.id] }),
   member: one(members, { fields: [mgrSlots.memberId], references: [members.id] }),
+  events: many(mgrSlotEvents),
+}));
+
+export const mgrSlotEventsRelations = relations(mgrSlotEvents, ({ one }) => ({
+  group: one(groups, { fields: [mgrSlotEvents.groupId], references: [groups.id] }),
+  slot: one(mgrSlots, { fields: [mgrSlotEvents.slotId], references: [mgrSlots.id] }),
+  actor: one(users, { fields: [mgrSlotEvents.actorUserId], references: [users.id] }),
+  fromMember: one(members, {
+    fields: [mgrSlotEvents.fromMemberId],
+    references: [members.id],
+    relationName: "mgrSlotEventFromMember",
+  }),
+  toMember: one(members, {
+    fields: [mgrSlotEvents.toMemberId],
+    references: [members.id],
+    relationName: "mgrSlotEventToMember",
+  }),
 }));
 
 export const mgrMemberTurnsRelations = relations(mgrMemberTurns, ({ one }) => ({

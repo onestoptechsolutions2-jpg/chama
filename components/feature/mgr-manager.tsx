@@ -7,6 +7,8 @@ import type {
   mgrSlots as mgrSlotsTable,
   mgrMemberTurns as mgrMemberTurnsTable,
   members as membersTable,
+  mgrSlotEvents as mgrSlotEventsTable,
+  users as usersTable,
 } from "@/lib/db/schema";
 import {
   updateMgrConfigAction,
@@ -48,6 +50,9 @@ type Turn = typeof mgrMemberTurnsTable.$inferSelect & {
   slotsTaken: number;
 };
 type Member = typeof membersTable.$inferSelect;
+type SlotEvent = typeof mgrSlotEventsTable.$inferSelect & {
+  actor: typeof usersTable.$inferSelect | null;
+};
 
 function ksh(n: string | number | null) {
   return n === null ? "—" : `Ksh ${Number(n).toLocaleString()}`;
@@ -130,6 +135,53 @@ function ChargeFeeDialog({ slot }: { slot: Slot }) {
   );
 }
 
+function MarkPaidDialog({ slot }: { slot: Slot }) {
+  const [open, setOpen] = useState(false);
+  const [payoutReference, setPayoutReference] = useState("");
+  const [isPending, startTransition] = useTransition();
+
+  function confirm() {
+    startTransition(async () => {
+      await adminUpdateSlotAction(slot.id, {
+        status: "paid",
+        payoutReference: payoutReference || undefined,
+      });
+      toast.success("Marked paid");
+      setOpen(false);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>Mark paid</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Mark paid — {slot.member?.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            The actual {ksh(slot.payoutAmount)} payout happens outside the app (cash or
+            M-Pesa between members) — this just records that it did. Marking it paid is
+            logged against your account and can&apos;t be edited or deleted later.
+          </p>
+          <div className="space-y-2">
+            <Label htmlFor={`payout-ref-${slot.id}`}>Payout reference (optional)</Label>
+            <Input
+              id={`payout-ref-${slot.id}`}
+              value={payoutReference}
+              onChange={(e) => setPayoutReference(e.target.value)}
+              placeholder="M-Pesa confirmation code, or a note"
+            />
+          </div>
+          <Button onClick={confirm} disabled={isPending} className="w-full">
+            {isPending ? "Saving…" : "Confirm paid"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Schedule tab ─────────────────────────────────────────────────────────
 function SlotRow({
   slot,
@@ -159,10 +211,6 @@ function SlotRow({
         status: memberId ? "auto_assigned" : "open",
       }),
     );
-  }
-
-  function markPaid() {
-    startTransition(() => adminUpdateSlotAction(slot.id, { status: "paid" }));
   }
 
   function skip() {
@@ -207,11 +255,7 @@ function SlotRow({
                 ))}
               </SelectContent>
             </Select>
-            {slot.status !== "paid" && (
-              <Button size="sm" variant="outline" disabled={isPending} onClick={markPaid}>
-                Mark paid
-              </Button>
-            )}
+            {slot.status !== "paid" && slot.member && <MarkPaidDialog slot={slot} />}
             {slot.status === "open" && (
               <Button size="sm" variant="ghost" disabled={isPending} onClick={skip}>
                 Skip
@@ -505,6 +549,59 @@ function AdminActions() {
   );
 }
 
+// ── Activity log (immutable — see lib/db/schema.ts's mgrSlotEvents) ────────
+function ActivityLog({ events, members }: { events: SlotEvent[]; members: Member[] }) {
+  const nameById = new Map(members.map((m) => [m.id, m.name]));
+
+  function memberName(id: number | null) {
+    if (id === null) return "—";
+    return nameById.get(id) ?? `#${id}`;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Activity log</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="text-xs text-muted-foreground">
+          Every claim, reassignment, and paid-marking below is permanent — this table can be
+          added to but never edited or erased, including by an admin.
+        </p>
+        {events.length === 0 && (
+          <p className="text-sm text-muted-foreground">No activity recorded yet.</p>
+        )}
+        {events.map((e) => (
+          <div key={e.id} className="border-b py-2 text-sm last:border-0">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <span className="font-medium">{e.actor?.name ?? "Unknown user"}</span>
+                {e.actorRole && <span className="text-muted-foreground"> ({e.actorRole})</span>}{" "}
+                <span className="capitalize text-muted-foreground">
+                  {e.action.replace(/_/g, " ")}
+                </span>
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {new Date(e.createdAt).toLocaleString()}
+              </span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {memberName(e.fromMemberId)} → {memberName(e.toMemberId)}
+              {e.fromStatus !== e.toStatus && (
+                <>
+                  {" · "}
+                  {e.fromStatus ?? "—"} → {e.toStatus ?? "—"}
+                </>
+              )}
+              {e.note && <> · {e.note}</>}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Root ─────────────────────────────────────────────────────────────────
 export function MgrManager({
   config,
@@ -514,6 +611,7 @@ export function MgrManager({
   isStaff,
   myMemberId,
   blockedByAgreement,
+  slotEvents,
 }: {
   config: {
     mgrFrequency: string;
@@ -528,6 +626,7 @@ export function MgrManager({
   isStaff: boolean;
   myMemberId: number | null;
   blockedByAgreement: boolean;
+  slotEvents: SlotEvent[];
 }) {
   return (
     <Tabs defaultValue="schedule">
@@ -554,6 +653,7 @@ export function MgrManager({
         <TabsContent value="admin" className="space-y-6">
           <ConfigForm config={config} />
           <AdminActions />
+          <ActivityLog events={slotEvents} members={members} />
         </TabsContent>
       )}
     </Tabs>

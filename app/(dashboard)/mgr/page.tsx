@@ -1,7 +1,15 @@
 import { and, eq } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { groups, mgrCycles, mgrSlots, mgrMemberTurns, mgrAgreements, members } from "@/lib/db/schema";
+import {
+  groups,
+  mgrCycles,
+  mgrSlots,
+  mgrMemberTurns,
+  mgrAgreements,
+  members,
+  mgrSlotEvents,
+} from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { MgrManager } from "@/components/feature/mgr-manager";
 import { MgrAgreementGate } from "@/components/feature/mgr-agreement-gate";
@@ -13,9 +21,8 @@ export default async function MgrPage() {
   const groupId = session.activeMembership.groupId;
   const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
 
-  const { group, cycles, slots, turns, groupMembers, activeCycle, agreement } = await withTenant(
-    groupId,
-    async (tx) => {
+  const { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents } =
+    await withTenant(groupId, async (tx) => {
       const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
 
       const cycles = await tx.query.mgrCycles.findMany({
@@ -59,9 +66,20 @@ export default async function MgrPage() {
           })
         : null;
 
-      return { group, cycles, slots, turns, groupMembers, activeCycle, agreement };
-    },
-  );
+      // Staff-only: the immutable audit trail (see mgr/actions.ts's
+      // logSlotEvent). Members don't need to see this, only who's
+      // accountable for claims/reassignments/paid-marking.
+      const slotEvents = isStaff
+        ? await tx.query.mgrSlotEvents.findMany({
+            where: eq(mgrSlotEvents.groupId, groupId),
+            with: { actor: true },
+            orderBy: (e, { desc }) => [desc(e.createdAt)],
+            limit: 100,
+          })
+        : [];
+
+      return { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents };
+    });
 
   if (!group) return null;
 
@@ -92,6 +110,7 @@ export default async function MgrPage() {
         isStaff={isStaff}
         myMemberId={session.activeMembership.memberId}
         blockedByAgreement={needsAgreement}
+        slotEvents={slotEvents}
       />
     </div>
   );

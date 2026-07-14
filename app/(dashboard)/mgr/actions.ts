@@ -4,7 +4,17 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
 import { requireActiveGroup, requireRole } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { groups, members, mgrCycles, mgrSlots, mgrMemberTurns, mgrAgreements } from "@/lib/db/schema";
+import {
+  groups,
+  members,
+  mgrCycles,
+  mgrSlots,
+  mgrMemberTurns,
+  mgrAgreements,
+  mgrSlotEvents,
+} from "@/lib/db/schema";
+import type { Session } from "@/lib/auth/session";
+import type { Tx } from "@/lib/db/rls";
 import {
   updateMgrConfigSchema,
   setTurnsSchema,
@@ -15,6 +25,44 @@ import { generateMgrSchedule, buildAutoAssignQueue } from "@/lib/domain/mgr";
 export type MgrActionState = { error: string } | null;
 
 const CLAIMED_STATUSES = ["claimed", "auto_assigned", "paid"] as const;
+
+type SlotStatus = (typeof mgrSlots.$inferSelect)["status"];
+
+/**
+ * Every claim/reassignment/paid-marking/skip on an MGR slot gets one of
+ * these — an immutable record (see drizzle/0021_phase7_mgr_slot_events_rls.sql,
+ * no UPDATE/DELETE policy exists for mgr_slot_events at all) of who did it
+ * and when. The app itself can't verify a payout actually happened — that
+ * money moves outside it — but it can make sure nobody can quietly deny or
+ * rewrite who claimed to have made it happen.
+ */
+async function logSlotEvent(
+  tx: Tx,
+  params: {
+    groupId: number;
+    slotId: number;
+    session: Session;
+    action: string;
+    fromStatus?: SlotStatus | null;
+    toStatus?: SlotStatus | null;
+    fromMemberId?: number | null;
+    toMemberId?: number | null;
+    note?: string | null;
+  },
+): Promise<void> {
+  await tx.insert(mgrSlotEvents).values({
+    groupId: params.groupId,
+    slotId: params.slotId,
+    actorUserId: params.session.user.id,
+    actorRole: params.session.activeMembership?.role ?? null,
+    action: params.action,
+    fromStatus: params.fromStatus ?? null,
+    toStatus: params.toStatus ?? null,
+    fromMemberId: params.fromMemberId ?? null,
+    toMemberId: params.toMemberId ?? null,
+    note: params.note ?? null,
+  });
+}
 
 // ── Config ───────────────────────────────────────────────────────────────
 export async function updateMgrConfigAction(
@@ -247,6 +295,17 @@ export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
       .set({ memberId, status: "claimed", claimedAt: new Date() })
       .where(eq(mgrSlots.id, slotId));
 
+    await logSlotEvent(tx, {
+      groupId,
+      slotId,
+      session,
+      action: "claimed",
+      fromStatus: slot.status,
+      toStatus: "claimed",
+      fromMemberId: slot.memberId,
+      toMemberId: memberId,
+    });
+
     return { ok: true };
   });
 
@@ -258,23 +317,48 @@ export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
 // ── Admin slot management ───────────────────────────────────────────────
 export async function adminUpdateSlotAction(
   slotId: number,
-  data: { memberId?: number | null; status?: string },
+  data: {
+    memberId?: number | null;
+    status?: SlotStatus;
+    payoutReference?: string | null;
+    note?: string | null;
+  },
 ): Promise<void> {
   const session = await requireRole("admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
+    const [slot] = await tx
+      .select()
+      .from(mgrSlots)
+      .where(and(eq(mgrSlots.id, slotId), eq(mgrSlots.groupId, groupId)))
+      .for("update");
+    if (!slot) return;
+
     const set: Record<string, unknown> = {};
     if (data.memberId !== undefined) set.memberId = data.memberId;
     if (data.status !== undefined) {
       set.status = data.status;
       if (data.status === "paid") set.paidAt = new Date();
     }
+    if (data.payoutReference !== undefined) set.payoutReference = data.payoutReference || null;
     if (Object.keys(set).length === 0) return;
-    await tx
-      .update(mgrSlots)
-      .set(set)
-      .where(and(eq(mgrSlots.id, slotId), eq(mgrSlots.groupId, groupId)));
+
+    await tx.update(mgrSlots).set(set).where(eq(mgrSlots.id, slotId));
+
+    await logSlotEvent(tx, {
+      groupId,
+      slotId,
+      session,
+      action: data.status === "paid" ? "marked_paid" : "admin_updated",
+      fromStatus: slot.status,
+      toStatus: (data.status as SlotStatus | undefined) ?? slot.status,
+      fromMemberId: slot.memberId,
+      toMemberId: data.memberId !== undefined ? data.memberId : slot.memberId,
+      note: data.payoutReference
+        ? `payout reference: ${data.payoutReference}${data.note ? ` — ${data.note}` : ""}`
+        : data.note ?? null,
+    });
   });
 
   revalidatePath("/mgr");
@@ -318,6 +402,16 @@ export async function autoAssignAction(): Promise<{ assigned: number }> {
         .update(mgrSlots)
         .set({ memberId: nextMemberId, status: "auto_assigned", claimedAt: new Date() })
         .where(eq(mgrSlots.id, slot.id));
+      await logSlotEvent(tx, {
+        groupId,
+        slotId: slot.id,
+        session,
+        action: "auto_assigned",
+        fromStatus: slot.status,
+        toStatus: "auto_assigned",
+        fromMemberId: slot.memberId,
+        toMemberId: nextMemberId,
+      });
       count++;
     }
     return count;
