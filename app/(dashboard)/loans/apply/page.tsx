@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { requireActiveGroup } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { loans, loanApplications, members, groups } from "@/lib/db/schema";
 import { computeLoanLimit, isActiveLoanStatus } from "@/lib/domain/loans";
@@ -8,7 +8,7 @@ import { LoanApplyForm } from "@/components/feature/loan-apply-form";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default async function LoanApplyPage() {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("loans");
   const memberId = session.activeMembership.memberId;
   const groupId = session.activeMembership.groupId;
 

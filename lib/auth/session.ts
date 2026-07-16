@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
 import { withUser } from "@/lib/db/rls";
 import { sessions, groupMemberships, members } from "@/lib/db/schema";
+import type { ProductFlags } from "@/lib/domain/products";
 
 const SESSION_COOKIE = "chama_session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -30,6 +31,12 @@ export type ActiveMembership = {
   status: "pending" | "active" | "rejected" | "suspended";
   /** This user's members.id row within this group, or null if none (e.g. staff with no linked financial profile). */
   memberId: number | null;
+  /**
+   * Which products (loans/MGR/welfare/projects) this group actually has
+   * turned on — independent of `groupType` now (Settings > Products).
+   * `groupType` only seeds the defaults at creation; this is the real gate.
+   */
+  products: ProductFlags;
 };
 
 export type Session = {
@@ -123,6 +130,12 @@ export const getSession = cache(async (): Promise<Session | null> => {
       role: m.role,
       status: m.status,
       memberId: memberIdByGroup.get(m.groupId) ?? null,
+      products: {
+        loans: m.group.loansEnabled,
+        mgr: m.group.mgrEnabled,
+        welfare: m.group.welfareEnabled,
+        projects: m.group.projectsEnabled,
+      },
     }));
 
   const activeMembership =
@@ -168,6 +181,25 @@ export async function requireActiveGroup(): Promise<SessionWithGroup> {
   const session = await requireSession();
   if (!session.activeMembership) redirect("/");
   return session as SessionWithGroup;
+}
+
+/**
+ * Redirects to / unless the active group has `product` turned on
+ * (Settings > Products — lib/domain/products.ts), and optionally unless
+ * the role also matches. Every product page (loans, mgr, welfare,
+ * projects) previously relied ONLY on the nav menu hiding the link for
+ * this — nothing stopped a member of a non-welfare group from reaching
+ * /welfare directly by URL. This is the actual enforcement; the nav's
+ * `product` filter (lib/nav-config.ts) is just the coarse "don't show it"
+ * half, same relationship requireRole already has with the role filter.
+ */
+export async function requireProduct(
+  product: keyof ProductFlags,
+  ...roles: MembershipRole[]
+): Promise<SessionWithGroup> {
+  const session = roles.length ? await requireRole(...roles) : await requireActiveGroup();
+  if (!session.activeMembership.products[product]) redirect("/");
+  return session;
 }
 
 /** Redirects to / unless the user has a platform-level (super-admin) role. */

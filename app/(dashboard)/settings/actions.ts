@@ -40,3 +40,34 @@ export async function updateSettingsAction(
   revalidatePath("/settings");
   return { ok: true };
 }
+
+/**
+ * Turning a product off only gates access (nav + requireProduct on its
+ * pages/actions) — it never touches the underlying rows, so re-enabling
+ * later restores full history. Separate from updateSettingsAction because
+ * it's a distinct concern (entitlements, not group configuration) and
+ * because a toggle affects the nav/guide on every page, not just /settings.
+ */
+export async function updateProductAccessAction(
+  _prev: SettingsActionState,
+  formData: FormData,
+): Promise<SettingsActionState> {
+  const session = await requireRole("admin");
+  const groupId = session.activeMembership.groupId;
+
+  await withTenant(groupId, (tx) =>
+    tx
+      .update(groups)
+      .set({
+        loansEnabled: formData.get("loansEnabled") === "on",
+        mgrEnabled: formData.get("mgrEnabled") === "on",
+        welfareEnabled: formData.get("welfareEnabled") === "on",
+        projectsEnabled: formData.get("projectsEnabled") === "on",
+        updatedAt: new Date(),
+      })
+      .where(eq(groups.id, groupId)),
+  );
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}

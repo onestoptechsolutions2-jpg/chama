@@ -169,6 +169,34 @@
       "when": 1784026558722,
       "tag": "0023_officials_groups_public_read_gate",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784037853034,
+      "tag": "0024_products_and_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784037895926,
+      "tag": "0025_products_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1784037899986,
+      "tag": "0026_wallet_rls",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1784079999000,
+      "tag": "0027_groups_delete_policy",
+      "breakpoints": true
     }
   ]
 }

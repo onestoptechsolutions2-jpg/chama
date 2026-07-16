@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { requireActiveGroup, requireRole } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { welfareClaims } from "@/lib/db/schema";
 import { submitClaimSchema, reviewClaimSchema } from "@/lib/validation/welfare";
@@ -13,7 +13,7 @@ export async function submitClaimAction(
   _prev: WelfareActionState,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("welfare");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 
@@ -45,7 +45,7 @@ export async function reviewClaimAction(
   claimId: number,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("welfare", "admin", "treasurer");
   const parsed = reviewClaimSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

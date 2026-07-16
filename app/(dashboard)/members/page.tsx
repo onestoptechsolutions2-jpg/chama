@@ -10,7 +10,7 @@ export default async function MembersPage() {
   const groupId = session.activeMembership.groupId;
   const canEdit = ["admin", "treasurer"].includes(session.activeMembership.role);
   const isAdmin = session.activeMembership.role === "admin";
-  const showWelfare = ["welfare", "hybrid"].includes(session.activeMembership.groupType);
+  const showWelfare = session.activeMembership.products.welfare;
 
   const { groupMembers, membershipByUserId } = await withTenant(groupId, async (tx) => {
     const groupMembers = await tx.query.members.findMany({

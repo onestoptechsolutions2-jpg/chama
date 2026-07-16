@@ -12,6 +12,7 @@ export default async function GuidePage() {
         role={session.activeMembership.role}
         groupType={session.activeMembership.groupType}
         groupName={session.activeMembership.groupName}
+        products={session.activeMembership.products}
       />
     </div>
   );

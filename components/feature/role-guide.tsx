@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getVisibleNavItems } from "@/lib/nav-config";
 import type { GroupType, MembershipRole } from "@/lib/auth/session";
+import type { ProductFlags } from "@/lib/domain/products";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -12,26 +13,37 @@ const ROLE_SUMMARY: Record<MembershipRole, string> = {
   secretary:
     "Records and meetings — members, fines, meetings, and settings, but not loan approvals or pending-member approvals.",
   member:
-    "A participant, not staff — apply for a loan (if enabled for this group type), claim your MGR slot, submit welfare claims or contribute to projects (if enabled), and see your own statement.",
+    "A participant, not staff — apply for a loan (if enabled), claim your MGR slot, submit welfare claims or contribute to projects (if enabled), and see your own statement.",
 };
 
-const GROUP_TYPE_SUMMARY: Record<GroupType, string> = {
-  chama: "Loans and Merry-Go-Round are enabled; Welfare and Projects are not.",
-  welfare: "Welfare claims are enabled; Loans, Merry-Go-Round, and Projects are not.",
-  hybrid: "Every feature — Loans, Merry-Go-Round, Welfare, and Projects — is enabled.",
-  selfhelp: "Loans and Projects are enabled; Merry-Go-Round and Welfare are not.",
+const PRODUCT_LABELS: Record<keyof ProductFlags, string> = {
+  loans: "Loans",
+  mgr: "Merry-Go-Round",
+  welfare: "Welfare",
+  projects: "Projects",
 };
+
+function productSummary(products: ProductFlags): string {
+  const on = (Object.keys(products) as (keyof ProductFlags)[]).filter((k) => products[k]);
+  const off = (Object.keys(products) as (keyof ProductFlags)[]).filter((k) => !products[k]);
+  const label = (keys: (keyof ProductFlags)[]) => keys.map((k) => PRODUCT_LABELS[k]).join(", ");
+  if (on.length === 0) return "No optional products are enabled for this group yet.";
+  if (off.length === 0) return `Every product — ${label(on)} — is enabled.`;
+  return `${label(on)} ${on.length === 1 ? "is" : "are"} enabled; ${label(off)} ${off.length === 1 ? "is" : "are"} not. An admin can change this in Settings.`;
+}
 
 export function RoleGuide({
   role,
   groupType,
   groupName,
+  products,
 }: {
   role: MembershipRole;
   groupType: GroupType;
   groupName: string;
+  products: ProductFlags;
 }) {
-  const items = getVisibleNavItems({ role, groupType }).filter(
+  const items = getVisibleNavItems({ role, products }).filter(
     (item) => item.href !== "/" && item.href !== "/guide",
   );
 
@@ -51,7 +63,7 @@ export function RoleGuide({
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>{ROLE_SUMMARY[role]}</p>
-          <p>{GROUP_TYPE_SUMMARY[groupType]}</p>
+          <p>{productSummary(products)}</p>
         </CardContent>
       </Card>
 

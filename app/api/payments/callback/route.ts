@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
-import { platformPayments, paymentWebhookEvents } from "@/lib/db/schema";
+import {
+  platformPayments,
+  paymentWebhookEvents,
+  groupWallets,
+  walletTransactions,
+} from "@/lib/db/schema";
 import { isValidIntasendChallenge } from "@/lib/domain/payments";
 import type { IntasendWebhookPayload } from "@/lib/payments/intasend";
 
@@ -48,12 +53,47 @@ export async function POST(req: Request) {
   // IntaSend's webhook payload itself doesn't carry an M-Pesa receipt
   // number — only state/invoice_id/api_ref/account (the payer's identifier).
   // mpesaReference is set (if ever) from the original trigger response, not here.
-  await withPlatformAdmin((tx) =>
-    tx
+  //
+  // Wallet crediting happens in the same transaction as the status update,
+  // gated on the row's PREVIOUS status (fetched with FOR UPDATE) rather than
+  // just "status === paid" — IntaSend can and does resend the same webhook,
+  // and without this guard a resend would double-credit the wallet.
+  await withPlatformAdmin(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(platformPayments)
+      .where(eq(platformPayments.invoiceId, payload.invoice_id))
+      .for("update");
+    if (!existing) return;
+
+    await tx
       .update(platformPayments)
       .set({ status, updatedAt: new Date() })
-      .where(eq(platformPayments.invoiceId, payload.invoice_id)),
-  );
+      .where(eq(platformPayments.invoiceId, payload.invoice_id));
+
+    if (existing.type === "wallet_topup" && status === "paid" && existing.status !== "paid") {
+      const [wallet] = await tx
+        .insert(groupWallets)
+        .values({ groupId: existing.groupId, balance: existing.amount })
+        .onConflictDoUpdate({
+          target: groupWallets.groupId,
+          set: {
+            balance: sql`${groupWallets.balance} + ${existing.amount}`,
+            updatedAt: new Date(),
+          },
+        })
+        .returning();
+
+      await tx.insert(walletTransactions).values({
+        groupId: existing.groupId,
+        type: "topup",
+        amount: existing.amount,
+        balanceAfter: wallet.balance,
+        relatedPaymentId: existing.id,
+        note: "M-Pesa top-up",
+      });
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }

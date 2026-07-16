@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { requireActiveGroup } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { projects, members } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { ProjectsManager } from "@/components/feature/projects-manager";
 
 export default async function ProjectsPage() {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("projects");
   const groupId = session.activeMembership.groupId;
   const canEdit = ["admin", "treasurer"].includes(session.activeMembership.role);
 

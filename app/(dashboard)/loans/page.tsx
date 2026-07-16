@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { loans, loanApplications, members } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { LoansManager } from "@/components/feature/loans-manager";
 
 export default async function LoansPage() {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("loans", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   const [groupLoans, applications, groupMembers] = await withTenant(groupId, (tx) =>

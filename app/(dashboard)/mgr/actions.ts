@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
-import { requireActiveGroup, requireRole } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import {
   groups,
@@ -12,6 +12,9 @@ import {
   mgrMemberTurns,
   mgrAgreements,
   mgrSlotEvents,
+  platformPayments,
+  groupWallets,
+  walletTransactions,
 } from "@/lib/db/schema";
 import type { Session } from "@/lib/auth/session";
 import type { Tx } from "@/lib/db/rls";
@@ -21,6 +24,7 @@ import {
   signAgreementSchema,
 } from "@/lib/validation/mgr";
 import { generateMgrSchedule, buildAutoAssignQueue } from "@/lib/domain/mgr";
+import { calcPlatformFee } from "@/lib/domain/payments";
 
 export type MgrActionState = { error: string } | null;
 
@@ -69,7 +73,7 @@ export async function updateMgrConfigAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const parsed = updateMgrConfigSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -101,7 +105,7 @@ export async function setTurnsAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("mgr");
   const parsed = setTurnsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -135,7 +139,7 @@ export async function setTurnsAction(
 
 // ── Schedule generation ──────────────────────────────────────────────────
 export async function generateScheduleAction(): Promise<MgrActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -257,7 +261,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
 
 // ── Slot claiming (member) ──────────────────────────────────────────────
 export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("mgr");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
   const groupId = session.activeMembership.groupId;
@@ -324,7 +328,7 @@ export async function adminUpdateSlotAction(
     note?: string | null;
   },
 ): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -364,8 +368,80 @@ export async function adminUpdateSlotAction(
   revalidatePath("/mgr");
 }
 
+/**
+ * The wallet-first half of "Charge platform fee" — deducts straight from
+ * the group's prepaid wallet balance with no phone number or STK push, and
+ * marks the payment paid immediately (there's no async M-Pesa confirmation
+ * to wait for, unlike the STK-push fallback in
+ * /api/payments/platform-fee). Rejects with an error if the balance doesn't
+ * cover the fee; the UI falls back to the existing phone/STK flow in that case.
+ */
+export async function chargeFeeFromWalletAction(
+  mgrSlotId: number,
+): Promise<{ error: string } | { ok: true; fee: number }> {
+  const session = await requireProduct("mgr", "admin", "treasurer");
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx) => {
+    const slot = await tx.query.mgrSlots.findFirst({
+      where: and(eq(mgrSlots.id, mgrSlotId), eq(mgrSlots.groupId, groupId)),
+    });
+    if (!slot || !slot.payoutAmount) return { error: "Slot not found" as const };
+
+    const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+    if (!group) return { error: "Group not found" as const };
+
+    const feePct = Number(group.mgrFeePct);
+    const fee = calcPlatformFee(Number(slot.payoutAmount), feePct);
+
+    const [wallet] = await tx
+      .select()
+      .from(groupWallets)
+      .where(eq(groupWallets.groupId, groupId))
+      .for("update");
+    if (!wallet || Number(wallet.balance) < fee) {
+      return { error: "Insufficient wallet balance" as const };
+    }
+
+    const [payment] = await tx
+      .insert(platformPayments)
+      .values({
+        groupId,
+        mgrSlotId,
+        amount: String(fee),
+        feePct: String(feePct),
+        status: "paid",
+        type: "mgr_fee",
+      })
+      .returning();
+
+    const [updatedWallet] = await tx
+      .update(groupWallets)
+      .set({ balance: sql`${groupWallets.balance} - ${fee}`, updatedAt: new Date() })
+      .where(eq(groupWallets.groupId, groupId))
+      .returning();
+
+    await tx.insert(walletTransactions).values({
+      groupId,
+      type: "fee_deduction",
+      amount: String(fee),
+      balanceAfter: updatedWallet.balance,
+      relatedPaymentId: payment.id,
+      note: `MGR platform fee — slot #${mgrSlotId}`,
+    });
+
+    return { ok: true as const, fee };
+  });
+
+  if ("ok" in result) {
+    revalidatePath("/mgr");
+    revalidatePath("/wallet");
+  }
+  return result;
+}
+
 export async function autoAssignAction(): Promise<{ assigned: number }> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   const assigned = await withTenant(groupId, async (tx) => {
@@ -423,7 +499,7 @@ export async function autoAssignAction(): Promise<{ assigned: number }> {
 
 // ── Cycles ───────────────────────────────────────────────────────────────
 export async function createCycleAction(scheduledDate?: string): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -450,7 +526,7 @@ export async function createCycleAction(scheduledDate?: string): Promise<void> {
  * cycle 1. This keeps the rotation self-progressing.
  */
 export async function closeCycleAction(cycleId: number): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -489,7 +565,7 @@ export async function signAgreementAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("mgr");
   const parsed = signAgreementSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "All four fields are required" };

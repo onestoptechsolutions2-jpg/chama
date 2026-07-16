@@ -173,7 +173,14 @@ export const paymentStatusTypeEnum = pgEnum("platform_payment_status", [
 export const paymentTypeEnum = pgEnum("platform_payment_type", [
   "mgr_fee",
   "subscription",
+  "wallet_topup",
   "other",
+]);
+
+export const walletTransactionTypeEnum = pgEnum("wallet_transaction_type", [
+  "topup",
+  "fee_deduction",
+  "refund",
 ]);
 
 export const contributionDueStatusEnum = pgEnum("contribution_due_status", [
@@ -209,6 +216,17 @@ export const groups = pgTable("groups", {
   // public discoverability and new-member approval; existing operations
   // for the founding admin are NOT blocked by this (see docs/architecture.md).
   registrationComplete: boolean("registration_complete").notNull().default(false),
+
+  // Product entitlements — a group's access to loans/MGR/welfare/projects
+  // is an explicit, independently toggleable flag (Settings > Products),
+  // not implied by `type` anymore. `type` is now just a descriptive label
+  // and the default these get seeded to at creation
+  // (lib/domain/products.ts's defaultProductsForType) — changing it later
+  // doesn't change access, only these flags do. See docs/architecture.md.
+  loansEnabled: boolean("loans_enabled").notNull().default(false),
+  mgrEnabled: boolean("mgr_enabled").notNull().default(false),
+  welfareEnabled: boolean("welfare_enabled").notNull().default(false),
+  projectsEnabled: boolean("projects_enabled").notNull().default(false),
 
   // Contribution settings
   sharePrice: numeric("share_price", { precision: 14, scale: 2 })
@@ -790,6 +808,43 @@ export const platformPayments = pgTable("platform_payments", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── Group wallet — a prepaid balance for PLATFORM FEES ONLY, never member
+// savings. Explicitly non-custodial: this doesn't hold contributions, loan
+// principal, or welfare funds — those are still recorded against member
+// balances and reconciled via M-Pesa directly, same as before. `balance`
+// is a fast-read cache; walletTransactions (below) is the append-only
+// source of truth it's derived from, always updated together in the same
+// transaction. See docs/architecture.md.
+export const groupWallets = pgTable("group_wallets", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .unique()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  balance: numeric("balance", { precision: 14, scale: 2 }).notNull().default("0"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Wallet transactions — immutable, same pattern as mgr_slot_events: no
+// UPDATE/DELETE RLS policy exists for this table at all (see
+// 00XX_wallet_rls.sql), so it can't be edited or erased by the app's own
+// role regardless of what a bug or a compromised session tries.
+export const walletTransactions = pgTable("wallet_transactions", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  type: walletTransactionTypeEnum("type").notNull(),
+  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+  balanceAfter: numeric("balance_after", { precision: 14, scale: 2 }).notNull(),
+  relatedPaymentId: integer("related_payment_id").references(() => platformPayments.id, {
+    onDelete: "set null",
+  }),
+  note: text("note"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ── Contribution dues — expected-payment tracking, drives the overdue-fine cron ──
 export const contributionDues = pgTable(
   "contribution_dues",
@@ -997,6 +1052,18 @@ export const mgrAgreementsRelations = relations(mgrAgreements, ({ one }) => ({
 export const platformPaymentsRelations = relations(platformPayments, ({ one }) => ({
   group: one(groups, { fields: [platformPayments.groupId], references: [groups.id] }),
   mgrSlot: one(mgrSlots, { fields: [platformPayments.mgrSlotId], references: [mgrSlots.id] }),
+}));
+
+export const groupWalletsRelations = relations(groupWallets, ({ one }) => ({
+  group: one(groups, { fields: [groupWallets.groupId], references: [groups.id] }),
+}));
+
+export const walletTransactionsRelations = relations(walletTransactions, ({ one }) => ({
+  group: one(groups, { fields: [walletTransactions.groupId], references: [groups.id] }),
+  relatedPayment: one(platformPayments, {
+    fields: [walletTransactions.relatedPaymentId],
+    references: [platformPayments.id],
+  }),
 }));
 
 export const contributionDuesRelations = relations(contributionDues, ({ one }) => ({

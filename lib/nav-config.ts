@@ -9,6 +9,7 @@ import {
   Settings,
   Landmark,
   Wallet,
+  WalletCards,
   FileText,
   HeartHandshake,
   Hammer,
@@ -16,7 +17,8 @@ import {
   HelpCircle,
   UserCircle,
 } from "lucide-react";
-import type { GroupType, MembershipRole } from "@/lib/auth/session";
+import type { MembershipRole } from "@/lib/auth/session";
+import type { ProductFlags } from "@/lib/domain/products";
 
 export type NavItem = {
   href: string;
@@ -24,8 +26,13 @@ export type NavItem = {
   icon: LucideIcon;
   /** Roles that can see this item. Omit to allow every role. */
   roles?: MembershipRole[];
-  /** Group types that unlock this item. Omit to show for every group type. */
-  groupTypes?: GroupType[];
+  /**
+   * Which product this item belongs to — gated on the group's
+   * Settings > Products toggle (lib/domain/products.ts), independent of
+   * `groupType` now. Omit for items every group always has (dashboard,
+   * members, statement, rules, wallet, etc).
+   */
+  product?: keyof ProductFlags;
   /**
    * Short (1-2 sentence) explanation of what this page is for and how to
    * use it — the single source both the sidebar's tooltip-free nav and
@@ -90,7 +97,7 @@ export const navItems: NavItem[] = [
     label: "Loans",
     icon: Landmark,
     roles: ["admin", "treasurer"],
-    groupTypes: ["chama", "hybrid", "selfhelp"],
+    product: "loans",
     guide:
       "Approve or reject member-submitted loan applications, disburse and track active loans, and record repayments. A member's loan limit is a multiple of their total savings (configurable in Settings), enforced automatically — you can't approve past it.",
   },
@@ -99,7 +106,7 @@ export const navItems: NavItem[] = [
     label: "My Loan",
     icon: Wallet,
     roles: ["member"],
-    groupTypes: ["chama", "hybrid", "selfhelp"],
+    product: "loans",
     guide:
       "Apply for a loan up to your current limit (shown on this page), track your active loan's balance and due date, or cancel a pending application before staff review it.",
   },
@@ -107,7 +114,7 @@ export const navItems: NavItem[] = [
     href: "/mgr",
     label: "Merry-Go-Round",
     icon: RefreshCw,
-    groupTypes: ["chama", "hybrid"],
+    product: "mgr",
     guide:
       "The rotating-payout schedule. You'll be asked to sign a one-time agreement before you can claim a slot in the active cycle. Members claim open slots themselves (or staff can auto-assign/reassign); staff mark a slot paid once the actual payout has happened outside the app — that action is permanently logged against their account and can't be edited or deleted later, specifically so payouts stay accountable.",
   },
@@ -115,7 +122,7 @@ export const navItems: NavItem[] = [
     href: "/welfare",
     label: "Welfare",
     icon: HeartHandshake,
-    groupTypes: ["welfare", "hybrid"],
+    product: "welfare",
     guide:
       "Submit and review welfare claims (medical, bereavement, emergency, etc.) against the group's welfare fund, and see the fund's running balance.",
   },
@@ -123,7 +130,7 @@ export const navItems: NavItem[] = [
     href: "/projects",
     label: "Projects",
     icon: Hammer,
-    groupTypes: ["selfhelp", "hybrid"],
+    product: "projects",
     guide:
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
   },
@@ -139,6 +146,14 @@ export const navItems: NavItem[] = [
     label: "Rules",
     icon: ScrollText,
     guide: "The group's bylaws, each optionally tied to a penalty amount if referenced when issuing a fine.",
+  },
+  {
+    href: "/wallet",
+    label: "Wallet",
+    icon: WalletCards,
+    roles: ["admin", "treasurer"],
+    guide:
+      "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
   },
   {
     href: "/settings",
@@ -166,12 +181,12 @@ export const navItems: NavItem[] = [
 /**
  * Pure filter, shared by every place that needs "which nav items can this
  * membership see" — keeps the rule in exactly one place. `activeMembership`
- * is deliberately just the plain {role, groupType} shape (not the full
+ * is deliberately just the plain {role, products} shape (not the full
  * Session type) so this has no dependency on server-only code and is safe
  * to call from a Client Component.
  */
 export function getVisibleNavItems(
-  activeMembership: { role: MembershipRole; groupType: GroupType } | null,
+  activeMembership: { role: MembershipRole; products: ProductFlags } | null,
 ): NavItem[] {
   return navItems.filter((item) => {
     if (item.roles) {
@@ -179,8 +194,8 @@ export function getVisibleNavItems(
         return false;
       }
     }
-    if (item.groupTypes) {
-      if (!activeMembership || !item.groupTypes.includes(activeMembership.groupType)) {
+    if (item.product) {
+      if (!activeMembership || !activeMembership.products[item.product]) {
         return false;
       }
     }

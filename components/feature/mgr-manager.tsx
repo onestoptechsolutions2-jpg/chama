@@ -19,8 +19,10 @@ import {
   autoAssignAction,
   createCycleAction,
   closeCycleAction,
+  chargeFeeFromWalletAction,
 } from "@/app/(dashboard)/mgr/actions";
 import { mgrFrequencies } from "@/lib/validation/mgr";
+import { calcPlatformFee } from "@/lib/domain/payments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -73,13 +75,38 @@ const slotStatusVariant = {
   skipped: "destructive",
 } as const;
 
-function ChargeFeeDialog({ slot }: { slot: Slot }) {
+function ChargeFeeDialog({
+  slot,
+  feePct,
+  walletBalance,
+}: {
+  slot: Slot;
+  feePct: string;
+  walletBalance: string;
+}) {
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [walletPending, startWalletTransition] = useTransition();
 
-  async function charge() {
+  const fee = calcPlatformFee(Number(slot.payoutAmount), Number(feePct));
+  const walletCoversFee = Number(walletBalance) >= fee;
+
+  function chargeFromWallet() {
+    setError(null);
+    startWalletTransition(async () => {
+      const result = await chargeFeeFromWalletAction(slot.id);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      toast.success(`Deducted Ksh ${result.fee} from the wallet`);
+      setOpen(false);
+    });
+  }
+
+  async function chargeViaStk() {
     setPending(true);
     setError(null);
     try {
@@ -113,22 +140,41 @@ function ChargeFeeDialog({ slot }: { slot: Slot }) {
         </DialogHeader>
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Triggers an M-Pesa STK push for the platform&apos;s fee on this{" "}
-            {ksh(slot.payoutAmount)} payout.
+            The platform&apos;s fee on this {ksh(slot.payoutAmount)} payout is {ksh(fee)}.
           </p>
-          <div className="space-y-2">
-            <Label htmlFor={`fee-phone-${slot.id}`}>Phone number to charge</Label>
-            <Input
-              id={`fee-phone-${slot.id}`}
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="0712345678"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button onClick={charge} disabled={pending || !phone} className="w-full">
-            {pending ? "Sending…" : "Send STK push"}
-          </Button>
+          {walletCoversFee ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Covered by this group&apos;s wallet balance ({ksh(walletBalance)}) — deducted
+                instantly, no phone prompt.
+              </p>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button onClick={chargeFromWallet} disabled={walletPending} className="w-full">
+                {walletPending ? "Deducting…" : `Deduct Ksh ${fee} from wallet`}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Wallet balance ({ksh(walletBalance)}) doesn&apos;t cover this fee — top up in{" "}
+                <a href="/wallet" className="underline underline-offset-4">Wallet</a>, or send an
+                M-Pesa STK push instead.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor={`fee-phone-${slot.id}`}>Phone number to charge</Label>
+                <Input
+                  id={`fee-phone-${slot.id}`}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="0712345678"
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button onClick={chargeViaStk} disabled={pending || !phone} className="w-full">
+                {pending ? "Sending…" : "Send STK push"}
+              </Button>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
@@ -188,11 +234,15 @@ function SlotRow({
   isStaff,
   members,
   canClaim,
+  feePct,
+  walletBalance,
 }: {
   slot: Slot;
   isStaff: boolean;
   members: Member[];
   canClaim: boolean;
+  feePct: string;
+  walletBalance: string;
 }) {
   const [isPending, startTransition] = useTransition();
 
@@ -261,7 +311,9 @@ function SlotRow({
                 Skip
               </Button>
             )}
-            {slot.status === "paid" && slot.member && <ChargeFeeDialog slot={slot} />}
+            {slot.status === "paid" && slot.member && (
+              <ChargeFeeDialog slot={slot} feePct={feePct} walletBalance={walletBalance} />
+            )}
           </>
         )}
       </div>
@@ -274,11 +326,15 @@ function CycleCard({
   isStaff,
   members,
   canClaim,
+  feePct,
+  walletBalance,
 }: {
   cycle: CycleWithSlots;
   isStaff: boolean;
   members: Member[];
   canClaim: boolean;
+  feePct: string;
+  walletBalance: string;
 }) {
   const [open, setOpen] = useState(cycle.status === "active");
   const [isPending, startTransition] = useTransition();
@@ -319,7 +375,15 @@ function CycleCard({
             <p className="text-sm text-muted-foreground">No slots.</p>
           )}
           {cycle.slots.map((s) => (
-            <SlotRow key={s.id} slot={s} isStaff={isStaff} members={members} canClaim={canClaim} />
+            <SlotRow
+              key={s.id}
+              slot={s}
+              isStaff={isStaff}
+              members={members}
+              canClaim={canClaim}
+              feePct={feePct}
+              walletBalance={walletBalance}
+            />
           ))}
         </CardContent>
       )}
@@ -332,11 +396,15 @@ function ScheduleTab({
   isStaff,
   members,
   canClaim,
+  feePct,
+  walletBalance,
 }: {
   cycles: CycleWithSlots[];
   isStaff: boolean;
   members: Member[];
   canClaim: boolean;
+  feePct: string;
+  walletBalance: string;
 }) {
   if (cycles.length === 0) {
     return (
@@ -348,7 +416,15 @@ function ScheduleTab({
   return (
     <div className="space-y-3">
       {cycles.map((c) => (
-        <CycleCard key={c.id} cycle={c} isStaff={isStaff} members={members} canClaim={canClaim} />
+        <CycleCard
+          key={c.id}
+          cycle={c}
+          isStaff={isStaff}
+          members={members}
+          canClaim={canClaim}
+          feePct={feePct}
+          walletBalance={walletBalance}
+        />
       ))}
     </div>
   );
@@ -612,6 +688,7 @@ export function MgrManager({
   myMemberId,
   blockedByAgreement,
   slotEvents,
+  walletBalance,
 }: {
   config: {
     mgrFrequency: string;
@@ -619,6 +696,7 @@ export function MgrManager({
     mgrStartDate: string | null;
     mgrContributionAmount: string | null;
     sharePrice: string;
+    mgrFeePct: string;
   };
   cycles: CycleWithSlots[];
   turns: Turn[];
@@ -627,6 +705,7 @@ export function MgrManager({
   myMemberId: number | null;
   blockedByAgreement: boolean;
   slotEvents: SlotEvent[];
+  walletBalance: string;
 }) {
   return (
     <Tabs defaultValue="schedule">
@@ -642,6 +721,8 @@ export function MgrManager({
           isStaff={isStaff}
           members={members}
           canClaim={!blockedByAgreement}
+          feePct={config.mgrFeePct}
+          walletBalance={walletBalance}
         />
       </TabsContent>
 

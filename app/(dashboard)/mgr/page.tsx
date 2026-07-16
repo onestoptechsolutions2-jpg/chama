@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { requireActiveGroup } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import {
   groups,
@@ -9,6 +9,7 @@ import {
   mgrAgreements,
   members,
   mgrSlotEvents,
+  groupWallets,
 } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { MgrManager } from "@/components/feature/mgr-manager";
@@ -17,11 +18,11 @@ import { MgrAgreementGate } from "@/components/feature/mgr-agreement-gate";
 const CLAIMED_STATUSES = ["claimed", "auto_assigned", "paid"] as const;
 
 export default async function MgrPage() {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("mgr");
   const groupId = session.activeMembership.groupId;
   const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
 
-  const { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents } =
+  const { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet } =
     await withTenant(groupId, async (tx) => {
       const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
 
@@ -78,7 +79,13 @@ export default async function MgrPage() {
           })
         : [];
 
-      return { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents };
+      // Staff-only, same reasoning as slotEvents above — only staff see
+      // ChargeFeeDialog, which is the only consumer of this.
+      const wallet = isStaff
+        ? await tx.query.groupWallets.findFirst({ where: eq(groupWallets.groupId, groupId) })
+        : null;
+
+      return { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet };
     });
 
   if (!group) return null;
@@ -103,6 +110,7 @@ export default async function MgrPage() {
           mgrStartDate: group.mgrStartDate,
           mgrContributionAmount: group.mgrContributionAmount,
           sharePrice: group.sharePrice,
+          mgrFeePct: group.mgrFeePct,
         }}
         cycles={cyclesWithSlots}
         turns={turns}
@@ -111,6 +119,7 @@ export default async function MgrPage() {
         myMemberId={session.activeMembership.memberId}
         blockedByAgreement={needsAgreement}
         slotEvents={slotEvents}
+        walletBalance={wallet?.balance ?? "0"}
       />
     </div>
   );

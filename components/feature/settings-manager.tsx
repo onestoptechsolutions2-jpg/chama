@@ -3,7 +3,12 @@
 import { useActionState, useEffect } from "react";
 import { toast } from "sonner";
 import type { groups as groupsTable } from "@/lib/db/schema";
-import { updateSettingsAction, type SettingsActionState } from "@/app/(dashboard)/settings/actions";
+import type { ProductFlags } from "@/lib/domain/products";
+import {
+  updateSettingsAction,
+  updateProductAccessAction,
+  type SettingsActionState,
+} from "@/app/(dashboard)/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +17,69 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Group = typeof groupsTable.$inferSelect;
 
-export function SettingsManager({ group, isAdmin }: { group: Group; isAdmin: boolean }) {
+const PRODUCT_TOGGLES: { key: keyof ProductFlags; name: string; label: string; description: string }[] = [
+  { key: "loans", name: "loansEnabled", label: "Loans", description: "Loan applications, approvals, and repayments." },
+  { key: "mgr", name: "mgrEnabled", label: "Merry-Go-Round", description: "Rotation cycles, turns, and payouts." },
+  { key: "welfare", name: "welfareEnabled", label: "Welfare", description: "Welfare claims and the welfare fund." },
+  { key: "projects", name: "projectsEnabled", label: "Projects", description: "Table-banking / group projects and contributions." },
+];
+
+function ProductsForm({ products, isAdmin }: { products: ProductFlags; isAdmin: boolean }) {
+  const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
+    updateProductAccessAction,
+    null,
+  );
+
+  useEffect(() => {
+    if (state && "ok" in state) toast.success("Products updated");
+    if (state && "error" in state) toast.error(state.error);
+  }, [state]);
+
+  return (
+    <form action={formAction}>
+      <TabsContent value="products">
+        <Card>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Turn products on or off for this group. Turning one off only hides it — existing
+              data is kept and reappears if you turn it back on.
+            </p>
+            {PRODUCT_TOGGLES.map((p) => (
+              <label key={p.key} className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name={p.name}
+                  defaultChecked={products[p.key]}
+                  disabled={!isAdmin}
+                  className="mt-1 size-4"
+                />
+                <span>
+                  <span className="block text-sm font-medium">{p.label}</span>
+                  <span className="block text-sm text-muted-foreground">{p.description}</span>
+                </span>
+              </label>
+            ))}
+          </CardContent>
+        </Card>
+      </TabsContent>
+      {isAdmin && (
+        <Button type="submit" disabled={pending} className="mt-4">
+          {pending ? "Saving…" : "Save products"}
+        </Button>
+      )}
+    </form>
+  );
+}
+
+export function SettingsManager({
+  group,
+  isAdmin,
+  products,
+}: {
+  group: Group;
+  isAdmin: boolean;
+  products: ProductFlags;
+}) {
   const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
     updateSettingsAction,
     null,
@@ -24,14 +91,15 @@ export function SettingsManager({ group, isAdmin }: { group: Group; isAdmin: boo
   }, [state]);
 
   return (
-    <form action={formAction}>
-      <Tabs defaultValue="group">
-        <TabsList>
-          <TabsTrigger value="group">Group</TabsTrigger>
-          <TabsTrigger value="contributions">Contributions</TabsTrigger>
-          <TabsTrigger value="fines">Fines</TabsTrigger>
-        </TabsList>
+    <Tabs defaultValue="group">
+      <TabsList>
+        <TabsTrigger value="group">Group</TabsTrigger>
+        <TabsTrigger value="contributions">Contributions</TabsTrigger>
+        <TabsTrigger value="fines">Fines</TabsTrigger>
+        <TabsTrigger value="products">Products</TabsTrigger>
+      </TabsList>
 
+      <form action={formAction}>
         <TabsContent value="group">
           <Card>
             <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -160,13 +228,15 @@ export function SettingsManager({ group, isAdmin }: { group: Group; isAdmin: boo
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
 
-      {isAdmin && (
-        <Button type="submit" disabled={pending} className="mt-4">
-          {pending ? "Saving…" : "Save settings"}
-        </Button>
-      )}
-    </form>
+        {isAdmin && (
+          <Button type="submit" disabled={pending} className="mt-4">
+            {pending ? "Saving…" : "Save settings"}
+          </Button>
+        )}
+      </form>
+
+      <ProductsForm products={products} isAdmin={isAdmin} />
+    </Tabs>
   );
 }

@@ -21,7 +21,7 @@ export default async function SettingsPage() {
         title="Settings"
         description={isAdmin ? "Configure your group." : "View-only — ask an admin to make changes."}
       />
-      <SettingsManager group={group} isAdmin={isAdmin} />
+      <SettingsManager group={group} isAdmin={isAdmin} products={session.activeMembership.products} />
     </div>
   );
 }

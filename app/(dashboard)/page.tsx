@@ -44,8 +44,8 @@ export default async function DashboardPage() {
     );
   }
 
-  const { groupId, groupName, groupType, role } = session.activeMembership;
-  const showWelfare = groupType === "welfare" || groupType === "hybrid";
+  const { groupId, groupName, groupType, role, products } = session.activeMembership;
+  const showWelfare = products.welfare;
 
   const isStaff = ["admin", "treasurer", "secretary"].includes(role);
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray } from "drizzle-orm";
-import { requireActiveGroup, requireRole } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { loans, loanApplications, loanRepayments, members, groups } from "@/lib/db/schema";
 import {
@@ -23,7 +23,7 @@ export async function createLoanAction(
   _prev: LoanActionState,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("loans", "admin", "treasurer");
   const parsed = createLoanSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -83,7 +83,7 @@ export async function recordRepaymentAction(
   loanId: number,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("loans", "admin", "treasurer");
   const parsed = recordRepaymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -129,7 +129,7 @@ export async function applyForLoanAction(
   _prev: LoanActionState,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("loans");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 
@@ -178,7 +178,7 @@ export async function applyForLoanAction(
 }
 
 export async function cancelLoanApplicationAction(applicationId: number): Promise<void> {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("loans");
   const groupId = session.activeMembership.groupId;
   const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
 
@@ -203,7 +203,7 @@ export async function reviewApplicationAction(
   applicationId: number,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("loans", "admin", "treasurer");
   const parsed = reviewApplicationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

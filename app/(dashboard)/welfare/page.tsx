@@ -1,12 +1,12 @@
 import { and, eq, sql } from "drizzle-orm";
-import { requireActiveGroup } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { welfareClaims, contributions } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { WelfareManager } from "@/components/feature/welfare-manager";
 
 export default async function WelfarePage() {
-  const session = await requireActiveGroup();
+  const session = await requireProduct("welfare");
   const groupId = session.activeMembership.groupId;
   const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { projects, projectContributions, projectStatusEnum } from "@/lib/db/schema";
 import { createProjectSchema, addProjectContributionSchema } from "@/lib/validation/projects";
@@ -13,7 +13,7 @@ export async function createProjectAction(
   _prev: ProjectActionState,
   formData: FormData,
 ): Promise<ProjectActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("projects", "admin", "treasurer");
   const parsed = createProjectSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -42,7 +42,7 @@ export async function addProjectContributionAction(
   _prev: ProjectActionState,
   formData: FormData,
 ): Promise<ProjectActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("projects", "admin", "treasurer");
   const parsed = addProjectContributionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -76,7 +76,7 @@ export async function updateProjectStatusAction(
   projectId: number,
   status: (typeof projectStatusEnum.enumValues)[number],
 ): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requireProduct("projects", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>

@@ -162,7 +162,7 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const navItems = getVisibleNavItems(
     session.activeMembership
-      ? { role: session.activeMembership.role, groupType: session.activeMembership.groupType }
+      ? { role: session.activeMembership.role, products: session.activeMembership.products }
       : null,
   );
 
