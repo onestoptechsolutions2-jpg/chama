@@ -9,6 +9,7 @@ import {
   date,
   timestamp,
   unique,
+  index,
   jsonb,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
@@ -376,7 +377,10 @@ export const members = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("members_user_group_unique").on(t.userId, t.groupId)],
+  (t) => [
+    unique("members_user_group_unique").on(t.userId, t.groupId),
+    index("members_group_id_idx").on(t.groupId),
+  ],
 );
 
 // ── Group memberships — the multi-tenancy join table & sole role source ────
@@ -411,7 +415,10 @@ export const groupMemberships = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("group_memberships_user_group_unique").on(t.userId, t.groupId)],
+  (t) => [
+    unique("group_memberships_user_group_unique").on(t.userId, t.groupId),
+    index("group_memberships_group_id_idx").on(t.groupId),
+  ],
 );
 
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────
@@ -428,100 +435,126 @@ export const sessions = pgTable("sessions", {
 });
 
 // ── Rules (group bylaws) ────────────────────────────────────────────────
-export const rules = pgTable("rules", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  ruleNumber: text("rule_number").notNull(),
-  category: ruleCategoryEnum("category").notNull().default("general"),
-  title: text("title"),
-  description: text("description").notNull(),
-  penaltyAmount: numeric("penalty_amount", { precision: 14, scale: 2 }),
-  appliesTo: ruleAppliesToEnum("applies_to").notNull().default("all"),
-  active: boolean("active").notNull().default(true),
-  effectiveDate: date("effective_date").notNull().defaultNow(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const rules = pgTable(
+  "rules",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    ruleNumber: text("rule_number").notNull(),
+    category: ruleCategoryEnum("category").notNull().default("general"),
+    title: text("title"),
+    description: text("description").notNull(),
+    penaltyAmount: numeric("penalty_amount", { precision: 14, scale: 2 }),
+    appliesTo: ruleAppliesToEnum("applies_to").notNull().default("all"),
+    active: boolean("active").notNull().default(true),
+    effectiveDate: date("effective_date").notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("rules_group_id_idx").on(t.groupId)],
+);
 
 // ── Announcements ────────────────────────────────────────────────────────
-export const announcements = pgTable("announcements", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  content: text("content").notNull(),
-  pinned: boolean("pinned").notNull().default(false),
-  createdBy: integer("created_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const announcements = pgTable(
+  "announcements",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    createdBy: integer("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("announcements_group_id_idx").on(t.groupId)],
+);
 
 // ── Contributions ────────────────────────────────────────────────────────
-export const contributions = pgTable("contributions", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  type: contributionTypeEnum("type").notNull(),
-  month: integer("month"),
-  year: integer("year"),
-  status: paymentStatusEnum("status").notNull().default("paid"),
-  reference: text("reference"),
-  notes: text("notes"),
-  recordedBy: integer("recorded_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// group_id and member_id both indexed: group_id backs the RLS filter every
+// query already applies, member_id backs per-member lookups (statement
+// page's merged timeline, the welfare fund's collected aggregate).
+export const contributions = pgTable(
+  "contributions",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    type: contributionTypeEnum("type").notNull(),
+    month: integer("month"),
+    year: integer("year"),
+    status: paymentStatusEnum("status").notNull().default("paid"),
+    reference: text("reference"),
+    notes: text("notes"),
+    recordedBy: integer("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("contributions_group_id_idx").on(t.groupId),
+    index("contributions_member_id_idx").on(t.memberId),
+  ],
+);
 
 // ── Fines ────────────────────────────────────────────────────────────────
-export const fines = pgTable("fines", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  type: fineTypeEnum("type").notNull().default("other"),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  reason: text("reason"),
-  status: fineStatusEnum("status").notNull().default("pending"),
-  meetingDate: date("meeting_date"),
-  recordedBy: integer("recorded_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const fines = pgTable(
+  "fines",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    type: fineTypeEnum("type").notNull().default("other"),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reason: text("reason"),
+    status: fineStatusEnum("status").notNull().default("pending"),
+    meetingDate: date("meeting_date"),
+    recordedBy: integer("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("fines_group_id_idx").on(t.groupId)],
+);
 
 // ── Meetings ─────────────────────────────────────────────────────────────
-export const meetings = pgTable("meetings", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  meetingDate: date("meeting_date").notNull(),
-  meetingType: meetingTypeEnum("meeting_type").notNull().default("regular"),
-  venue: text("venue"),
-  agenda: text("agenda"),
-  minutes: text("minutes"),
-  quorumMet: boolean("quorum_met"),
-  chairedBy: text("chaired_by"),
-  createdBy: integer("created_by").references(() => users.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const meetings = pgTable(
+  "meetings",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    meetingDate: date("meeting_date").notNull(),
+    meetingType: meetingTypeEnum("meeting_type").notNull().default("regular"),
+    venue: text("venue"),
+    agenda: text("agenda"),
+    minutes: text("minutes"),
+    quorumMet: boolean("quorum_met"),
+    chairedBy: text("chaired_by"),
+    createdBy: integer("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("meetings_group_id_idx").on(t.groupId)],
+);
 
 // ── Meeting attendance ───────────────────────────────────────────────────
 // Denormalized group_id (the original schema only had meeting_id -> meetings.group_id)
@@ -544,134 +577,173 @@ export const attendance = pgTable(
     notes: text("notes"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("attendance_meeting_member_unique").on(t.meetingId, t.memberId)],
+  (t) => [
+    unique("attendance_meeting_member_unique").on(t.meetingId, t.memberId),
+    index("attendance_group_id_idx").on(t.groupId),
+  ],
 );
 
 // ── Loans ────────────────────────────────────────────────────────────────
-export const loans = pgTable("loans", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  principal: numeric("principal", { precision: 14, scale: 2 }).notNull(),
-  interestRate: numeric("interest_rate", { precision: 5, scale: 2 }).notNull(),
-  totalRepayable: numeric("total_repayable", { precision: 14, scale: 2 }).notNull(),
-  amountRemaining: numeric("amount_remaining", { precision: 14, scale: 2 }).notNull(),
-  status: loanStatusEnum("status").notNull().default("active"),
-  extended: boolean("extended").notNull().default(false),
-  limitReducedByExtension: boolean("limit_reduced_by_extension").notNull().default(false),
-  purpose: text("purpose"),
-  issuedDate: date("issued_date").notNull().defaultNow(),
-  dueDate: date("due_date"),
-  clearedDate: date("cleared_date"),
-  overdueFlaggedAt: timestamp("overdue_flagged_at", { withTimezone: true }),
-  penaltyTotal: numeric("penalty_total", { precision: 14, scale: 2 }).notNull().default("0"),
-  approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// Three indexes, each backing a real hot path: group_id for RLS/tenant
+// scoping, member_id for the "does this member already have an outstanding
+// loan" check every loan action runs, and the (status, due_date) composite
+// for the loan-overdue cron — which scans across EVERY group's loans every
+// day, so it grows with total platform size, not any one group's size.
+export const loans = pgTable(
+  "loans",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    principal: numeric("principal", { precision: 14, scale: 2 }).notNull(),
+    interestRate: numeric("interest_rate", { precision: 5, scale: 2 }).notNull(),
+    totalRepayable: numeric("total_repayable", { precision: 14, scale: 2 }).notNull(),
+    amountRemaining: numeric("amount_remaining", { precision: 14, scale: 2 }).notNull(),
+    status: loanStatusEnum("status").notNull().default("active"),
+    extended: boolean("extended").notNull().default(false),
+    limitReducedByExtension: boolean("limit_reduced_by_extension").notNull().default(false),
+    purpose: text("purpose"),
+    issuedDate: date("issued_date").notNull().defaultNow(),
+    dueDate: date("due_date"),
+    clearedDate: date("cleared_date"),
+    overdueFlaggedAt: timestamp("overdue_flagged_at", { withTimezone: true }),
+    penaltyTotal: numeric("penalty_total", { precision: 14, scale: 2 }).notNull().default("0"),
+    approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("loans_group_id_idx").on(t.groupId),
+    index("loans_member_id_idx").on(t.memberId),
+    index("loans_status_due_date_idx").on(t.status, t.dueDate),
+  ],
+);
 
 // ── Loan repayments ──────────────────────────────────────────────────────
 // Denormalized group_id (same reasoning as attendance) so RLS applies directly.
-export const loanRepayments = pgTable("loan_repayments", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  loanId: integer("loan_id")
-    .notNull()
-    .references(() => loans.id, { onDelete: "cascade" }),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  reference: text("reference"),
-  notes: text("notes"),
-  recordedBy: integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const loanRepayments = pgTable(
+  "loan_repayments",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    loanId: integer("loan_id")
+      .notNull()
+      .references(() => loans.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reference: text("reference"),
+    notes: text("notes"),
+    recordedBy: integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("loan_repayments_group_id_idx").on(t.groupId),
+    index("loan_repayments_loan_id_idx").on(t.loanId),
+  ],
+);
 
 // ── Loan applications (member self-service) ─────────────────────────────
-export const loanApplications = pgTable("loan_applications", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  amountRequested: numeric("amount_requested", { precision: 14, scale: 2 }).notNull(),
-  purpose: text("purpose"),
-  repaymentMonths: integer("repayment_months").notNull().default(3),
-  status: loanApplicationStatusEnum("status").notNull().default("pending"),
-  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
-  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-  reviewNotes: text("review_notes"),
-  loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const loanApplications = pgTable(
+  "loan_applications",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    amountRequested: numeric("amount_requested", { precision: 14, scale: 2 }).notNull(),
+    purpose: text("purpose"),
+    repaymentMonths: integer("repayment_months").notNull().default(3),
+    status: loanApplicationStatusEnum("status").notNull().default("pending"),
+    reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    reviewNotes: text("review_notes"),
+    loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("loan_applications_group_id_idx").on(t.groupId)],
+);
 
 // ── Welfare claims ───────────────────────────────────────────────────────
-export const welfareClaims = pgTable("welfare_claims", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  beneficiaryName: text("beneficiary_name"),
-  beneficiaryRel: text("beneficiary_rel"),
-  claimType: welfareClaimTypeEnum("claim_type").notNull().default("other"),
-  amountRequested: numeric("amount_requested", { precision: 14, scale: 2 }).notNull(),
-  amountApproved: numeric("amount_approved", { precision: 14, scale: 2 }),
-  status: welfareClaimStatusEnum("status").notNull().default("pending"),
-  description: text("description"),
-  reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
-  reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-  disbursedAt: timestamp("disbursed_at", { withTimezone: true }),
-  rejectionReason: text("rejection_reason"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const welfareClaims = pgTable(
+  "welfare_claims",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    beneficiaryName: text("beneficiary_name"),
+    beneficiaryRel: text("beneficiary_rel"),
+    claimType: welfareClaimTypeEnum("claim_type").notNull().default("other"),
+    amountRequested: numeric("amount_requested", { precision: 14, scale: 2 }).notNull(),
+    amountApproved: numeric("amount_approved", { precision: 14, scale: 2 }),
+    status: welfareClaimStatusEnum("status").notNull().default("pending"),
+    description: text("description"),
+    reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    disbursedAt: timestamp("disbursed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("welfare_claims_group_id_idx").on(t.groupId)],
+);
 
 // ── Projects (selfhelp / hybrid) ─────────────────────────────────────────
-export const projects = pgTable("projects", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  description: text("description"),
-  targetAmount: numeric("target_amount", { precision: 14, scale: 2 }).notNull().default("0"),
-  collectedAmount: numeric("collected_amount", { precision: 14, scale: 2 }).notNull().default("0"),
-  status: projectStatusEnum("status").notNull().default("planning"),
-  startDate: date("start_date"),
-  endDate: date("end_date"),
-  createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    targetAmount: numeric("target_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    collectedAmount: numeric("collected_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    status: projectStatusEnum("status").notNull().default("planning"),
+    startDate: date("start_date"),
+    endDate: date("end_date"),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("projects_group_id_idx").on(t.groupId)],
+);
 
 // ── Project contributions ────────────────────────────────────────────────
 // Denormalized group_id (same reasoning as attendance/loan_repayments).
-export const projectContributions = pgTable("project_contributions", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  projectId: integer("project_id")
-    .notNull()
-    .references(() => projects.id, { onDelete: "cascade" }),
-  memberId: integer("member_id")
-    .notNull()
-    .references(() => members.id, { onDelete: "cascade" }),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  reference: text("reference"),
-  notes: text("notes"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const projectContributions = pgTable(
+  "project_contributions",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reference: text("reference"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("project_contributions_group_id_idx").on(t.groupId)],
+);
 
 // ── MGR cycles ───────────────────────────────────────────────────────────
 export const mgrCycles = pgTable(
@@ -737,24 +809,31 @@ export const mgrSlots = pgTable(
 // permanently attributed to a real user at a real time, which is the
 // realistic, achievable "fraud prevention" for a system that can't itself
 // move the money.
-export const mgrSlotEvents = pgTable("mgr_slot_events", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  slotId: integer("slot_id")
-    .notNull()
-    .references(() => mgrSlots.id, { onDelete: "cascade" }),
-  actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
-  actorRole: membershipRoleEnum("actor_role"),
-  action: text("action").notNull(),
-  fromStatus: mgrSlotStatusEnum("from_status"),
-  toStatus: mgrSlotStatusEnum("to_status"),
-  fromMemberId: integer("from_member_id").references(() => members.id, { onDelete: "set null" }),
-  toMemberId: integer("to_member_id").references(() => members.id, { onDelete: "set null" }),
-  note: text("note"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const mgrSlotEvents = pgTable(
+  "mgr_slot_events",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    slotId: integer("slot_id")
+      .notNull()
+      .references(() => mgrSlots.id, { onDelete: "cascade" }),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    actorRole: membershipRoleEnum("actor_role"),
+    action: text("action").notNull(),
+    fromStatus: mgrSlotStatusEnum("from_status"),
+    toStatus: mgrSlotStatusEnum("to_status"),
+    fromMemberId: integer("from_member_id").references(() => members.id, { onDelete: "set null" }),
+    toMemberId: integer("to_member_id").references(() => members.id, { onDelete: "set null" }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mgr_slot_events_group_id_idx").on(t.groupId),
+    index("mgr_slot_events_slot_id_idx").on(t.slotId),
+  ],
+);
 
 // ── MGR member turns ─────────────────────────────────────────────────────
 export const mgrMemberTurns = pgTable(
@@ -802,31 +881,43 @@ export const mgrAgreements = pgTable(
     digitalSignature: text("digital_signature").notNull(),
     signedAt: timestamp("signed_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("mgr_agreements_user_cycle_unique").on(t.userId, t.cycleId)],
+  (t) => [
+    unique("mgr_agreements_user_cycle_unique").on(t.userId, t.cycleId),
+    index("mgr_agreements_group_id_idx").on(t.groupId),
+  ],
 );
 
 // ── Platform payments (IntaSend M-Pesa STK push, e.g. the 5% MGR fee) ────
-export const platformPayments = pgTable("platform_payments", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  mgrSlotId: integer("mgr_slot_id").references(() => mgrSlots.id, { onDelete: "set null" }),
-  // Set when type = 'loan_fee' — the same "charge a service fee via STK push
-  // for an event that happened outside the app" pattern mgrSlotId already
-  // uses, extended to loan disbursement (see lib/domain/billing.ts's
-  // computeTransactionFee).
-  loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  feePct: numeric("fee_pct", { precision: 5, scale: 2 }).notNull().default("5.00"),
-  phone: text("phone"),
-  invoiceId: text("invoice_id"),
-  mpesaReference: text("mpesa_reference"),
-  status: paymentStatusTypeEnum("status").notNull().default("pending"),
-  type: paymentTypeEnum("type").notNull().default("mgr_fee"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+// invoice_id indexed too — that's the column the (unauthenticated, public)
+// webhook callback keys every lookup on, and that table only grows.
+export const platformPayments = pgTable(
+  "platform_payments",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    mgrSlotId: integer("mgr_slot_id").references(() => mgrSlots.id, { onDelete: "set null" }),
+    // Set when type = 'loan_fee' — the same "charge a service fee via STK push
+    // for an event that happened outside the app" pattern mgrSlotId already
+    // uses, extended to loan disbursement (see lib/domain/billing.ts's
+    // computeTransactionFee).
+    loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    feePct: numeric("fee_pct", { precision: 5, scale: 2 }).notNull().default("5.00"),
+    phone: text("phone"),
+    invoiceId: text("invoice_id"),
+    mpesaReference: text("mpesa_reference"),
+    status: paymentStatusTypeEnum("status").notNull().default("pending"),
+    type: paymentTypeEnum("type").notNull().default("mgr_fee"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("platform_payments_group_id_idx").on(t.groupId),
+    index("platform_payments_invoice_id_idx").on(t.invoiceId),
+  ],
+);
 
 // ── Subscription invoices — computed by lib/domain/billing.ts's pricing
 // engine (member band + vehicle band + activity band), one row per billing
@@ -837,26 +928,30 @@ export const platformPayments = pgTable("platform_payments", {
 // links to the platform_payments row once a charge is actually triggered
 // (STK push or wallet deduction); an invoice can exist with no linked
 // payment yet (just computed, not charged).
-export const subscriptionInvoices = pgTable("subscription_invoices", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  periodStart: date("period_start").notNull(),
-  periodEnd: date("period_end").notNull(),
-  billingCycle: billingCycleEnum("billing_cycle").notNull().default("monthly"),
-  memberCount: integer("member_count").notNull(),
-  memberFee: numeric("member_fee", { precision: 14, scale: 2 }).notNull(),
-  vehicleFee: numeric("vehicle_fee", { precision: 14, scale: 2 }).notNull(),
-  activityFee: numeric("activity_fee", { precision: 14, scale: 2 }).notNull(),
-  activityFlow: numeric("activity_flow", { precision: 14, scale: 2 }).notNull(),
-  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
-  status: paymentStatusTypeEnum("status").notNull().default("pending"),
-  paymentId: integer("payment_id").references(() => platformPayments.id, {
-    onDelete: "set null",
-  }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const subscriptionInvoices = pgTable(
+  "subscription_invoices",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    billingCycle: billingCycleEnum("billing_cycle").notNull().default("monthly"),
+    memberCount: integer("member_count").notNull(),
+    memberFee: numeric("member_fee", { precision: 14, scale: 2 }).notNull(),
+    vehicleFee: numeric("vehicle_fee", { precision: 14, scale: 2 }).notNull(),
+    activityFee: numeric("activity_fee", { precision: 14, scale: 2 }).notNull(),
+    activityFlow: numeric("activity_flow", { precision: 14, scale: 2 }).notNull(),
+    totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
+    status: paymentStatusTypeEnum("status").notNull().default("pending"),
+    paymentId: integer("payment_id").references(() => platformPayments.id, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("subscription_invoices_group_id_idx").on(t.groupId)],
+);
 
 // ── Group wallet — a prepaid balance for PLATFORM FEES ONLY, never member
 // savings. Explicitly non-custodial: this doesn't hold contributions, loan
@@ -880,20 +975,24 @@ export const groupWallets = pgTable("group_wallets", {
 // UPDATE/DELETE RLS policy exists for this table at all (see
 // 00XX_wallet_rls.sql), so it can't be edited or erased by the app's own
 // role regardless of what a bug or a compromised session tries.
-export const walletTransactions = pgTable("wallet_transactions", {
-  id: serial("id").primaryKey(),
-  groupId: integer("group_id")
-    .notNull()
-    .references(() => groups.id, { onDelete: "cascade" }),
-  type: walletTransactionTypeEnum("type").notNull(),
-  amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-  balanceAfter: numeric("balance_after", { precision: 14, scale: 2 }).notNull(),
-  relatedPaymentId: integer("related_payment_id").references(() => platformPayments.id, {
-    onDelete: "set null",
-  }),
-  note: text("note"),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const walletTransactions = pgTable(
+  "wallet_transactions",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    type: walletTransactionTypeEnum("type").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    balanceAfter: numeric("balance_after", { precision: 14, scale: 2 }).notNull(),
+    relatedPaymentId: integer("related_payment_id").references(() => platformPayments.id, {
+      onDelete: "set null",
+    }),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("wallet_transactions_group_id_idx").on(t.groupId)],
+);
 
 // ── Contribution dues — expected-payment tracking, drives the overdue-fine cron ──
 export const contributionDues = pgTable(
@@ -914,7 +1013,13 @@ export const contributionDues = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [unique("contribution_dues_group_member_date_unique").on(t.groupId, t.memberId, t.dueDate)],
+  (t) => [
+    unique("contribution_dues_group_member_date_unique").on(t.groupId, t.memberId, t.dueDate),
+    // Backs fineOverdueDues' cross-tenant scan (cron/contribution-dues) —
+    // like loans_status_due_date_idx, this grows with total platform size,
+    // not any one group's size, since the cron has no group_id filter.
+    index("contribution_dues_status_due_date_idx").on(t.status, t.dueDate),
+  ],
 );
 
 // ── Payment webhook events — raw audit log, not tenant-scoped for reads ──

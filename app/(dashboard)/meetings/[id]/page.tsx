@@ -16,20 +16,22 @@ export default async function MeetingAttendancePage({
   const session = await requireRole("admin", "secretary", "treasurer");
   const groupId = session.activeMembership.groupId;
 
-  const [meeting, groupMembers, existingAttendance] = await withTenant(groupId, (tx) =>
-    Promise.all([
+  // Independent withTenant calls, not one Promise.all sharing a transaction
+  // — see app/(dashboard)/page.tsx for why.
+  const [meeting, groupMembers, existingAttendance] = await Promise.all([
+    withTenant(groupId, (tx) =>
       tx.query.meetings.findFirst({
         where: and(eq(meetings.id, meetingId), eq(meetings.groupId, groupId)),
       }),
+    ),
+    withTenant(groupId, (tx) =>
       tx.query.members.findMany({
         where: eq(members.active, true),
         orderBy: (m, { asc }) => [asc(m.name)],
       }),
-      tx.query.attendance.findMany({
-        where: eq(attendance.meetingId, meetingId),
-      }),
-    ]),
-  );
+    ),
+    withTenant(groupId, (tx) => tx.query.attendance.findMany({ where: eq(attendance.meetingId, meetingId) })),
+  ]);
 
   if (!meeting) notFound();
 

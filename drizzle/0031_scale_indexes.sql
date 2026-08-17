@@ -1,0 +1,26 @@
+CREATE INDEX "announcements_group_id_idx" ON "announcements" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "attendance_group_id_idx" ON "attendance" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "contribution_dues_status_due_date_idx" ON "contribution_dues" USING btree ("status","due_date");--> statement-breakpoint
+CREATE INDEX "contributions_group_id_idx" ON "contributions" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "contributions_member_id_idx" ON "contributions" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX "fines_group_id_idx" ON "fines" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "group_memberships_group_id_idx" ON "group_memberships" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "loan_applications_group_id_idx" ON "loan_applications" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "loan_repayments_group_id_idx" ON "loan_repayments" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "loan_repayments_loan_id_idx" ON "loan_repayments" USING btree ("loan_id");--> statement-breakpoint
+CREATE INDEX "loans_group_id_idx" ON "loans" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "loans_member_id_idx" ON "loans" USING btree ("member_id");--> statement-breakpoint
+CREATE INDEX "loans_status_due_date_idx" ON "loans" USING btree ("status","due_date");--> statement-breakpoint
+CREATE INDEX "meetings_group_id_idx" ON "meetings" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "members_group_id_idx" ON "members" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "mgr_agreements_group_id_idx" ON "mgr_agreements" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "mgr_slot_events_group_id_idx" ON "mgr_slot_events" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "mgr_slot_events_slot_id_idx" ON "mgr_slot_events" USING btree ("slot_id");--> statement-breakpoint
+CREATE INDEX "platform_payments_group_id_idx" ON "platform_payments" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "platform_payments_invoice_id_idx" ON "platform_payments" USING btree ("invoice_id");--> statement-breakpoint
+CREATE INDEX "project_contributions_group_id_idx" ON "project_contributions" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "projects_group_id_idx" ON "projects" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "rules_group_id_idx" ON "rules" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "subscription_invoices_group_id_idx" ON "subscription_invoices" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "wallet_transactions_group_id_idx" ON "wallet_transactions" USING btree ("group_id");--> statement-breakpoint
+CREATE INDEX "welfare_claims_group_id_idx" ON "welfare_claims" USING btree ("group_id");

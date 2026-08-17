@@ -16,80 +16,93 @@ export default async function CapitalPositionPage() {
   const isStaff = ["admin", "treasurer", "secretary"].includes(session.activeMembership.role);
   const { products } = session.activeMembership;
 
-  const { position, drift } = await withTenant(groupId, async (tx) => {
-    const [memberTotals, loanTotals, group] = await Promise.all([
-      tx
-        .select({
-          capitalPool: sql<string>`coalesce(sum(${members.capital}), 0)`,
-          securityPool: sql<string>`coalesce(sum(${members.security}), 0)`,
-          personalSavingsPool: sql<string>`coalesce(sum(${members.personalSavings}), 0)`,
-        })
-        .from(members)
-        .where(and(eq(members.groupId, groupId), eq(members.active, true)))
-        .then((rows) => rows[0]),
-      tx
-        .select({
-          principal: sql<string>`coalesce(sum(${loans.principal}), 0)`,
-          remaining: sql<string>`coalesce(sum(${loans.amountRemaining}), 0)`,
-        })
-        .from(loans)
-        .where(and(eq(loans.groupId, groupId), inArray(loans.status, OUTSTANDING_LOAN_STATUSES)))
-        .then((rows) => rows[0]),
-      tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
+  // Independent withTenant calls run concurrently, not one Promise.all
+  // sharing a transaction — see app/(dashboard)/page.tsx for why (a
+  // concurrent-queries-in-one-tx race can silently starve RLS of its
+  // transaction-local context). The pure computeCapitalPosition/
+  // computeAllocationDrift calls happen after, outside any transaction.
+  const [memberTotals, loanTotals, group, welfareCollected, welfareDisbursed, projectsCommitted] =
+    await Promise.all([
+      withTenant(groupId, (tx) =>
+        tx
+          .select({
+            capitalPool: sql<string>`coalesce(sum(${members.capital}), 0)`,
+            securityPool: sql<string>`coalesce(sum(${members.security}), 0)`,
+            personalSavingsPool: sql<string>`coalesce(sum(${members.personalSavings}), 0)`,
+          })
+          .from(members)
+          .where(and(eq(members.groupId, groupId), eq(members.active, true)))
+          .then((rows) => rows[0]),
+      ),
+      withTenant(groupId, (tx) =>
+        tx
+          .select({
+            principal: sql<string>`coalesce(sum(${loans.principal}), 0)`,
+            remaining: sql<string>`coalesce(sum(${loans.amountRemaining}), 0)`,
+          })
+          .from(loans)
+          .where(and(eq(loans.groupId, groupId), inArray(loans.status, OUTSTANDING_LOAN_STATUSES)))
+          .then((rows) => rows[0]),
+      ),
+      withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) })),
+      // Same two-independent-aggregates pattern the Welfare page already uses
+      // (docs/architecture.md bug 4) — avoids a join against an empty
+      // subquery silently zeroing the total when nothing's been disbursed
+      // yet. Each aggregate is its own withTenant call (not Promise.all'd
+      // inside one shared transaction) for the same reason as every other
+      // page fixed this session — see app/(dashboard)/page.tsx.
+      products.welfare
+        ? withTenant(groupId, (tx) =>
+            tx
+              .select({ total: sql<string>`coalesce(sum(${contributions.amount}), 0)` })
+              .from(contributions)
+              .where(
+                and(
+                  eq(contributions.groupId, groupId),
+                  eq(contributions.type, "welfare"),
+                  eq(contributions.status, "paid"),
+                ),
+              )
+              .then((rows) => rows[0].total),
+          )
+        : Promise.resolve("0"),
+      products.welfare
+        ? withTenant(groupId, (tx) =>
+            tx
+              .select({ total: sql<string>`coalesce(sum(${welfareClaims.amountApproved}), 0)` })
+              .from(welfareClaims)
+              .where(and(eq(welfareClaims.groupId, groupId), eq(welfareClaims.status, "disbursed")))
+              .then((rows) => rows[0].total),
+          )
+        : Promise.resolve("0"),
+      products.projects
+        ? withTenant(groupId, (tx) =>
+            tx
+              .select({ total: sql<string>`coalesce(sum(${projects.collectedAmount}), 0)` })
+              .from(projects)
+              .where(and(eq(projects.groupId, groupId), inArray(projects.status, OPEN_PROJECT_STATUSES)))
+              .then((rows) => rows[0].total),
+          )
+        : Promise.resolve("0"),
     ]);
 
-    // Same two-independent-aggregates pattern the Welfare page already uses
-    // (docs/architecture.md bug 4) — avoids a join against an empty
-    // subquery silently zeroing the total when nothing's been disbursed yet.
-    const [welfareCollected, welfareDisbursed] = products.welfare
-      ? await Promise.all([
-          tx
-            .select({ total: sql<string>`coalesce(sum(${contributions.amount}), 0)` })
-            .from(contributions)
-            .where(
-              and(
-                eq(contributions.groupId, groupId),
-                eq(contributions.type, "welfare"),
-                eq(contributions.status, "paid"),
-              ),
-            )
-            .then((rows) => rows[0].total),
-          tx
-            .select({ total: sql<string>`coalesce(sum(${welfareClaims.amountApproved}), 0)` })
-            .from(welfareClaims)
-            .where(and(eq(welfareClaims.groupId, groupId), eq(welfareClaims.status, "disbursed")))
-            .then((rows) => rows[0].total),
-        ])
-      : ["0", "0"];
-
-    const projectsCommitted = products.projects
-      ? await tx
-          .select({ total: sql<string>`coalesce(sum(${projects.collectedAmount}), 0)` })
-          .from(projects)
-          .where(and(eq(projects.groupId, groupId), inArray(projects.status, OPEN_PROJECT_STATUSES)))
-          .then((rows) => rows[0].total)
-      : "0";
-
-    const position = computeCapitalPosition({
-      capitalPool: Number(memberTotals.capitalPool),
-      securityPool: Number(memberTotals.securityPool),
-      personalSavingsPool: Number(memberTotals.personalSavingsPool),
-      welfareCollected: Number(welfareCollected),
-      welfareDisbursed: Number(welfareDisbursed),
-      projectsCommitted: Number(projectsCommitted),
-      loanPrincipalOutstanding: Number(loanTotals.principal),
-      loanReceivableOutstanding: Number(loanTotals.remaining),
-    });
-
-    const drift = computeAllocationDrift(
-      position.loanDeploymentPct,
-      group?.targetLoanDeploymentPct === undefined || group?.targetLoanDeploymentPct === null
-        ? null
-        : Number(group.targetLoanDeploymentPct),
-    );
-
-    return { position, drift };
+  const position = computeCapitalPosition({
+    capitalPool: Number(memberTotals.capitalPool),
+    securityPool: Number(memberTotals.securityPool),
+    personalSavingsPool: Number(memberTotals.personalSavingsPool),
+    welfareCollected: Number(welfareCollected),
+    welfareDisbursed: Number(welfareDisbursed),
+    projectsCommitted: Number(projectsCommitted),
+    loanPrincipalOutstanding: Number(loanTotals.principal),
+    loanReceivableOutstanding: Number(loanTotals.remaining),
   });
+
+  const drift = computeAllocationDrift(
+    position.loanDeploymentPct,
+    group?.targetLoanDeploymentPct === undefined || group?.targetLoanDeploymentPct === null
+      ? null
+      : Number(group.targetLoanDeploymentPct),
+  );
 
   return (
     <div className="space-y-6">

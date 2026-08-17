@@ -29,39 +29,50 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 export default async function SuperAdminStatsPage() {
-  const [groupCounts, userCount, membershipCounts, feeTotal, recentRuns] = await withPlatformAdmin(
-    (tx) =>
-      Promise.all([
-        tx
-          .select({
-            total: sql<number>`count(*)::int`,
-            active: sql<number>`count(*) filter (where ${groups.active})::int`,
-          })
-          .from(groups)
-          .then((r) => r[0]),
-        tx
-          .select({ total: sql<number>`count(*)::int` })
-          .from(users)
-          .then((r) => r[0].total),
-        tx
-          .select({
-            active: sql<number>`count(*) filter (where ${groupMemberships.status} = 'active')::int`,
-            pending: sql<number>`count(*) filter (where ${groupMemberships.status} = 'pending')::int`,
-          })
-          .from(groupMemberships)
-          .then((r) => r[0]),
-        tx
-          .select({
-            total: sql<string>`coalesce(sum(${platformPayments.amount}) filter (where ${platformPayments.status} = 'paid'), 0)`,
-          })
-          .from(platformPayments)
-          .then((r) => r[0].total),
-        tx.query.cronRuns.findMany({
-          orderBy: (c, { desc }) => [desc(c.startedAt)],
-          limit: 10,
-        }),
-      ]),
-  );
+  // Independent withPlatformAdmin calls, not one Promise.all sharing a
+  // transaction — concurrent queries against a single `tx` can race with
+  // the transaction-local app.is_platform_admin context the same way they
+  // can with withTenant's app.current_group_id (see app/(dashboard)/page.tsx).
+  const [groupCounts, userCount, membershipCounts, feeTotal, recentRuns] = await Promise.all([
+    withPlatformAdmin((tx) =>
+      tx
+        .select({
+          total: sql<number>`count(*)::int`,
+          active: sql<number>`count(*) filter (where ${groups.active})::int`,
+        })
+        .from(groups)
+        .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
+      tx
+        .select({ total: sql<number>`count(*)::int` })
+        .from(users)
+        .then((r) => r[0].total),
+    ),
+    withPlatformAdmin((tx) =>
+      tx
+        .select({
+          active: sql<number>`count(*) filter (where ${groupMemberships.status} = 'active')::int`,
+          pending: sql<number>`count(*) filter (where ${groupMemberships.status} = 'pending')::int`,
+        })
+        .from(groupMemberships)
+        .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
+      tx
+        .select({
+          total: sql<string>`coalesce(sum(${platformPayments.amount}) filter (where ${platformPayments.status} = 'paid'), 0)`,
+        })
+        .from(platformPayments)
+        .then((r) => r[0].total),
+    ),
+    withPlatformAdmin((tx) =>
+      tx.query.cronRuns.findMany({
+        orderBy: (c, { desc }) => [desc(c.startedAt)],
+        limit: 10,
+      }),
+    ),
+  ]);
 
   return (
     <div className="space-y-6">

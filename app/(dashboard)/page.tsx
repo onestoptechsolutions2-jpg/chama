@@ -49,8 +49,15 @@ export default async function DashboardPage() {
 
   const isStaff = ["admin", "treasurer", "secretary"].includes(role);
 
-  const [totals, pendingFines, nextMeeting, group] = await withTenant(groupId, (tx) =>
-    Promise.all([
+  // Four independent withTenant calls run concurrently, not one Promise.all
+  // sharing a single transaction — concurrent queries against the same `tx`
+  // aren't guaranteed to share the transaction-local SET LOCAL context
+  // withTenant relies on for RLS (see app/(dashboard)/billing/data.ts for
+  // where this was caught: a race silently made RLS fail-safe to zero rows).
+  // Each call below gets its own connection/transaction, so there's nothing
+  // to race — still concurrent, just safely so.
+  const [totals, pendingFines, nextMeeting, group] = await Promise.all([
+    withTenant(groupId, (tx) =>
       tx
         .select({
           memberCount: sql<number>`count(*)::int`,
@@ -62,12 +69,16 @@ export default async function DashboardPage() {
         .from(members)
         .where(and(eq(members.groupId, groupId), eq(members.active, true)))
         .then((rows) => rows[0]),
+    ),
+    withTenant(groupId, (tx) =>
       tx.query.fines.findMany({
         where: and(eq(fines.groupId, groupId), eq(fines.status, "pending")),
         with: { member: true },
         orderBy: (f, { desc }) => [desc(f.createdAt)],
         limit: 5,
       }),
+    ),
+    withTenant(groupId, (tx) =>
       tx.query.meetings.findFirst({
         where: and(
           eq(meetings.groupId, groupId),
@@ -75,9 +86,9 @@ export default async function DashboardPage() {
         ),
         orderBy: (m, { asc }) => [asc(m.meetingDate)],
       }),
-      tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
-    ]),
-  );
+    ),
+    withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) })),
+  ]);
 
   return (
     <div className="space-y-6">
