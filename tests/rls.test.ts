@@ -55,20 +55,19 @@ beforeAll(async () => {
     );
   }
 
-  const [gA, gB] = await withPlatformAdmin((tx) =>
-    Promise.all([
-      tx
-        .insert(groups)
-        .values({ name: "RLS Test Tenant A", type: "chama", isPublic: false })
-        .returning({ id: groups.id }),
-      tx
-        .insert(groups)
-        .values({ name: "RLS Test Tenant B", type: "chama", isPublic: false })
-        .returning({ id: groups.id }),
-    ]),
+  // Two independent withPlatformAdmin calls, not one Promise.all sharing a
+  // transaction — this exact suite exists to catch RLS-context races, so
+  // its own fixture setup shouldn't carry one. See lib/auth/session.ts's
+  // getSession fix (same session) for where this pattern caused a real,
+  // hard-to-reproduce production bug.
+  const [gA] = await withPlatformAdmin((tx) =>
+    tx.insert(groups).values({ name: "RLS Test Tenant A", type: "chama", isPublic: false }).returning({ id: groups.id }),
   );
-  tenantA = gA[0].id;
-  tenantB = gB[0].id;
+  const [gB] = await withPlatformAdmin((tx) =>
+    tx.insert(groups).values({ name: "RLS Test Tenant B", type: "chama", isPublic: false }).returning({ id: groups.id }),
+  );
+  tenantA = gA.id;
+  tenantB = gB.id;
 
   const [m] = await withTenant(tenantA, (tx) =>
     tx

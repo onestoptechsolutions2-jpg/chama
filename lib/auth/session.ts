@@ -110,14 +110,27 @@ export const getSession = cache(async (): Promise<Session | null> => {
   // at once), so withTenant doesn't fit — withUser sets app.current_user_id
   // instead, which groups_own_membership_read and members_own_row_read
   // (both added in Phase 7) check directly.
-  const [memberships, myMemberRows] = await withUser(row.user.id, (tx) =>
-    Promise.all([
-      tx.query.groupMemberships.findMany({
-        where: eq(groupMemberships.userId, row.user.id),
-        with: { group: true },
-      }),
-      tx.query.members.findMany({ where: eq(members.userId, row.user.id) }),
-    ]),
+  //
+  // Two independent withUser calls, not one Promise.all sharing a
+  // transaction — concurrent queries against the same `tx` aren't
+  // guaranteed to share the transaction-local SET LOCAL context withUser
+  // relies on for RLS (see app/(dashboard)/billing/data.ts for where this
+  // exact race was first caught). Here it silently dropped `myMemberRows`
+  // to empty on an unlucky race, which meant a genuine member's own
+  // activeMembership.memberId came back null — every member-scoped feature
+  // (loan applications, own capital/statement data) would then fail with
+  // "no member profile linked," despite one existing. Found by that exact
+  // symptom while testing loan guarantors, not by inspection — this
+  // function is the source of truth for every authenticated request, so
+  // the race was real, just not consistently reproducible.
+  const memberships = await withUser(row.user.id, (tx) =>
+    tx.query.groupMemberships.findMany({
+      where: eq(groupMemberships.userId, row.user.id),
+      with: { group: true },
+    }),
+  );
+  const myMemberRows = await withUser(row.user.id, (tx) =>
+    tx.query.members.findMany({ where: eq(members.userId, row.user.id) }),
   );
   const memberIdByGroup = new Map(myMemberRows.map((m) => [m.groupId, m.id]));
 
