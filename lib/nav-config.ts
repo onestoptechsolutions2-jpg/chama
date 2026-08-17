@@ -18,6 +18,7 @@ import {
   RefreshCw,
   HelpCircle,
   UserCircle,
+  Lightbulb,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/auth/session";
 import type { ProductFlags } from "@/lib/domain/products";
@@ -61,6 +62,13 @@ export const navItems: NavItem[] = [
     label: "Dashboard",
     icon: LayoutDashboard,
     guide: "An overview of the group: member count, balances, pending fines, and the next meeting.",
+  },
+  {
+    href: "/insights",
+    label: "Insights",
+    icon: Lightbulb,
+    guide:
+      "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in.",
   },
   {
     href: "/members",

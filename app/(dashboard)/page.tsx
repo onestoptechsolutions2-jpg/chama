@@ -2,7 +2,8 @@ import Link from "next/link";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { members, fines, meetings, groups } from "@/lib/db/schema";
+import { members, fines, meetings, groups, mgrCycles, mgrSlots } from "@/lib/db/schema";
+import { computeNextMgrEvent } from "@/lib/domain/insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -49,14 +50,14 @@ export default async function DashboardPage() {
 
   const isStaff = ["admin", "treasurer", "secretary"].includes(role);
 
-  // Four independent withTenant calls run concurrently, not one Promise.all
+  // Independent withTenant calls run concurrently, not one Promise.all
   // sharing a single transaction — concurrent queries against the same `tx`
   // aren't guaranteed to share the transaction-local SET LOCAL context
   // withTenant relies on for RLS (see app/(dashboard)/billing/data.ts for
   // where this was caught: a race silently made RLS fail-safe to zero rows).
   // Each call below gets its own connection/transaction, so there's nothing
   // to race — still concurrent, just safely so.
-  const [totals, pendingFines, nextMeeting, group] = await Promise.all([
+  const [totals, pendingFines, nextMeeting, group, mgrNext] = await Promise.all([
     withTenant(groupId, (tx) =>
       tx
         .select({
@@ -88,6 +89,24 @@ export default async function DashboardPage() {
       }),
     ),
     withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) })),
+    products.mgr
+      ? withTenant(groupId, async (tx) => {
+          const cycles = await tx.query.mgrCycles.findMany({ where: eq(mgrCycles.groupId, groupId) });
+          const slots = await tx.query.mgrSlots.findMany({
+            where: eq(mgrSlots.groupId, groupId),
+            with: { member: true },
+          });
+          return computeNextMgrEvent(
+            cycles.map((c) => ({ cycleNumber: c.cycleNumber, status: c.status, scheduledDate: c.scheduledDate })),
+            slots.map((s) => ({
+              cycleNumber: s.cycleNumber,
+              memberId: s.memberId,
+              memberName: s.member?.name ?? null,
+            })),
+            new Date(),
+          );
+        })
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -124,6 +143,34 @@ export default async function DashboardPage() {
         <Metric label="Personal savings" value={ksh(totals.personalSavings)} />
         {showWelfare && <Metric label="Welfare fund" value={ksh(totals.welfareBalance)} />}
       </div>
+
+      {products.mgr && (
+        <Card className={mgrNext && mgrNext.daysUntil < 0 ? "border-destructive/50 bg-destructive/5" : undefined}>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Next MGR payout</CardTitle>
+            <Link href="/insights" className="text-xs text-muted-foreground underline-offset-4 hover:underline">
+              View insights
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {mgrNext ? (
+              <div className="text-sm">
+                <p className="text-lg font-semibold">{mgrNext.recipientName ?? "Unassigned"}</p>
+                <p className="text-muted-foreground">
+                  Cycle {mgrNext.cycleNumber} · {mgrNext.scheduledDate} ·{" "}
+                  {mgrNext.daysUntil < 0
+                    ? `${Math.abs(mgrNext.daysUntil)} day${Math.abs(mgrNext.daysUntil) === 1 ? "" : "s"} overdue`
+                    : mgrNext.daysUntil === 0
+                      ? "today"
+                      : `in ${mgrNext.daysUntil} day${mgrNext.daysUntil === 1 ? "" : "s"}`}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No MGR cycle is active or scheduled yet.</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
