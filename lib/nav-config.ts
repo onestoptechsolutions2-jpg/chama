@@ -11,6 +11,7 @@ import {
   Wallet,
   WalletCards,
   PieChart,
+  Receipt,
   FileText,
   HeartHandshake,
   Hammer,
@@ -162,6 +163,14 @@ export const navItems: NavItem[] = [
     roles: ["admin", "treasurer"],
     guide:
       "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
+  },
+  {
+    href: "/billing",
+    label: "Billing",
+    icon: Receipt,
+    roles: ["admin", "treasurer"],
+    guide:
+      "What this group owes the platform — computed live from your member count, which vehicles (Table Banking, Welfare, Investment) are active, and your real financial activity over the last 12 months, not a flat fee. Admins can generate this period's invoice and charge it, either instantly from the prepaid Wallet or via an M-Pesa STK push.",
   },
   {
     href: "/settings",

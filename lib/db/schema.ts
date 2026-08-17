@@ -174,8 +174,11 @@ export const paymentTypeEnum = pgEnum("platform_payment_type", [
   "mgr_fee",
   "subscription",
   "wallet_topup",
+  "loan_fee",
   "other",
 ]);
+
+export const billingCycleEnum = pgEnum("billing_cycle", ["monthly", "annual"]);
 
 export const walletTransactionTypeEnum = pgEnum("wallet_transaction_type", [
   "topup",
@@ -809,6 +812,11 @@ export const platformPayments = pgTable("platform_payments", {
     .notNull()
     .references(() => groups.id, { onDelete: "cascade" }),
   mgrSlotId: integer("mgr_slot_id").references(() => mgrSlots.id, { onDelete: "set null" }),
+  // Set when type = 'loan_fee' — the same "charge a service fee via STK push
+  // for an event that happened outside the app" pattern mgrSlotId already
+  // uses, extended to loan disbursement (see lib/domain/billing.ts's
+  // computeTransactionFee).
+  loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
   amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
   feePct: numeric("fee_pct", { precision: 5, scale: 2 }).notNull().default("5.00"),
   phone: text("phone"),
@@ -818,6 +826,36 @@ export const platformPayments = pgTable("platform_payments", {
   type: paymentTypeEnum("type").notNull().default("mgr_fee"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Subscription invoices — computed by lib/domain/billing.ts's pricing
+// engine (member band + vehicle band + activity band), one row per billing
+// period. Snapshots the inputs (member count, which vehicles, the flow
+// figure) alongside the computed amounts, so a past invoice stays
+// explainable even after the group's membership/vehicles/activity later
+// change — recomputing live would silently rewrite history. `paymentId`
+// links to the platform_payments row once a charge is actually triggered
+// (STK push or wallet deduction); an invoice can exist with no linked
+// payment yet (just computed, not charged).
+export const subscriptionInvoices = pgTable("subscription_invoices", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  billingCycle: billingCycleEnum("billing_cycle").notNull().default("monthly"),
+  memberCount: integer("member_count").notNull(),
+  memberFee: numeric("member_fee", { precision: 14, scale: 2 }).notNull(),
+  vehicleFee: numeric("vehicle_fee", { precision: 14, scale: 2 }).notNull(),
+  activityFee: numeric("activity_fee", { precision: 14, scale: 2 }).notNull(),
+  activityFlow: numeric("activity_flow", { precision: 14, scale: 2 }).notNull(),
+  totalAmount: numeric("total_amount", { precision: 14, scale: 2 }).notNull(),
+  status: paymentStatusTypeEnum("status").notNull().default("pending"),
+  paymentId: integer("payment_id").references(() => platformPayments.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // ── Group wallet — a prepaid balance for PLATFORM FEES ONLY, never member
@@ -922,6 +960,7 @@ export const groupsRelations = relations(groups, ({ many }) => ({
   mgrMemberTurns: many(mgrMemberTurns),
   platformPayments: many(platformPayments),
   contributionDues: many(contributionDues),
+  subscriptionInvoices: many(subscriptionInvoices),
 }));
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -1064,6 +1103,15 @@ export const mgrAgreementsRelations = relations(mgrAgreements, ({ one }) => ({
 export const platformPaymentsRelations = relations(platformPayments, ({ one }) => ({
   group: one(groups, { fields: [platformPayments.groupId], references: [groups.id] }),
   mgrSlot: one(mgrSlots, { fields: [platformPayments.mgrSlotId], references: [mgrSlots.id] }),
+  loan: one(loans, { fields: [platformPayments.loanId], references: [loans.id] }),
+}));
+
+export const subscriptionInvoicesRelations = relations(subscriptionInvoices, ({ one }) => ({
+  group: one(groups, { fields: [subscriptionInvoices.groupId], references: [groups.id] }),
+  payment: one(platformPayments, {
+    fields: [subscriptionInvoices.paymentId],
+    references: [platformPayments.id],
+  }),
 }));
 
 export const groupWalletsRelations = relations(groupWallets, ({ one }) => ({

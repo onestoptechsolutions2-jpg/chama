@@ -204,6 +204,20 @@
       "when": 1786941953997,
       "tag": "0028_capital_allocation_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786944386456,
+      "tag": "0029_subscription_billing",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1786944400000,
+      "tag": "0030_billing_rls",
+      "breakpoints": true
     }
   ]
 }

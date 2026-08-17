@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, useTransition } from "react";
+import { toast } from "sonner";
 import type {
   loans as loansTable,
   loanApplications as loanApplicationsTable,
@@ -10,8 +11,10 @@ import {
   createLoanAction,
   recordRepaymentAction,
   reviewApplicationAction,
+  chargeLoanFeeFromWalletAction,
   type LoanActionState,
 } from "@/app/(dashboard)/loans/actions";
+import { computeTransactionFee } from "@/lib/domain/billing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -159,7 +162,116 @@ function RepayDialog({ loan }: { loan: Loan }) {
   );
 }
 
-function LoansTable({ loans }: { loans: Loan[] }) {
+function LoanFeeDialog({ loan, walletBalance }: { loan: Loan; walletBalance: string }) {
+  const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [walletPending, startWalletTransition] = useTransition();
+
+  const fee = computeTransactionFee("loan_disbursement", Number(loan.principal));
+  const walletCoversFee = Number(walletBalance) >= fee;
+
+  function chargeFromWallet() {
+    setError(null);
+    startWalletTransition(async () => {
+      const result = await chargeLoanFeeFromWalletAction(loan.id);
+      if ("error" in result) {
+        setError(result.error);
+        return;
+      }
+      toast.success(`Deducted Ksh ${result.fee} from the wallet`);
+      setOpen(false);
+    });
+  }
+
+  async function chargeViaStk() {
+    setPending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/payments/loan-fee", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loanId: loan.id, phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Failed to trigger payment");
+        return;
+      }
+      toast.success(`STK push sent for Ksh ${data.fee}`);
+      setOpen(false);
+    } catch {
+      setError("Network error — could not reach the server");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button size="sm" variant="outline" />}>
+        Charge disbursement fee
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Charge disbursement fee — {loan.member.name}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            The platform&apos;s one-time fee on this {ksh(loan.principal)} disbursement is{" "}
+            {ksh(fee)} (0.75% of principal).
+          </p>
+          {walletCoversFee ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Covered by this group&apos;s wallet balance ({ksh(walletBalance)}) — deducted
+                instantly, no phone prompt.
+              </p>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button onClick={chargeFromWallet} disabled={walletPending} className="w-full">
+                {walletPending ? "Deducting…" : `Deduct Ksh ${fee} from wallet`}
+              </Button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Wallet balance ({ksh(walletBalance)}) doesn&apos;t cover this fee — top up in{" "}
+                <a href="/wallet" className="underline underline-offset-4">Wallet</a>, or send an
+                M-Pesa STK push instead.
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor={`loan-fee-phone-${loan.id}`}>Phone number to charge</Label>
+                <Input
+                  id={`loan-fee-phone-${loan.id}`}
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="0712345678"
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
+              <Button onClick={chargeViaStk} disabled={pending || !phone} className="w-full">
+                {pending ? "Sending…" : "Send STK push"}
+              </Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function LoansTable({
+  loans,
+  chargedLoanIds,
+  walletBalance,
+  isAdmin,
+}: {
+  loans: Loan[];
+  chargedLoanIds: Set<number>;
+  walletBalance: string;
+  isAdmin: boolean;
+}) {
   return (
     <Table>
       <TableHeader>
@@ -192,9 +304,17 @@ function LoansTable({ loans }: { loans: Loan[] }) {
               </Badge>
             </TableCell>
             <TableCell>
-              {["active", "extended", "overdue"].includes(loan.status) && (
-                <RepayDialog loan={loan} />
-              )}
+              <div className="flex flex-wrap justify-end gap-2">
+                {["active", "extended", "overdue"].includes(loan.status) && (
+                  <RepayDialog loan={loan} />
+                )}
+                {isAdmin &&
+                  loan.status !== "pending" &&
+                  loan.status !== "rejected" &&
+                  !chargedLoanIds.has(loan.id) && (
+                    <LoanFeeDialog loan={loan} walletBalance={walletBalance} />
+                  )}
+              </div>
             </TableCell>
           </TableRow>
         ))}
@@ -298,10 +418,16 @@ export function LoansManager({
   loans,
   applications,
   members,
+  chargedLoanIds,
+  walletBalance,
+  isAdmin,
 }: {
   loans: Loan[];
   applications: Application[];
   members: Member[];
+  chargedLoanIds: Set<number>;
+  walletBalance: string;
+  isAdmin: boolean;
 }) {
   return (
     <Tabs defaultValue="loans">
@@ -321,7 +447,12 @@ export function LoansManager({
         <NewLoanForm members={members} />
         <Card>
           <CardContent className="overflow-x-auto">
-            <LoansTable loans={loans} />
+            <LoansTable
+              loans={loans}
+              chargedLoanIds={chargedLoanIds}
+              walletBalance={walletBalance}
+              isAdmin={isAdmin}
+            />
           </CardContent>
         </Card>
       </TabsContent>

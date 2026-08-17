@@ -1,10 +1,19 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { loans, loanApplications, loanRepayments, members, groups } from "@/lib/db/schema";
+import {
+  loans,
+  loanApplications,
+  loanRepayments,
+  members,
+  groups,
+  platformPayments,
+  groupWallets,
+  walletTransactions,
+} from "@/lib/db/schema";
 import {
   applyForLoanSchema,
   createLoanSchema,
@@ -12,6 +21,7 @@ import {
   reviewApplicationSchema,
 } from "@/lib/validation/loans";
 import { computeLoanLimit, computeTotalRepayable, defaultDueDate } from "@/lib/domain/loans";
+import { computeTransactionFee } from "@/lib/domain/billing";
 
 export type LoanActionState = { error: string } | null;
 
@@ -264,4 +274,81 @@ export async function reviewApplicationAction(
   if ("error" in result) return { error: result.error };
   revalidatePath("/loans");
   return null;
+}
+
+// ── Staff: charge the platform's disbursement fee ───────────────────────
+// Same pattern as mgr/actions.ts's chargeFeeFromWalletAction — the loan
+// principal itself is disbursed outside the app (cash/M-Pesa directly to
+// the member), so this charges a separate service fee, computed by
+// lib/domain/billing.ts's computeTransactionFee, either instantly from the
+// prepaid wallet or via a fresh STK push (see /api/payments/loan-fee for
+// the STK path).
+export async function chargeLoanFeeFromWalletAction(
+  loanId: number,
+): Promise<{ error: string } | { ok: true; fee: number }> {
+  const session = await requireProduct("loans", "admin", "treasurer");
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx) => {
+    const loan = await tx.query.loans.findFirst({
+      where: and(eq(loans.id, loanId), eq(loans.groupId, groupId)),
+    });
+    if (!loan) return { error: "Loan not found" as const };
+
+    const existingFee = await tx.query.platformPayments.findFirst({
+      where: and(
+        eq(platformPayments.loanId, loanId),
+        eq(platformPayments.type, "loan_fee"),
+        eq(platformPayments.status, "paid"),
+      ),
+    });
+    if (existingFee) {
+      return { error: "This loan's disbursement fee has already been charged" as const };
+    }
+
+    const fee = computeTransactionFee("loan_disbursement", Number(loan.principal));
+
+    const [wallet] = await tx
+      .select()
+      .from(groupWallets)
+      .where(eq(groupWallets.groupId, groupId))
+      .for("update");
+    if (!wallet || Number(wallet.balance) < fee) {
+      return { error: "Insufficient wallet balance" as const };
+    }
+
+    const [payment] = await tx
+      .insert(platformPayments)
+      .values({
+        groupId,
+        loanId,
+        amount: String(fee),
+        status: "paid",
+        type: "loan_fee",
+      })
+      .returning();
+
+    const [updatedWallet] = await tx
+      .update(groupWallets)
+      .set({ balance: sql`${groupWallets.balance} - ${fee}`, updatedAt: new Date() })
+      .where(eq(groupWallets.groupId, groupId))
+      .returning();
+
+    await tx.insert(walletTransactions).values({
+      groupId,
+      type: "fee_deduction",
+      amount: String(fee),
+      balanceAfter: updatedWallet.balance,
+      relatedPaymentId: payment.id,
+      note: `Loan disbursement fee — loan #${loanId}`,
+    });
+
+    return { ok: true as const, fee };
+  });
+
+  if ("ok" in result) {
+    revalidatePath("/loans");
+    revalidatePath("/wallet");
+  }
+  return result;
 }

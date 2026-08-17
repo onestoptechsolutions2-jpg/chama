@@ -6,6 +6,7 @@ import {
   paymentWebhookEvents,
   groupWallets,
   walletTransactions,
+  subscriptionInvoices,
 } from "@/lib/db/schema";
 import { isValidIntasendChallenge } from "@/lib/domain/payments";
 import type { IntasendWebhookPayload } from "@/lib/payments/intasend";
@@ -92,6 +93,18 @@ export async function POST(req: Request) {
         relatedPaymentId: existing.id,
         note: "M-Pesa top-up",
       });
+    }
+
+    // Cascade the same status onto the invoice this payment was raised
+    // for — see /api/payments/subscription-invoice, which sets
+    // subscription_invoices.paymentId at STK-trigger time. The invoice
+    // itself never becomes the source of truth for "was this paid";
+    // platform_payments always is, this just mirrors it.
+    if (existing.type === "subscription") {
+      await tx
+        .update(subscriptionInvoices)
+        .set({ status })
+        .where(eq(subscriptionInvoices.paymentId, existing.id));
     }
   });
 
