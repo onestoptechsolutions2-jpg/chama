@@ -7,6 +7,7 @@ import { withTenant } from "@/lib/db/rls";
 import {
   loans,
   loanApplications,
+  loanGuarantors,
   loanRepayments,
   members,
   groups,
@@ -19,9 +20,12 @@ import {
   createLoanSchema,
   recordRepaymentSchema,
   reviewApplicationSchema,
+  respondToGuaranteeRequestSchema,
 } from "@/lib/validation/loans";
 import { computeLoanLimit, computeTotalRepayable, defaultDueDate } from "@/lib/domain/loans";
 import { computeTransactionFee } from "@/lib/domain/billing";
+import { hasMinimumAcceptedGuarantors } from "@/lib/domain/guarantors";
+import { evaluateGuarantorEligibility } from "./guarantor-data";
 
 export type LoanActionState = { error: string } | null;
 
@@ -40,6 +44,17 @@ export async function createLoanAction(
   }
   const { memberId, principal, purpose } = parsed.data;
   const groupId = session.activeMembership.groupId;
+
+  // Optional here — staff are already vouching for this loan directly by
+  // creating it, so unlike applyForLoanAction these are recorded as
+  // immediately "accepted" (staff-facilitated, same trust level every
+  // other staff-direct action in this app already carries) rather than
+  // gating creation on a consent round-trip. Still validated for basic
+  // sanity (exists, isn't the borrower, not a duplicate) — just not the
+  // full eligibility/exposure check self-service applications get.
+  const guarantorMemberIds = [
+    ...new Set(formData.getAll("guarantorMemberIds").map(Number).filter((id) => Number.isInteger(id) && id > 0)),
+  ].filter((id) => id !== memberId);
 
   const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
     const existing = await tx.query.loans.findFirst({
@@ -63,22 +78,44 @@ export async function createLoanAction(
       return { error: `Exceeds loan limit of Ksh ${limit.toLocaleString()}` };
     }
 
+    if (guarantorMemberIds.length > 0) {
+      const validGuarantors = await tx.query.members.findMany({
+        where: and(inArray(members.id, guarantorMemberIds), eq(members.groupId, groupId)),
+      });
+      if (validGuarantors.length !== guarantorMemberIds.length) {
+        return { error: "One of the selected guarantors was not found" };
+      }
+    }
+
     const interestRate = Number(group.loanInterestRate);
     const totalRepayable = computeTotalRepayable(principal, interestRate);
     const dueDate = defaultDueDate(new Date(), group.loanRepaymentMonths);
 
-    await tx.insert(loans).values({
-      groupId,
-      memberId,
-      principal: String(principal),
-      interestRate: String(interestRate),
-      totalRepayable: String(totalRepayable),
-      amountRemaining: String(totalRepayable),
-      status: "active",
-      purpose: purpose || null,
-      dueDate,
-      approvedBy: session.user.id,
-    });
+    const [loan] = await tx
+      .insert(loans)
+      .values({
+        groupId,
+        memberId,
+        principal: String(principal),
+        interestRate: String(interestRate),
+        totalRepayable: String(totalRepayable),
+        amountRemaining: String(totalRepayable),
+        status: "active",
+        purpose: purpose || null,
+        dueDate,
+        approvedBy: session.user.id,
+      })
+      .returning();
+
+    for (const guarantorId of guarantorMemberIds) {
+      await tx.insert(loanGuarantors).values({
+        groupId,
+        loanId: loan.id,
+        memberId: guarantorId,
+        status: "accepted",
+        respondedAt: new Date(),
+      });
+    }
 
     return { ok: true } as const;
   });
@@ -150,6 +187,13 @@ export async function applyForLoanAction(
   const { amountRequested, purpose, repaymentMonths } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
+  // De-duplicated, self excluded here (also enforced again below via
+  // checkGuarantorEligibility's isSelf check — belt and suspenders since
+  // this list came from client form data).
+  const guarantorMemberIds = [
+    ...new Set(formData.getAll("guarantorMemberIds").map(Number).filter((id) => Number.isInteger(id) && id > 0)),
+  ].filter((id) => id !== memberId);
+
   const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
     const existingLoan = await tx.query.loans.findFirst({
       where: and(eq(loans.memberId, memberId), inArray(loans.status, BLOCKING_STATUSES)),
@@ -171,13 +215,35 @@ export async function applyForLoanAction(
       return { error: `Exceeds your loan limit of Ksh ${limit.toLocaleString()}` };
     }
 
-    await tx.insert(loanApplications).values({
-      groupId,
-      memberId,
-      amountRequested: String(amountRequested),
-      purpose: purpose || null,
-      repaymentMonths,
-    });
+    // Validate every proposed guarantor before creating anything — a
+    // partially-created application with only some guarantors requested
+    // would be confusing to recover from.
+    for (const guarantorId of guarantorMemberIds) {
+      const eligibility = await evaluateGuarantorEligibility(tx, groupId, memberId, guarantorId);
+      if (!eligibility.eligible) {
+        return { error: eligibility.reason };
+      }
+    }
+
+    const [app] = await tx
+      .insert(loanApplications)
+      .values({
+        groupId,
+        memberId,
+        amountRequested: String(amountRequested),
+        purpose: purpose || null,
+        repaymentMonths,
+      })
+      .returning();
+
+    for (const guarantorId of guarantorMemberIds) {
+      await tx.insert(loanGuarantors).values({
+        groupId,
+        applicationId: app.id,
+        memberId: guarantorId,
+        status: "pending",
+      });
+    }
 
     return { ok: true } as const;
   });
@@ -233,6 +299,16 @@ export async function reviewApplicationAction(
       const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
       if (!group) return { error: "Group not found" };
 
+      const appGuarantors = await tx.query.loanGuarantors.findMany({
+        where: eq(loanGuarantors.applicationId, applicationId),
+      });
+      if (!hasMinimumAcceptedGuarantors(appGuarantors, group.loanMinGuarantors)) {
+        const accepted = appGuarantors.filter((g) => g.status === "accepted").length;
+        return {
+          error: `Needs ${group.loanMinGuarantors} accepted guarantor(s), has ${accepted} — waiting on the rest to respond`,
+        };
+      }
+
       const principal = Number(app.amountRequested);
       const interestRate = Number(group.loanInterestRate);
       const totalRepayable = computeTotalRepayable(principal, interestRate);
@@ -254,6 +330,16 @@ export async function reviewApplicationAction(
         })
         .returning();
       loanId = loan.id;
+
+      // Re-point the same guarantor rows at the new loan rather than
+      // creating fresh ones — the acceptance record (who agreed, when)
+      // carries over intact instead of being re-requested.
+      if (appGuarantors.length > 0) {
+        await tx
+          .update(loanGuarantors)
+          .set({ loanId })
+          .where(eq(loanGuarantors.applicationId, applicationId));
+      }
     }
 
     await tx
@@ -351,4 +437,58 @@ export async function chargeLoanFeeFromWalletAction(
     revalidatePath("/wallet");
   }
   return result;
+}
+
+// ── Member: respond to a guarantee request ───────────────────────────────
+export async function respondToGuaranteeRequestAction(
+  guarantorRowId: number,
+  formData: FormData,
+): Promise<LoanActionState> {
+  const session = await requireProduct("loans");
+  const memberId = session.activeMembership.memberId;
+  if (!memberId) return { error: "No member profile linked to your account" };
+
+  const parsed = respondToGuaranteeRequestSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const { decision } = parsed.data;
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+    const row = await tx.query.loanGuarantors.findFirst({
+      where: and(eq(loanGuarantors.id, guarantorRowId), eq(loanGuarantors.groupId, groupId)),
+    });
+    if (!row) return { error: "Request not found" };
+    if (row.memberId !== memberId) return { error: "This request isn't yours to respond to" };
+    if (row.status !== "pending") return { error: "This request has already been responded to" };
+    if (!row.applicationId) return { error: "This request is no longer pending" };
+
+    const application = await tx.query.loanApplications.findFirst({
+      where: eq(loanApplications.id, row.applicationId),
+    });
+    if (!application || application.status !== "pending") {
+      return { error: "The loan application this was for is no longer pending" };
+    }
+
+    // Re-checked here, not just at request time — exposure can have
+    // changed since the borrower first asked (e.g. this member accepted
+    // another guarantee, or their own loan went overdue, in between).
+    if (decision === "accepted") {
+      const eligibility = await evaluateGuarantorEligibility(tx, groupId, application.memberId, memberId);
+      if (!eligibility.eligible) return { error: eligibility.reason };
+    }
+
+    await tx
+      .update(loanGuarantors)
+      .set({ status: decision, respondedAt: new Date() })
+      .where(eq(loanGuarantors.id, guarantorRowId));
+
+    return { ok: true } as const;
+  });
+
+  if ("error" in result) return { error: result.error };
+  revalidatePath("/loans/apply");
+  revalidatePath("/loans");
+  return null;
 }

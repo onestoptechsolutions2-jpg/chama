@@ -29,7 +29,12 @@ export const reviewApplicationSchema = z.object({
   reviewNotes: z.string().trim().optional(),
 });
 
+export const respondToGuaranteeRequestSchema = z.object({
+  decision: z.enum(["accepted", "declined"]),
+});
+
 export type ApplyForLoanInput = z.infer<typeof applyForLoanSchema>;
 export type CreateLoanInput = z.infer<typeof createLoanSchema>;
 export type RecordRepaymentInput = z.infer<typeof recordRepaymentSchema>;
 export type ReviewApplicationInput = z.infer<typeof reviewApplicationSchema>;
+export type RespondToGuaranteeRequestInput = z.infer<typeof respondToGuaranteeRequestSchema>;

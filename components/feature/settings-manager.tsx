@@ -186,6 +186,23 @@ function LoanSettingsForm({ group, isAdmin }: { group: Group; isAdmin: boolean }
                 disabled={!isAdmin}
               />
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanMinGuarantors">Required guarantors</Label>
+              <Input
+                id="loanMinGuarantors"
+                name="loanMinGuarantors"
+                type="number"
+                min="0"
+                max="10"
+                step="1"
+                defaultValue={group.loanMinGuarantors}
+                disabled={!isAdmin}
+              />
+              <p className="text-xs text-muted-foreground">
+                How many must accept before a self-service application can be approved. 0 means
+                guarantors aren&apos;t required.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>

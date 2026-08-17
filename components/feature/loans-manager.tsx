@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type {
   loans as loansTable,
   loanApplications as loanApplicationsTable,
+  loanGuarantors as loanGuarantorsTable,
   members as membersTable,
 } from "@/lib/db/schema";
 import {
@@ -44,8 +45,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type Loan = typeof loansTable.$inferSelect & { member: { name: string } };
-type Application = typeof loanApplicationsTable.$inferSelect & { member: { name: string } };
+type GuarantorRow = typeof loanGuarantorsTable.$inferSelect & { member: { name: string } };
+type Loan = typeof loansTable.$inferSelect & { member: { name: string }; guarantors: GuarantorRow[] };
+type Application = typeof loanApplicationsTable.$inferSelect & {
+  member: { name: string };
+  guarantors: GuarantorRow[];
+};
 type Member = typeof membersTable.$inferSelect;
 
 function ksh(n: string | number) {
@@ -68,6 +73,26 @@ const applicationStatusVariant = {
   cancelled: "outline",
 } as const;
 
+const guarantorStatusVariant = {
+  pending: "secondary",
+  accepted: "default",
+  declined: "destructive",
+  released: "outline",
+} as const;
+
+function GuarantorBadges({ guarantors }: { guarantors: GuarantorRow[] }) {
+  if (guarantors.length === 0) return <span className="text-muted-foreground">None</span>;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {guarantors.map((g) => (
+        <Badge key={g.id} variant={guarantorStatusVariant[g.status]} className="capitalize">
+          {g.member.name}: {g.status}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
 function NewLoanForm({ members }: { members: Member[] }) {
   const [state, formAction, pending] = useActionState<LoanActionState, FormData>(
     createLoanAction,
@@ -80,40 +105,55 @@ function NewLoanForm({ members }: { members: Member[] }) {
         <CardTitle className="text-base">Approve a new loan</CardTitle>
       </CardHeader>
       <CardContent>
-        <form action={formAction} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-2">
-            <Label htmlFor="memberId">Member</Label>
-            <Select
-              name="memberId"
-              required
-              items={Object.fromEntries(members.map((m) => [String(m.id), m.name]))}
-            >
-              <SelectTrigger id="memberId" className="w-full">
-                <SelectValue placeholder="Select member" />
-              </SelectTrigger>
-              <SelectContent>
-                {members.map((m) => (
-                  <SelectItem key={m.id} value={String(m.id)}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <form action={formAction} className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-2">
+              <Label htmlFor="memberId">Member</Label>
+              <Select
+                name="memberId"
+                required
+                items={Object.fromEntries(members.map((m) => [String(m.id), m.name]))}
+              >
+                <SelectTrigger id="memberId" className="w-full">
+                  <SelectValue placeholder="Select member" />
+                </SelectTrigger>
+                <SelectContent>
+                  {members.map((m) => (
+                    <SelectItem key={m.id} value={String(m.id)}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="principal">Principal (Ksh)</Label>
+              <Input id="principal" name="principal" type="number" min="1000" step="1" required />
+            </div>
+            <div className="space-y-2 lg:col-span-2">
+              <Label htmlFor="purpose">Purpose</Label>
+              <Input id="purpose" name="purpose" />
+            </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="principal">Principal (Ksh)</Label>
-            <Input id="principal" name="principal" type="number" min="1000" step="1" required />
+            <Label>
+              Guarantors{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional — you&apos;re vouching for this loan directly, so these are recorded as
+                accepted immediately)
+              </span>
+            </Label>
+            <div className="max-h-40 space-y-1 overflow-y-auto rounded-md border p-2">
+              {members.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" name="guarantorMemberIds" value={m.id} className="size-4" />
+                  {m.name}
+                </label>
+              ))}
+            </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="purpose">Purpose</Label>
-            <Input id="purpose" name="purpose" />
-          </div>
-          {state?.error && (
-            <p className="sm:col-span-2 lg:col-span-4 text-sm text-destructive">
-              {state.error}
-            </p>
-          )}
-          <Button type="submit" disabled={pending} className="lg:col-span-4 lg:w-fit">
+          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          <Button type="submit" disabled={pending} className="w-fit">
             {pending ? "Approving…" : "Approve loan"}
           </Button>
         </form>
@@ -281,13 +321,14 @@ function LoansTable({
           <TableHead className="text-right">Remaining</TableHead>
           <TableHead>Due</TableHead>
           <TableHead>Status</TableHead>
+          <TableHead>Guarantors</TableHead>
           <TableHead />
         </TableRow>
       </TableHeader>
       <TableBody>
         {loans.length === 0 && (
           <TableRow>
-            <TableCell colSpan={6} className="text-center text-muted-foreground">
+            <TableCell colSpan={7} className="text-center text-muted-foreground">
               No loans yet.
             </TableCell>
           </TableRow>
@@ -302,6 +343,9 @@ function LoansTable({
               <Badge variant={statusVariant[loan.status]} className="capitalize">
                 {loan.status}
               </Badge>
+            </TableCell>
+            <TableCell>
+              <GuarantorBadges guarantors={loan.guarantors} />
             </TableCell>
             <TableCell>
               <div className="flex flex-wrap justify-end gap-2">
@@ -326,9 +370,11 @@ function LoansTable({
 function ReviewDialog({
   application,
   decision,
+  minGuarantors,
 }: {
   application: Application;
   decision: "approved" | "rejected";
+  minGuarantors: number;
 }) {
   const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<LoanActionState, FormData>(
@@ -340,6 +386,9 @@ function ReviewDialog({
     },
     null,
   );
+
+  const acceptedCount = application.guarantors.filter((g) => g.status === "accepted").length;
+  const guarantorsMet = minGuarantors <= 0 || acceptedCount >= minGuarantors;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -355,12 +404,25 @@ function ReviewDialog({
           </DialogTitle>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
+          {decision === "approved" && minGuarantors > 0 && (
+            <div className="space-y-2 rounded-md border p-3 text-sm">
+              <p className={guarantorsMet ? "text-muted-foreground" : "text-destructive"}>
+                {acceptedCount} of {minGuarantors} required guarantor(s) accepted.
+                {!guarantorsMet && " This can't be approved until enough have responded."}
+              </p>
+              <GuarantorBadges guarantors={application.guarantors} />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor={`notes-${application.id}`}>Notes (optional)</Label>
             <Input id={`notes-${application.id}`} name="reviewNotes" />
           </div>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-          <Button type="submit" disabled={pending} className="w-full">
+          <Button
+            type="submit"
+            disabled={pending || (decision === "approved" && !guarantorsMet)}
+            className="w-full"
+          >
             {pending ? "Saving…" : `Confirm ${decision}`}
           </Button>
         </form>
@@ -369,7 +431,13 @@ function ReviewDialog({
   );
 }
 
-function ApplicationsTable({ applications }: { applications: Application[] }) {
+function ApplicationsTable({
+  applications,
+  minGuarantors,
+}: {
+  applications: Application[];
+  minGuarantors: number;
+}) {
   return (
     <Table>
       <TableHeader>
@@ -377,6 +445,7 @@ function ApplicationsTable({ applications }: { applications: Application[] }) {
           <TableHead>Member</TableHead>
           <TableHead className="text-right">Requested</TableHead>
           <TableHead>Purpose</TableHead>
+          <TableHead>Guarantors</TableHead>
           <TableHead>Status</TableHead>
           <TableHead />
         </TableRow>
@@ -384,7 +453,7 @@ function ApplicationsTable({ applications }: { applications: Application[] }) {
       <TableBody>
         {applications.length === 0 && (
           <TableRow>
-            <TableCell colSpan={5} className="text-center text-muted-foreground">
+            <TableCell colSpan={6} className="text-center text-muted-foreground">
               No applications.
             </TableCell>
           </TableRow>
@@ -395,6 +464,9 @@ function ApplicationsTable({ applications }: { applications: Application[] }) {
             <TableCell className="text-right">{ksh(app.amountRequested)}</TableCell>
             <TableCell className="text-muted-foreground">{app.purpose ?? "—"}</TableCell>
             <TableCell>
+              <GuarantorBadges guarantors={app.guarantors} />
+            </TableCell>
+            <TableCell>
               <Badge variant={applicationStatusVariant[app.status]} className="capitalize">
                 {app.status}
               </Badge>
@@ -402,8 +474,8 @@ function ApplicationsTable({ applications }: { applications: Application[] }) {
             <TableCell>
               {app.status === "pending" && (
                 <div className="flex gap-2">
-                  <ReviewDialog application={app} decision="approved" />
-                  <ReviewDialog application={app} decision="rejected" />
+                  <ReviewDialog application={app} decision="approved" minGuarantors={minGuarantors} />
+                  <ReviewDialog application={app} decision="rejected" minGuarantors={minGuarantors} />
                 </div>
               )}
             </TableCell>
@@ -421,6 +493,7 @@ export function LoansManager({
   chargedLoanIds,
   walletBalance,
   isAdmin,
+  minGuarantors,
 }: {
   loans: Loan[];
   applications: Application[];
@@ -428,6 +501,7 @@ export function LoansManager({
   chargedLoanIds: Set<number>;
   walletBalance: string;
   isAdmin: boolean;
+  minGuarantors: number;
 }) {
   return (
     <Tabs defaultValue="loans">
@@ -460,7 +534,7 @@ export function LoansManager({
       <TabsContent value="applications">
         <Card>
           <CardContent className="overflow-x-auto">
-            <ApplicationsTable applications={applications} />
+            <ApplicationsTable applications={applications} minGuarantors={minGuarantors} />
           </CardContent>
         </Card>
       </TabsContent>

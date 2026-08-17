@@ -101,6 +101,7 @@ export async function updateLoanSettingsAction(
         loanRepaymentMonths: values.loanRepaymentMonths,
         loanLatePenalty:
           values.loanLatePenalty !== undefined ? String(values.loanLatePenalty) : undefined,
+        loanMinGuarantors: values.loanMinGuarantors,
         updatedAt: new Date(),
       })
       .where(eq(groups.id, groupId)),
@@ -170,6 +171,7 @@ export async function activateProductAction(
           loanMaxMultiplier: formData.get("loanMaxMultiplier") ?? undefined,
           loanRepaymentMonths: formData.get("loanRepaymentMonths") ?? undefined,
           loanLatePenalty: formData.get("loanLatePenalty") ?? undefined,
+          loanMinGuarantors: formData.get("loanMinGuarantors") ?? undefined,
         })
       : null;
   if (loanSettingsParsed && !loanSettingsParsed.success) {
@@ -202,6 +204,7 @@ export async function activateProductAction(
                 loanSettings.loanLatePenalty !== undefined
                   ? String(loanSettings.loanLatePenalty)
                   : undefined,
+              loanMinGuarantors: loanSettings.loanMinGuarantors,
             }
           : {}),
         updatedAt: new Date(),

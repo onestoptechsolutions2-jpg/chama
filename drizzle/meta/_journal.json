@@ -225,6 +225,20 @@
       "when": 1786951630738,
       "tag": "0031_scale_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786965172347,
+      "tag": "0032_loan_guarantors",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786965180000,
+      "tag": "0033_loan_guarantors_rls",
+      "breakpoints": true
     }
   ]
 }

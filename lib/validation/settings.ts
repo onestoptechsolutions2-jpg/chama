@@ -55,6 +55,9 @@ export const updateLoanSettingsSchema = z.object({
   loanMaxMultiplier: z.coerce.number().positive().optional(),
   loanRepaymentMonths: z.coerce.number().int().positive().optional(),
   loanLatePenalty: z.coerce.number().nonnegative().optional(),
+  // 0 means the group has deliberately opted out of requiring guarantors —
+  // see lib/domain/guarantors.ts's hasMinimumAcceptedGuarantors.
+  loanMinGuarantors: z.coerce.number().int().min(0).max(10).optional(),
 });
 
 export type UpdateLoanSettingsInput = z.infer<typeof updateLoanSettingsSchema>;

@@ -121,6 +121,13 @@ export const loanApplicationStatusEnum = pgEnum("loan_application_status", [
   "cancelled",
 ]);
 
+export const loanGuarantorStatusEnum = pgEnum("loan_guarantor_status", [
+  "pending",
+  "accepted",
+  "declined",
+  "released",
+]);
+
 export const welfareClaimTypeEnum = pgEnum("welfare_claim_type", [
   "medical",
   "bereavement",
@@ -250,6 +257,11 @@ export const groups = pgTable("groups", {
   loanLatePenalty: numeric("loan_late_penalty", { precision: 14, scale: 2 })
     .notNull()
     .default("500"),
+  // How many guarantors must have accepted (see loan_guarantors below)
+  // before a self-service loan application can be approved. Doesn't gate
+  // staff-direct loan creation — see reviewApplicationAction/createLoanAction
+  // in app/(dashboard)/loans/actions.ts for the reasoning.
+  loanMinGuarantors: integer("loan_min_guarantors").notNull().default(1),
 
   // MGR settings
   mgrPoolAmount: numeric("mgr_pool_amount", { precision: 14, scale: 2 }).default(
@@ -672,6 +684,45 @@ export const loanApplications = pgTable(
   (t) => [index("loan_applications_group_id_idx").on(t.groupId)],
 );
 
+// ── Loan guarantors — real consent, not just a listed name ─────────────
+// Exactly one of applicationId/loanId is set, never both: a guarantor is
+// requested against a self-service loan_application (before staff can
+// approve it — see reviewApplicationAction) or attached directly to a
+// staff-created loan (auto-accepted, since staff already vouch for it
+// directly — see createLoanAction). When an application is approved,
+// reviewApplicationAction re-points these rows' applicationId -> loanId
+// rather than creating new ones, so the acceptance record carries over
+// intact instead of being re-requested.
+export const loanGuarantors = pgTable(
+  "loan_guarantors",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    applicationId: integer("application_id").references(() => loanApplications.id, {
+      onDelete: "cascade",
+    }),
+    loanId: integer("loan_id").references(() => loans.id, { onDelete: "cascade" }),
+    // The guarantor — a members row, not the borrower.
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    status: loanGuarantorStatusEnum("status").notNull().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+  },
+  (t) => [
+    // A member can't be asked to guarantee the same application twice.
+    unique("loan_guarantors_application_member_unique").on(t.applicationId, t.memberId),
+    index("loan_guarantors_group_id_idx").on(t.groupId),
+    // Backs "how many loans is this member currently guaranteeing" —
+    // computeGuarantorExposure's query, checked on every new request.
+    index("loan_guarantors_member_id_idx").on(t.memberId),
+    index("loan_guarantors_loan_id_idx").on(t.loanId),
+  ],
+);
+
 // ── Welfare claims ───────────────────────────────────────────────────────
 export const welfareClaims = pgTable(
   "welfare_claims",
@@ -1058,6 +1109,7 @@ export const groupsRelations = relations(groups, ({ many }) => ({
   meetings: many(meetings),
   loans: many(loans),
   loanApplications: many(loanApplications),
+  loanGuarantors: many(loanGuarantors),
   welfareClaims: many(welfareClaims),
   projects: many(projects),
   mgrCycles: many(mgrCycles),
@@ -1132,6 +1184,7 @@ export const loansRelations = relations(loans, ({ one, many }) => ({
   member: one(members, { fields: [loans.memberId], references: [members.id] }),
   approvedByUser: one(users, { fields: [loans.approvedBy], references: [users.id] }),
   repayments: many(loanRepayments),
+  guarantors: many(loanGuarantors),
 }));
 
 export const loanRepaymentsRelations = relations(loanRepayments, ({ one }) => ({
@@ -1140,11 +1193,22 @@ export const loanRepaymentsRelations = relations(loanRepayments, ({ one }) => ({
   recordedByUser: one(users, { fields: [loanRepayments.recordedBy], references: [users.id] }),
 }));
 
-export const loanApplicationsRelations = relations(loanApplications, ({ one }) => ({
+export const loanApplicationsRelations = relations(loanApplications, ({ one, many }) => ({
   group: one(groups, { fields: [loanApplications.groupId], references: [groups.id] }),
   member: one(members, { fields: [loanApplications.memberId], references: [members.id] }),
   reviewedByUser: one(users, { fields: [loanApplications.reviewedBy], references: [users.id] }),
   loan: one(loans, { fields: [loanApplications.loanId], references: [loans.id] }),
+  guarantors: many(loanGuarantors),
+}));
+
+export const loanGuarantorsRelations = relations(loanGuarantors, ({ one }) => ({
+  group: one(groups, { fields: [loanGuarantors.groupId], references: [groups.id] }),
+  application: one(loanApplications, {
+    fields: [loanGuarantors.applicationId],
+    references: [loanApplications.id],
+  }),
+  loan: one(loans, { fields: [loanGuarantors.loanId], references: [loans.id] }),
+  member: one(members, { fields: [loanGuarantors.memberId], references: [members.id] }),
 }));
 
 export const welfareClaimsRelations = relations(welfareClaims, ({ one }) => ({

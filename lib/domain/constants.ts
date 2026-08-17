@@ -11,3 +11,5 @@ export const DEFAULT_FINE_RULE_VIOLATION = 500;
 export const MIN_PERSONAL_SAVINGS_INCREMENT = 500;
 export const MIN_LOAN_AMOUNT = 1000;
 export const DEFAULT_LOAN_REPAYMENT_MONTHS = 3;
+/** How many loans a member may guarantee at once — matches the "Guarantor requirement" rule template's own stated default. */
+export const MAX_CONCURRENT_GUARANTEES = 2;

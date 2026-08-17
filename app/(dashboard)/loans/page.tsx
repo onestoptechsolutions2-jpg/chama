@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { loans, loanApplications, members, platformPayments, groupWallets } from "@/lib/db/schema";
+import { loans, loanApplications, members, groups, platformPayments, groupWallets } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { LoansManager } from "@/components/feature/loans-manager";
 
@@ -14,17 +14,17 @@ export default async function LoansPage() {
   // aren't guaranteed to share the transaction-local SET LOCAL context
   // withTenant relies on for RLS (see app/(dashboard)/billing/data.ts for
   // where this was caught: a race silently made RLS fail-safe to zero rows).
-  const { groupLoans, applications, groupMembers, chargedFees, wallet } = await withTenant(
+  const { groupLoans, applications, groupMembers, chargedFees, wallet, group } = await withTenant(
     groupId,
     async (tx) => {
       const groupLoans = await tx.query.loans.findMany({
         where: eq(loans.groupId, groupId),
-        with: { member: true },
+        with: { member: true, guarantors: { with: { member: true } } },
         orderBy: (l, { desc }) => [desc(l.createdAt)],
       });
       const applications = await tx.query.loanApplications.findMany({
         where: eq(loanApplications.groupId, groupId),
-        with: { member: true },
+        with: { member: true, guarantors: { with: { member: true } } },
         orderBy: (a, { desc }) => [desc(a.createdAt)],
       });
       const groupMembers = await tx.query.members.findMany({
@@ -41,7 +41,8 @@ export default async function LoansPage() {
       const wallet = await tx.query.groupWallets.findFirst({
         where: eq(groupWallets.groupId, groupId),
       });
-      return { groupLoans, applications, groupMembers, chargedFees, wallet };
+      const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+      return { groupLoans, applications, groupMembers, chargedFees, wallet, group };
     },
   );
   const chargedLoanIds = new Set(chargedFees.map((p) => p.loanId).filter((id): id is number => id !== null));
@@ -56,6 +57,7 @@ export default async function LoansPage() {
         chargedLoanIds={chargedLoanIds}
         walletBalance={wallet?.balance ?? "0"}
         isAdmin={isAdmin}
+        minGuarantors={group?.loanMinGuarantors ?? 1}
       />
     </div>
   );

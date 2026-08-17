@@ -45,6 +45,7 @@ const DEFAULT_LOAN_SETTINGS = {
   loanMaxMultiplier: "3",
   loanRepaymentMonths: "6",
   loanLatePenalty: "500",
+  loanMinGuarantors: "1",
 };
 
 export function VehicleActivationWizard({ product }: { product: ActivatableProduct }) {
@@ -89,6 +90,7 @@ export function VehicleActivationWizard({ product }: { product: ActivatableProdu
       fd.set("loanMaxMultiplier", loanSettings.loanMaxMultiplier);
       fd.set("loanRepaymentMonths", loanSettings.loanRepaymentMonths);
       fd.set("loanLatePenalty", loanSettings.loanLatePenalty);
+      fd.set("loanMinGuarantors", loanSettings.loanMinGuarantors);
     }
     for (const id of selectedTemplateIds) fd.append("templateIds", id);
 
@@ -187,6 +189,24 @@ export function VehicleActivationWizard({ product }: { product: ActivatableProdu
                   }
                 />
               </div>
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="wizard-guarantors">Required guarantors</Label>
+                <Input
+                  id="wizard-guarantors"
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="1"
+                  value={loanSettings.loanMinGuarantors}
+                  onChange={(e) =>
+                    setLoanSettings((s) => ({ ...s, loanMinGuarantors: e.target.value }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  How many must accept before a member&apos;s loan application can be approved. 0
+                  means guarantors aren&apos;t required.
+                </p>
+              </div>
             </div>
           </div>
         )}
@@ -227,7 +247,11 @@ export function VehicleActivationWizard({ product }: { product: ActivatableProdu
                 <p className="text-muted-foreground">
                   {loanSettings.loanInterestRate}% interest, up to{" "}
                   {loanSettings.loanMaxMultiplier}× savings, {loanSettings.loanRepaymentMonths}-month
-                  repayment, Ksh {loanSettings.loanLatePenalty} late penalty.
+                  repayment, Ksh {loanSettings.loanLatePenalty} late penalty,{" "}
+                  {loanSettings.loanMinGuarantors === "0"
+                    ? "no guarantors required"
+                    : `${loanSettings.loanMinGuarantors} guarantor(s) required`}
+                  .
                 </p>
               </div>
             )}
