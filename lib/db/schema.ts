@@ -279,6 +279,18 @@ export const groups = pgTable("groups", {
     .notNull()
     .default("500"),
 
+  // Capital allocation policy — nullable/unset means the group hasn't
+  // configured one yet (see lib/domain/capital.ts's computeAllocationDrift,
+  // which returns null rather than flagging drift when this is unset). What
+  // fraction of the capital pool (sum of members.capital — deliberately NOT
+  // security or personal_savings, which the schema already treats as
+  // separate, non-lendable pools) the group intends to typically have out
+  // on loan at once.
+  targetLoanDeploymentPct: numeric("target_loan_deployment_pct", {
+    precision: 5,
+    scale: 2,
+  }),
+
   // Platform
   platformTerms: text("platform_terms"),
 

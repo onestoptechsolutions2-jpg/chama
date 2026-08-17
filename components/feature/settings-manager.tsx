@@ -7,6 +7,7 @@ import type { ProductFlags } from "@/lib/domain/products";
 import {
   updateSettingsAction,
   updateProductAccessAction,
+  updateCapitalPolicyAction,
   type SettingsActionState,
 } from "@/app/(dashboard)/settings/actions";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,55 @@ function ProductsForm({ products, isAdmin }: { products: ProductFlags; isAdmin: 
   );
 }
 
+function CapitalPolicyForm({ group, isAdmin }: { group: Group; isAdmin: boolean }) {
+  const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
+    updateCapitalPolicyAction,
+    null,
+  );
+
+  useEffect(() => {
+    if (state && "ok" in state) toast.success("Capital policy updated");
+    if (state && "error" in state) toast.error(state.error);
+  }, [state]);
+
+  return (
+    <form action={formAction}>
+      <TabsContent value="capital">
+        <Card>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              What share of the capital pool (members&apos; combined capital contributions —
+              not security or personal savings) the group intends to typically have out on
+              loan at once. The Capital Position page flags it when actual deployment drifts
+              more than 15 points from this target. Leave blank for no target — nothing is
+              flagged either way.
+            </p>
+            <div className="max-w-xs space-y-2">
+              <Label htmlFor="targetLoanDeploymentPct">Target loan deployment (%)</Label>
+              <Input
+                id="targetLoanDeploymentPct"
+                name="targetLoanDeploymentPct"
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                placeholder="e.g. 60"
+                defaultValue={group.targetLoanDeploymentPct ?? ""}
+                disabled={!isAdmin}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </TabsContent>
+      {isAdmin && (
+        <Button type="submit" disabled={pending} className="mt-4">
+          {pending ? "Saving…" : "Save capital policy"}
+        </Button>
+      )}
+    </form>
+  );
+}
+
 export function SettingsManager({
   group,
   isAdmin,
@@ -97,6 +147,7 @@ export function SettingsManager({
         <TabsTrigger value="contributions">Contributions</TabsTrigger>
         <TabsTrigger value="fines">Fines</TabsTrigger>
         <TabsTrigger value="products">Products</TabsTrigger>
+        <TabsTrigger value="capital">Capital policy</TabsTrigger>
       </TabsList>
 
       <form action={formAction}>
@@ -237,6 +288,7 @@ export function SettingsManager({
       </form>
 
       <ProductsForm products={products} isAdmin={isAdmin} />
+      <CapitalPolicyForm group={group} isAdmin={isAdmin} />
     </Tabs>
   );
 }

@@ -22,3 +22,21 @@ export const updateSettingsSchema = z.object({
 });
 
 export type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+
+/**
+ * Own schema/action (see updateCapitalPolicyAction) rather than folded into
+ * updateSettingsSchema above — same reasoning updateProductAccessAction
+ * already uses for product toggles: this is a distinct concern (allocation
+ * risk policy, not group configuration), and it has its own validation
+ * range that shouldn't leak into the general settings form.
+ */
+export const updateCapitalPolicySchema = z.object({
+  // Empty string clears the policy back to "unset" (see
+  // lib/domain/capital.ts's computeAllocationDrift) rather than defaulting
+  // to some assumed target on the group's behalf.
+  targetLoanDeploymentPct: z
+    .union([z.literal(""), z.coerce.number().min(0).max(100)])
+    .optional(),
+});
+
+export type UpdateCapitalPolicyInput = z.infer<typeof updateCapitalPolicySchema>;

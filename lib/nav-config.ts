@@ -10,6 +10,7 @@ import {
   Landmark,
   Wallet,
   WalletCards,
+  PieChart,
   FileText,
   HeartHandshake,
   Hammer,
@@ -133,6 +134,13 @@ export const navItems: NavItem[] = [
     product: "projects",
     guide:
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
+  },
+  {
+    href: "/capital",
+    label: "Capital Position",
+    icon: PieChart,
+    guide:
+      "How the group's pooled capital is currently allocated — how much of the capital pool is out on loan versus held in reserve, plus the security, personal savings, welfare, and projects funds tracked alongside it. Visible to every member, not just staff — the point is to make it possible to see the group's money is being used sensibly without asking. Admins can set a target loan-deployment percentage in Settings to get drift alerts here.",
   },
   {
     href: "/statement",

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groups } from "@/lib/db/schema";
-import { updateSettingsSchema } from "@/lib/validation/settings";
+import { updateSettingsSchema, updateCapitalPolicySchema } from "@/lib/validation/settings";
 
 export type SettingsActionState = { error: string } | { ok: true } | null;
 
@@ -69,5 +69,36 @@ export async function updateProductAccessAction(
   );
 
   revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+export async function updateCapitalPolicyAction(
+  _prev: SettingsActionState,
+  formData: FormData,
+): Promise<SettingsActionState> {
+  const session = await requireRole("admin");
+
+  const parsed = updateCapitalPolicySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const { targetLoanDeploymentPct } = parsed.data;
+  const groupId = session.activeMembership.groupId;
+
+  await withTenant(groupId, (tx) =>
+    tx
+      .update(groups)
+      .set({
+        targetLoanDeploymentPct:
+          targetLoanDeploymentPct === "" || targetLoanDeploymentPct === undefined
+            ? null
+            : String(targetLoanDeploymentPct),
+        updatedAt: new Date(),
+      })
+      .where(eq(groups.id, groupId)),
+  );
+
+  revalidatePath("/settings");
+  revalidatePath("/capital");
   return { ok: true };
 }
