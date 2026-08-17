@@ -31,7 +31,12 @@ export default async function RulesPage() {
         title="Rules"
         description="Group bylaws and the penalties attached to them."
       />
-      <RulesManager rules={groupRules} isAdmin={isAdmin} rulesAcceptedAt={rulesAcceptedAt} />
+      <RulesManager
+        rules={groupRules}
+        isAdmin={isAdmin}
+        rulesAcceptedAt={rulesAcceptedAt}
+        products={session.activeMembership.products}
+      />
     </div>
   );
 }
