@@ -8,21 +8,30 @@ import {
   updateSettingsAction,
   updateProductAccessAction,
   updateCapitalPolicyAction,
+  updateLoanSettingsAction,
   type SettingsActionState,
 } from "@/app/(dashboard)/settings/actions";
-import { Button } from "@/components/ui/button";
+import { VehicleActivationWizard } from "@/components/feature/vehicle-activation-wizard";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
 
 type Group = typeof groupsTable.$inferSelect;
 
-const PRODUCT_TOGGLES: { key: keyof ProductFlags; name: string; label: string; description: string }[] = [
-  { key: "loans", name: "loansEnabled", label: "Loans", description: "Loan applications, approvals, and repayments." },
-  { key: "mgr", name: "mgrEnabled", label: "Merry-Go-Round", description: "Rotation cycles, turns, and payouts." },
-  { key: "welfare", name: "welfareEnabled", label: "Welfare", description: "Welfare claims and the welfare fund." },
-  { key: "projects", name: "projectsEnabled", label: "Projects", description: "Table-banking / group projects and contributions." },
+const PRODUCT_INFO: {
+  key: keyof ProductFlags;
+  name: string;
+  label: string;
+  description: string;
+  href: string;
+}[] = [
+  { key: "loans", name: "loansEnabled", label: "Table Banking (Loans)", description: "Loan applications, approvals, and repayments.", href: "/loans" },
+  { key: "mgr", name: "mgrEnabled", label: "Merry-Go-Round", description: "Rotation cycles, turns, and payouts.", href: "/mgr" },
+  { key: "welfare", name: "welfareEnabled", label: "Welfare", description: "Welfare claims and the welfare fund.", href: "/welfare" },
+  { key: "projects", name: "projectsEnabled", label: "Investment (Projects)", description: "Table-banking / group projects and contributions.", href: "/projects" },
 ];
 
 function ProductsForm({ products, isAdmin }: { products: ProductFlags; isAdmin: boolean }) {
@@ -36,36 +45,153 @@ function ProductsForm({ products, isAdmin }: { products: ProductFlags; isAdmin: 
     if (state && "error" in state) toast.error(state.error);
   }, [state]);
 
+  const active = PRODUCT_INFO.filter((p) => products[p.key]);
+  const inactive = PRODUCT_INFO.filter((p) => !products[p.key]);
+
+  return (
+    <TabsContent value="products" className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Each vehicle is a financial product this group can run — activating one walks you
+        through setting it up rather than just flipping a switch. Turning one off only hides
+        it — existing data is kept and reappears if you turn it back on.
+      </p>
+
+      {inactive.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-medium">Available to activate</p>
+            {inactive.map((p) => (
+              <div key={p.key} className="flex items-start justify-between gap-4 rounded-md border p-3">
+                <div>
+                  <p className="text-sm font-medium">{p.label}</p>
+                  <p className="text-sm text-muted-foreground">{p.description}</p>
+                </div>
+                {isAdmin ? (
+                  <VehicleActivationWizard product={p.key} />
+                ) : (
+                  <span className="text-xs text-muted-foreground">Admin only</span>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {active.length > 0 && (
+        <form action={formAction}>
+          <Card>
+            <CardContent className="space-y-3 pt-6">
+              <p className="text-sm font-medium">Active</p>
+              {active.map((p) => (
+                <div key={p.key} className="flex items-start justify-between gap-4 rounded-md border p-3">
+                  <label className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      name={p.name}
+                      defaultChecked
+                      disabled={!isAdmin}
+                      className="mt-1 size-4"
+                    />
+                    <span>
+                      <span className="block text-sm font-medium">{p.label}</span>
+                      <span className="block text-sm text-muted-foreground">{p.description}</span>
+                    </span>
+                  </label>
+                  <Link href={p.href} className={buttonVariants({ size: "sm", variant: "outline" })}>
+                    Manage
+                  </Link>
+                </div>
+              ))}
+              {/* Inactive products aren't rendered as checkboxes here, so submitting
+                  this form never touches them — updateProductAccessAction reads each
+                  field independently and a missing field just means "stays off". */}
+            </CardContent>
+          </Card>
+          {isAdmin && (
+            <Button type="submit" disabled={pending} className="mt-4">
+              {pending ? "Saving…" : "Save active vehicles"}
+            </Button>
+          )}
+        </form>
+      )}
+    </TabsContent>
+  );
+}
+
+function LoanSettingsForm({ group, isAdmin }: { group: Group; isAdmin: boolean }) {
+  const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
+    updateLoanSettingsAction,
+    null,
+  );
+
+  useEffect(() => {
+    if (state && "ok" in state) toast.success("Loan terms updated");
+    if (state && "error" in state) toast.error(state.error);
+  }, [state]);
+
   return (
     <form action={formAction}>
-      <TabsContent value="products">
+      <TabsContent value="loans">
         <Card>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Turn products on or off for this group. Turning one off only hides it — existing
-              data is kept and reappears if you turn it back on.
+          <CardContent className="grid gap-4 sm:grid-cols-2">
+            <p className="text-sm text-muted-foreground sm:col-span-2">
+              What every new loan is computed against — a member&apos;s limit, interest, and due
+              date. Changing these doesn&apos;t alter loans already issued.
             </p>
-            {PRODUCT_TOGGLES.map((p) => (
-              <label key={p.key} className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  name={p.name}
-                  defaultChecked={products[p.key]}
-                  disabled={!isAdmin}
-                  className="mt-1 size-4"
-                />
-                <span>
-                  <span className="block text-sm font-medium">{p.label}</span>
-                  <span className="block text-sm text-muted-foreground">{p.description}</span>
-                </span>
-              </label>
-            ))}
+            <div className="space-y-2">
+              <Label htmlFor="loanInterestRate">Interest rate (%)</Label>
+              <Input
+                id="loanInterestRate"
+                name="loanInterestRate"
+                type="number"
+                min="0"
+                step="0.1"
+                defaultValue={group.loanInterestRate}
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanMaxMultiplier">Loan limit (× total savings)</Label>
+              <Input
+                id="loanMaxMultiplier"
+                name="loanMaxMultiplier"
+                type="number"
+                min="0.1"
+                step="0.1"
+                defaultValue={group.loanMaxMultiplier}
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanRepaymentMonths">Repayment period (months)</Label>
+              <Input
+                id="loanRepaymentMonths"
+                name="loanRepaymentMonths"
+                type="number"
+                min="1"
+                step="1"
+                defaultValue={group.loanRepaymentMonths}
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanLatePenalty">Late penalty (Ksh)</Label>
+              <Input
+                id="loanLatePenalty"
+                name="loanLatePenalty"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={group.loanLatePenalty}
+                disabled={!isAdmin}
+              />
+            </div>
           </CardContent>
         </Card>
       </TabsContent>
       {isAdmin && (
         <Button type="submit" disabled={pending} className="mt-4">
-          {pending ? "Saving…" : "Save products"}
+          {pending ? "Saving…" : "Save loan terms"}
         </Button>
       )}
     </form>
@@ -146,6 +272,7 @@ export function SettingsManager({
         <TabsTrigger value="group">Group</TabsTrigger>
         <TabsTrigger value="contributions">Contributions</TabsTrigger>
         <TabsTrigger value="fines">Fines</TabsTrigger>
+        <TabsTrigger value="loans">Loans</TabsTrigger>
         <TabsTrigger value="products">Products</TabsTrigger>
         <TabsTrigger value="capital">Capital policy</TabsTrigger>
       </TabsList>
@@ -287,6 +414,7 @@ export function SettingsManager({
         )}
       </form>
 
+      <LoanSettingsForm group={group} isAdmin={isAdmin} />
       <ProductsForm products={products} isAdmin={isAdmin} />
       <CapitalPolicyForm group={group} isAdmin={isAdmin} />
     </Tabs>

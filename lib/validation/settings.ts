@@ -40,3 +40,21 @@ export const updateCapitalPolicySchema = z.object({
 });
 
 export type UpdateCapitalPolicyInput = z.infer<typeof updateCapitalPolicySchema>;
+
+/**
+ * Own schema/action (see updateCapitalPolicyAction above) for the same
+ * reason — a distinct concern from general group config. Genuinely missing
+ * until now: groups.loanInterestRate/loanMaxMultiplier/loanRepaymentMonths/
+ * loanLatePenalty have driven every loan computation (lib/domain/loans.ts)
+ * since Phase 2, but no Settings tab ever let a group actually change them
+ * from the seeded defaults (20%, 3x, 6 months, Ksh 500) — this closes that
+ * gap, surfaced while building the vehicle-activation wizard.
+ */
+export const updateLoanSettingsSchema = z.object({
+  loanInterestRate: z.coerce.number().min(0).max(100).optional(),
+  loanMaxMultiplier: z.coerce.number().positive().optional(),
+  loanRepaymentMonths: z.coerce.number().int().positive().optional(),
+  loanLatePenalty: z.coerce.number().nonnegative().optional(),
+});
+
+export type UpdateLoanSettingsInput = z.infer<typeof updateLoanSettingsSchema>;
