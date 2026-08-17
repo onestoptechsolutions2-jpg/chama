@@ -353,6 +353,16 @@ Verified end-to-end via Playwright + direct DB reads against real demo data: dis
 
 Verified end-to-end with three real accounts against live demo data (not synthetic fixtures): a borrower applied for a Ksh 3,000 loan naming one guarantor; the guarantor logged in separately, saw the request, and accepted it; the admin's approve dialog correctly showed "1 of 1 required guarantor(s) accepted" with the confirm button enabled; approving produced a `loan_guarantors` row with both `application_id` and `loan_id` set, `status: accepted`, `responded_at` populated — and a live, active Ksh 3,000 loan. Full suite: 126/126 tests, lint, typecheck, and production build all clean.
 
+**Post-Guarantors: New-group setup wizard.** The first of the wizard-treatment follow-ups actually built — runs the vehicle-activation wizard's exact steps (basics → pick vehicles → configure → starter rules → review) once, at group birth, instead of leaving the founding admin to separately discover Settings' six tabs afterward.
+
+Extended `createGroupAction` (`app/super-admin/groups/actions.ts`) rather than adding a parallel path: same reasoning as `activateProductAction` — one combined transaction, so a group can't end up half-configured because the dialog was closed partway through. Product flags and loan terms (interest/multiplier/repayment/penalty/min-guarantors) are now set directly at insert time instead of created-then-updated; starter rules are inserted in the same transaction, filtered server-side through `visibleRuleTemplates` against the selected vehicles (defense in depth — a template id that doesn't belong to a selected vehicle's category is silently dropped rather than trusted from the client, same pattern `activateProductAction` already established). The founding-admin membership and cross-group KYC reuse logic are untouched from before.
+
+The rules step differs from the vehicle-activation wizard's version in one way worth noting: that wizard only ever shows one vehicle's templates (it's activating one at a time), so it lists them flat; this one can have multiple vehicles selected at once, so it groups templates by category — reusing the same grouping pattern the Rules page's own template browser already uses, rather than inventing a third layout for the same data.
+
+Verified end-to-end via Playwright + direct DB reads: created "Umoja Wanawake" with Table Banking and Welfare selected, 15% interest and 2 required guarantors, three starter rules across two categories (general, loans, welfare) — the resulting group row, all three rules with correct sequential numbering and categories, and the founding admin's active membership all matched exactly what the wizard showed at its review step. Full suite: 126/126 tests, lint, typecheck, and production build all clean.
+
+**Remaining from the wizard-treatment list**: MGR cycle first-time setup, member KYC completion. Welfare claim submission remains deliberately out — short enough already that a wizard would add friction, not remove it.
+
 ### Verification
 
 - **Each phase**: manually click through that phase's "demoable" slice listed above, in both a staff role and a member role, across at least two group types (e.g. chama + welfare) to confirm feature gating works. Use the `run` skill (Playwright-driven, headless Chromium) since no browser is available directly.
