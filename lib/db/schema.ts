@@ -9,10 +9,11 @@ import {
   date,
   timestamp,
   unique,
+  uniqueIndex,
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 // ── Enums ──────────────────────────────────────────────────────────────────
 export const groupTypeEnum = pgEnum("group_type", [
@@ -144,6 +145,62 @@ export const welfareClaimStatusEnum = pgEnum("welfare_claim_status", [
   "approved",
   "rejected",
   "disbursed",
+]);
+
+// Phase 8: the collective welfare fund replacing the old welfare_claims
+// model — see the welfare_* tables below for the full design.
+export const welfareFundingMethodEnum = pgEnum("welfare_funding_method", [
+  "fixed_amount",
+  "pct_collections",
+  "pct_contribution",
+  "manual",
+]);
+
+export const welfareReserveEnum = pgEnum("welfare_reserve", [
+  "emergency",
+  "long_term",
+  "advance",
+]);
+
+export const welfareLedgerEntryTypeEnum = pgEnum("welfare_ledger_entry_type", [
+  "allocation_in",
+  "grant_out",
+  "advance_out",
+  "repayment_in",
+  "reversal",
+  "adjustment_in",
+  "adjustment_out",
+]);
+
+export const welfareRequestStatusEnum = pgEnum("welfare_request_status", [
+  "pending",
+  "under_review",
+  "approved",
+  "rejected",
+  "disbursed",
+  "cancelled",
+]);
+
+export const welfareApprovalStatusEnum = pgEnum("welfare_approval_status", [
+  "pending",
+  "accepted",
+  "declined",
+]);
+
+export const welfareAdvanceStatusEnum = pgEnum("welfare_advance_status", [
+  "active",
+  "paid",
+  "overdue",
+  "defaulted",
+  "written_off",
+]);
+
+// Generic, reusable across future features — deliberately not welfare-named.
+export const notificationCategoryEnum = pgEnum("notification_category", [
+  "info",
+  "success",
+  "warning",
+  "action_required",
 ]);
 
 export const projectStatusEnum = pgEnum("project_status", [
@@ -723,7 +780,13 @@ export const loanGuarantors = pgTable(
   ],
 );
 
-// ── Welfare claims ───────────────────────────────────────────────────────
+// ── Welfare claims — DEPRECATED (Phase 8). Superseded by welfare_requests/
+// welfare_grants below: this table only ever supported a single-approver,
+// no-fund-balance-check disbursement with no concept of a collective fund.
+// Nothing writes to it anymore; its history was migrated forward into the
+// new model by drizzle/0036_phase8_welfare_backfill.sql. Kept, not dropped,
+// since a hard drop can't be verified safe for production data from a
+// read-only pass over the code — see docs/architecture.md Phase 8 notes.
 export const welfareClaims = pgTable(
   "welfare_claims",
   {
@@ -749,6 +812,320 @@ export const welfareClaims = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("welfare_claims_group_id_idx").on(t.groupId)],
+);
+
+// ── Welfare policy — one row per group, the configurable collective-fund
+// engine (funding method, reserve-allocation split, caps, cooldowns,
+// approval-tier thresholds). Its own table rather than columns on `groups`
+// (unlike loan settings) because its ~18-field surface would meaningfully
+// bloat that table — precedented by groupWallets's one-row-per-group shape.
+export const welfarePolicies = pgTable("welfare_policies", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .unique()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  fundingMethod: welfareFundingMethodEnum("funding_method").notNull().default("manual"),
+  fundingFixedAmount: numeric("funding_fixed_amount", { precision: 14, scale: 2 }),
+  fundingPct: numeric("funding_pct", { precision: 5, scale: 2 }),
+  // emergency + longTerm + advance must sum to 100 — validated in
+  // lib/domain/welfare-policy.ts's validateAllocationSplit, not a DB CHECK
+  // (numeric rounding makes an exact-100 constraint brittle at the DB layer).
+  emergencyAllocationPct: numeric("emergency_allocation_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("50"),
+  longTermAllocationPct: numeric("long_term_allocation_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("30"),
+  advanceAllocationPct: numeric("advance_allocation_pct", { precision: 5, scale: 2 })
+    .notNull()
+    .default("20"),
+  maxEmergencyGrant: numeric("max_emergency_grant", { precision: 14, scale: 2 })
+    .notNull()
+    .default("20000"),
+  maxLongTermGrant: numeric("max_long_term_grant", { precision: 14, scale: 2 })
+    .notNull()
+    .default("50000"),
+  maxAdvance: numeric("max_advance", { precision: 14, scale: 2 }).notNull().default("30000"),
+  maxOutstandingAdvancePerMember: numeric("max_outstanding_advance_per_member", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("30000"),
+  minEmergencyReserveFloor: numeric("min_emergency_reserve_floor", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  maxClaimsPerMemberPerYear: integer("max_claims_per_member_per_year").notNull().default(2),
+  cooldownDays: integer("cooldown_days").notNull().default(30),
+  minTenureMonths: integer("min_tenure_months").notNull().default(0),
+  advanceFeePct: numeric("advance_fee_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  advanceMaxRepaymentMonths: integer("advance_max_repayment_months").notNull().default(6),
+  // Approval tiers: up to tier1MaxAmount = single staff (admin/treasurer)
+  // decision; up to tier2MaxAmount = 2 co-signing officials; above that =
+  // all 3 officials (tier3) — see lib/domain/welfare-approval.ts.
+  tier1MaxAmount: numeric("tier1_max_amount", { precision: 14, scale: 2 })
+    .notNull()
+    .default("10000"),
+  tier2MaxAmount: numeric("tier2_max_amount", { precision: 14, scale: 2 })
+    .notNull()
+    .default("30000"),
+  allowOverdraft: boolean("allow_overdraft").notNull().default(false),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Welfare fund — one row per group, cached reserve balances. Same
+// cached-balance-plus-append-only-ledger pattern as groupWallets/
+// walletTransactions (below), generalized to 3 named reserves instead of 1.
+export const welfareFunds = pgTable("welfare_funds", {
+  id: serial("id").primaryKey(),
+  groupId: integer("group_id")
+    .notNull()
+    .unique()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  emergencyBalance: numeric("emergency_balance", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  longTermBalance: numeric("long_term_balance", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  advanceBalance: numeric("advance_balance", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lifetimeCollected: numeric("lifetime_collected", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lifetimeGrantsDisbursed: numeric("lifetime_grants_disbursed", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lifetimeAdvancesDisbursed: numeric("lifetime_advances_disbursed", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  lifetimeRecovered: numeric("lifetime_recovered", { precision: 14, scale: 2 })
+    .notNull()
+    .default("0"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ── Welfare requests — the single member submission; can carry emergency +
+// long-term + advance amounts simultaneously (the hybrid-assistance
+// mechanism — see welfareGrants/welfareAdvances below, which turns an
+// approved request into two distinct financial instruments so a member
+// never owes a grant amount, only an advance).
+export const welfareRequests = pgTable(
+  "welfare_requests",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    reason: welfareClaimTypeEnum("reason").notNull().default("other"),
+    beneficiaryName: text("beneficiary_name"),
+    beneficiaryRel: text("beneficiary_rel"),
+    description: text("description"),
+    requestedEmergencyAmount: numeric("requested_emergency_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    requestedLongTermAmount: numeric("requested_long_term_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    requestedAdvanceAmount: numeric("requested_advance_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    approvedEmergencyAmount: numeric("approved_emergency_amount", { precision: 14, scale: 2 }),
+    approvedLongTermAmount: numeric("approved_long_term_amount", { precision: 14, scale: 2 }),
+    approvedAdvanceAmount: numeric("approved_advance_amount", { precision: 14, scale: 2 }),
+    // Snapshotted at submission from lib/domain/welfare-approval.ts's
+    // resolveApprovalTier — the policy's thresholds can change later
+    // without rewriting an in-flight request's required approval path.
+    approvalTier: text("approval_tier").notNull().default("tier1"),
+    status: welfareRequestStatusEnum("status").notNull().default("pending"),
+    reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    rejectionReason: text("rejection_reason"),
+    disbursedAt: timestamp("disbursed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("welfare_requests_group_id_idx").on(t.groupId),
+    index("welfare_requests_member_id_idx").on(t.memberId),
+    index("welfare_requests_status_idx").on(t.status),
+    // Fail-safe, DB-level backstop for "no simultaneous emergency claims per
+    // member" (also checked in app code at submission — this guards the
+    // race between two concurrent submissions, same reasoning as every
+    // other DB-level constraint in this schema backing an app-level check).
+    uniqueIndex("welfare_requests_member_open_emergency_unique")
+      .on(t.memberId)
+      .where(
+        sql`${t.requestedEmergencyAmount} > 0 AND ${t.status} IN ('pending', 'under_review')`,
+      ),
+  ],
+);
+
+// ── Welfare grants — the non-repayable financial record. At most one per
+// request; reserve-level detail (how much came from which reserve) lives in
+// welfareLedger below — this is just the summary the member/admin see.
+export const welfareGrants = pgTable(
+  "welfare_grants",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    requestId: integer("request_id")
+      .notNull()
+      .unique()
+      .references(() => welfareRequests.id, { onDelete: "cascade" }),
+    emergencyAmount: numeric("emergency_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    longTermAmount: numeric("long_term_amount", { precision: 14, scale: 2 })
+      .notNull()
+      .default("0"),
+    disbursedAt: timestamp("disbursed_at", { withTimezone: true }).notNull().defaultNow(),
+    disbursedBy: integer("disbursed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("welfare_grants_group_id_idx").on(t.groupId)],
+);
+
+// ── Welfare advances — the repayable financial record, mirrors `loans`. At
+// most one per request. A member's outstanding obligation is always exactly
+// this table's amountRemaining, never the grant amount from the same
+// request (see welfareGrants above) — a combined grant+advance request
+// produces both rows, but the member only ever owes the advance principal.
+export const welfareAdvances = pgTable(
+  "welfare_advances",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    requestId: integer("request_id")
+      .notNull()
+      .unique()
+      .references(() => welfareRequests.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    principal: numeric("principal", { precision: 14, scale: 2 }).notNull(),
+    feePct: numeric("fee_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+    feeAmount: numeric("fee_amount", { precision: 14, scale: 2 }).notNull().default("0"),
+    totalRepayable: numeric("total_repayable", { precision: 14, scale: 2 }).notNull(),
+    amountRemaining: numeric("amount_remaining", { precision: 14, scale: 2 }).notNull(),
+    status: welfareAdvanceStatusEnum("status").notNull().default("active"),
+    issuedDate: date("issued_date").notNull().defaultNow(),
+    dueDate: date("due_date").notNull(),
+    clearedDate: date("cleared_date"),
+    disbursedBy: integer("disbursed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("welfare_advances_group_id_idx").on(t.groupId),
+    index("welfare_advances_member_id_idx").on(t.memberId),
+    index("welfare_advances_status_due_date_idx").on(t.status, t.dueDate),
+  ],
+);
+
+// ── Welfare advance repayments — mirrors loan_repayments exactly.
+export const welfareAdvanceRepayments = pgTable(
+  "welfare_advance_repayments",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    advanceId: integer("advance_id")
+      .notNull()
+      .references(() => welfareAdvances.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    reference: text("reference"),
+    notes: text("notes"),
+    recordedBy: integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("welfare_advance_repayments_group_id_idx").on(t.groupId),
+    index("welfare_advance_repayments_advance_id_idx").on(t.advanceId),
+  ],
+);
+
+// ── Welfare approvals — tier2/tier3 co-sign record, same request/response
+// shape as loan_guarantors: memberId is the specific officeholder resolved
+// at request-creation time (not a role looked up fresh at response time),
+// role is a snapshot for display/audit. Unlike loan guarantors there's no
+// "extra pool" beyond the 3 officials — a decline here hard-rejects the
+// request rather than waiting on a wider quorum, since there's no one else
+// to fall back on. See docs/architecture.md Phase 8 notes.
+export const welfareApprovals = pgTable(
+  "welfare_approvals",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    requestId: integer("request_id")
+      .notNull()
+      .references(() => welfareRequests.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    role: membershipRoleEnum("role").notNull(),
+    status: welfareApprovalStatusEnum("status").notNull().default("pending"),
+    requestedAt: timestamp("requested_at", { withTimezone: true }).notNull().defaultNow(),
+    respondedAt: timestamp("responded_at", { withTimezone: true }),
+    comment: text("comment"),
+  },
+  (t) => [
+    unique("welfare_approvals_request_member_unique").on(t.requestId, t.memberId),
+    index("welfare_approvals_group_id_idx").on(t.groupId),
+    index("welfare_approvals_member_id_idx").on(t.memberId),
+    index("welfare_approvals_request_id_idx").on(t.requestId),
+  ],
+);
+
+// ── Welfare ledger — immutable, same pattern as wallet_transactions/
+// mgr_slot_events: no UPDATE/DELETE RLS policy exists for this table at all
+// (see drizzle/0035_phase8_welfare_policy_ledger_rls.sql), so corrections
+// must be new reversal/adjustment rows, never edits.
+export const welfareLedger = pgTable(
+  "welfare_ledger",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    reserve: welfareReserveEnum("reserve").notNull(),
+    entryType: welfareLedgerEntryTypeEnum("entry_type").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    balanceAfter: numeric("balance_after", { precision: 14, scale: 2 }).notNull(),
+    relatedRequestId: integer("related_request_id").references(() => welfareRequests.id, {
+      onDelete: "set null",
+    }),
+    relatedAdvanceId: integer("related_advance_id").references(() => welfareAdvances.id, {
+      onDelete: "set null",
+    }),
+    relatedContributionId: integer("related_contribution_id").references(
+      () => contributions.id,
+      { onDelete: "set null" },
+    ),
+    note: text("note"),
+    recordedBy: integer("recorded_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("welfare_ledger_group_id_idx").on(t.groupId),
+    index("welfare_ledger_reserve_idx").on(t.reserve),
+    index("welfare_ledger_related_request_id_idx").on(t.relatedRequestId),
+    index("welfare_ledger_related_advance_id_idx").on(t.relatedAdvanceId),
+  ],
 );
 
 // ── Projects (selfhelp / hybrid) ─────────────────────────────────────────
@@ -1098,6 +1475,36 @@ export const cronRuns = pgTable("cron_runs", {
   errorMessage: text("error_message"),
 });
 
+// ── Notifications — generic, reusable in-app notification store (not
+// welfare-specific, even though welfare is the first feature to populate
+// it). No email/SMS delivery — in-app only, refetch-on-navigation, no live
+// push. sourceType/sourceId are free text/no-FK since the source table
+// varies per feature and shouldn't require a schema change to add a new one.
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    category: notificationCategoryEnum("category").notNull().default("info"),
+    title: text("title").notNull(),
+    body: text("body"),
+    link: text("link"),
+    sourceType: text("source_type"),
+    sourceId: integer("source_id"),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("notifications_group_id_idx").on(t.groupId),
+    index("notifications_user_id_read_at_idx").on(t.userId, t.readAt),
+  ],
+);
+
 // ── Relations ────────────────────────────────────────────────────────────
 export const groupsRelations = relations(groups, ({ many }) => ({
   memberships: many(groupMemberships),
@@ -1111,6 +1518,8 @@ export const groupsRelations = relations(groups, ({ many }) => ({
   loanApplications: many(loanApplications),
   loanGuarantors: many(loanGuarantors),
   welfareClaims: many(welfareClaims),
+  welfareRequests: many(welfareRequests),
+  notifications: many(notifications),
   projects: many(projects),
   mgrCycles: many(mgrCycles),
   mgrSlots: many(mgrSlots),
@@ -1215,6 +1624,95 @@ export const welfareClaimsRelations = relations(welfareClaims, ({ one }) => ({
   group: one(groups, { fields: [welfareClaims.groupId], references: [groups.id] }),
   member: one(members, { fields: [welfareClaims.memberId], references: [members.id] }),
   reviewedByUser: one(users, { fields: [welfareClaims.reviewedBy], references: [users.id] }),
+}));
+
+export const welfarePoliciesRelations = relations(welfarePolicies, ({ one }) => ({
+  group: one(groups, { fields: [welfarePolicies.groupId], references: [groups.id] }),
+}));
+
+export const welfareFundsRelations = relations(welfareFunds, ({ one }) => ({
+  group: one(groups, { fields: [welfareFunds.groupId], references: [groups.id] }),
+}));
+
+export const welfareRequestsRelations = relations(welfareRequests, ({ one, many }) => ({
+  group: one(groups, { fields: [welfareRequests.groupId], references: [groups.id] }),
+  member: one(members, { fields: [welfareRequests.memberId], references: [members.id] }),
+  reviewedByUser: one(users, { fields: [welfareRequests.reviewedBy], references: [users.id] }),
+  grant: one(welfareGrants, {
+    fields: [welfareRequests.id],
+    references: [welfareGrants.requestId],
+  }),
+  advance: one(welfareAdvances, {
+    fields: [welfareRequests.id],
+    references: [welfareAdvances.requestId],
+  }),
+  approvals: many(welfareApprovals),
+}));
+
+export const welfareGrantsRelations = relations(welfareGrants, ({ one }) => ({
+  group: one(groups, { fields: [welfareGrants.groupId], references: [groups.id] }),
+  request: one(welfareRequests, {
+    fields: [welfareGrants.requestId],
+    references: [welfareRequests.id],
+  }),
+  disbursedByUser: one(users, { fields: [welfareGrants.disbursedBy], references: [users.id] }),
+}));
+
+export const welfareAdvancesRelations = relations(welfareAdvances, ({ one, many }) => ({
+  group: one(groups, { fields: [welfareAdvances.groupId], references: [groups.id] }),
+  request: one(welfareRequests, {
+    fields: [welfareAdvances.requestId],
+    references: [welfareRequests.id],
+  }),
+  member: one(members, { fields: [welfareAdvances.memberId], references: [members.id] }),
+  disbursedByUser: one(users, { fields: [welfareAdvances.disbursedBy], references: [users.id] }),
+  repayments: many(welfareAdvanceRepayments),
+}));
+
+export const welfareAdvanceRepaymentsRelations = relations(
+  welfareAdvanceRepayments,
+  ({ one }) => ({
+    group: one(groups, { fields: [welfareAdvanceRepayments.groupId], references: [groups.id] }),
+    advance: one(welfareAdvances, {
+      fields: [welfareAdvanceRepayments.advanceId],
+      references: [welfareAdvances.id],
+    }),
+    recordedByUser: one(users, {
+      fields: [welfareAdvanceRepayments.recordedBy],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const welfareApprovalsRelations = relations(welfareApprovals, ({ one }) => ({
+  group: one(groups, { fields: [welfareApprovals.groupId], references: [groups.id] }),
+  request: one(welfareRequests, {
+    fields: [welfareApprovals.requestId],
+    references: [welfareRequests.id],
+  }),
+  member: one(members, { fields: [welfareApprovals.memberId], references: [members.id] }),
+}));
+
+export const welfareLedgerRelations = relations(welfareLedger, ({ one }) => ({
+  group: one(groups, { fields: [welfareLedger.groupId], references: [groups.id] }),
+  relatedRequest: one(welfareRequests, {
+    fields: [welfareLedger.relatedRequestId],
+    references: [welfareRequests.id],
+  }),
+  relatedAdvance: one(welfareAdvances, {
+    fields: [welfareLedger.relatedAdvanceId],
+    references: [welfareAdvances.id],
+  }),
+  relatedContribution: one(contributions, {
+    fields: [welfareLedger.relatedContributionId],
+    references: [contributions.id],
+  }),
+  recordedByUser: one(users, { fields: [welfareLedger.recordedBy], references: [users.id] }),
+}));
+
+export const notificationsRelations = relations(notifications, ({ one }) => ({
+  group: one(groups, { fields: [notifications.groupId], references: [groups.id] }),
+  user: one(users, { fields: [notifications.userId], references: [users.id] }),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({

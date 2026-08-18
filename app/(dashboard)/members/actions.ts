@@ -13,6 +13,8 @@ import {
 import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
 import { computeRegistrationComplete, type MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
+import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
+import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/welfare/welfare-data";
 
 export type MemberActionState = { error: string } | null;
 
@@ -89,20 +91,44 @@ export async function recordContributionAction(
   if (amountError) return { error: amountError };
 
   const groupId = session.activeMembership.groupId;
-  const balanceField = CONTRIBUTION_BALANCE_FIELD[type];
 
   await withTenant(groupId, async (tx) => {
-    await tx.insert(contributions).values({
-      groupId,
-      memberId,
-      amount: String(amount),
-      type,
-      status: "paid",
-      reference: reference || null,
-      notes: notes || null,
-      recordedBy: session.user.id,
-    });
+    const [contribution] = await tx
+      .insert(contributions)
+      .values({
+        groupId,
+        memberId,
+        amount: String(amount),
+        type,
+        status: "paid",
+        reference: reference || null,
+        notes: notes || null,
+        recordedBy: session.user.id,
+      })
+      .returning();
 
+    // welfare has no members.* balance column (Phase 8) — it feeds the
+    // collective fund instead. See CONTRIBUTION_BALANCE_FIELD's comment.
+    if (type === "welfare") {
+      const policy = await getOrCreateWelfarePolicy(tx, groupId);
+      const routed = computeContributionAllocation({
+        method: policy.fundingMethod,
+        contributionAmount: amount,
+        fixedAmount: policy.fundingFixedAmount ? Number(policy.fundingFixedAmount) : null,
+        pct: policy.fundingPct ? Number(policy.fundingPct) : null,
+      });
+      if (routed > 0) {
+        const split = splitAcrossReserves(routed, {
+          emergencyPct: Number(policy.emergencyAllocationPct),
+          longTermPct: Number(policy.longTermAllocationPct),
+          advancePct: Number(policy.advanceAllocationPct),
+        });
+        await allocateContributionToWelfareFund(tx, groupId, contribution.id, routed, split);
+      }
+      return;
+    }
+
+    const balanceField = CONTRIBUTION_BALANCE_FIELD[type];
     await tx
       .update(members)
       .set({
@@ -113,6 +139,7 @@ export async function recordContributionAction(
   });
 
   revalidatePath("/members");
+  revalidatePath("/welfare");
   return null;
 }
 
