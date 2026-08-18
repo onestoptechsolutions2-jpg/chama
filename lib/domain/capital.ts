@@ -12,14 +12,18 @@
  * percentage. Welfare and projects are separate special-purpose pools,
  * reported alongside for visibility but not folded into the capital
  * allocation math either.
+ *
+ * welfareAvailable (Phase 8) is read directly from the welfare fund's own
+ * cached reserve balances (welfare_funds.emergency/long_term/advance) —
+ * previously this was collected-minus-disbursed derived from contributions/
+ * welfare_claims, which the new ledger-backed fund makes unnecessary.
  */
 
 export type CapitalPools = {
   capitalPool: number;
   securityPool: number;
   personalSavingsPool: number;
-  welfareCollected: number;
-  welfareDisbursed: number;
+  welfareAvailable: number;
   projectsCommitted: number;
   /** Sum of loans.principal for active/extended/overdue loans — cash actually drawn from the capital pool. */
   loanPrincipalOutstanding: number;
@@ -48,8 +52,7 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     capitalPool,
     securityPool,
     personalSavingsPool,
-    welfareCollected,
-    welfareDisbursed,
+    welfareAvailable,
     projectsCommitted,
     loanPrincipalOutstanding,
     loanReceivableOutstanding,
@@ -69,7 +72,7 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     overextended,
     securityPool,
     personalSavingsPool,
-    welfareAvailable: Math.max(0, welfareCollected - welfareDisbursed),
+    welfareAvailable: Math.max(0, welfareAvailable),
     projectsCommitted,
   };
 }

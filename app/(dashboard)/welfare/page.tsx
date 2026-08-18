@@ -1,66 +1,87 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { welfareClaims, contributions } from "@/lib/db/schema";
+import { welfareRequests, welfareAdvances, welfareApprovals } from "@/lib/db/schema";
+import { getOrCreateWelfarePolicy, getOrCreateWelfareFund } from "./welfare-data";
+import { isBelowFloor } from "@/lib/domain/welfare-fund";
 import { PageHeader } from "@/components/feature/page-header";
 import { WelfareManager } from "@/components/feature/welfare-manager";
 
 export default async function WelfarePage() {
   const session = await requireProduct("welfare");
   const groupId = session.activeMembership.groupId;
+  const memberId = session.activeMembership.memberId;
   const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
 
-  // Three independent withTenant calls run concurrently, not sharing one
-  // transaction — see app/(dashboard)/page.tsx for why (concurrent queries
-  // against a single `tx` can race with RLS's transaction-local context).
-  //
-  // Fixes bug 4 (docs/architecture.md): the original app CROSS JOINed an
-  // aggregate over contributions with a filtered/grouped subquery over
-  // welfare_claims, which returned ZERO rows (silently zeroing
-  // total_collected) whenever there were no disbursed claims yet. Two
-  // independent, always-one-row aggregates combined in JS avoids that whole
-  // class of "join returns nothing" bug entirely.
-  const [claims, [collected], [disbursed]] = await Promise.all([
-    withTenant(groupId, (tx) =>
-      tx.query.welfareClaims.findMany({
-        where: eq(welfareClaims.groupId, groupId),
-        with: { member: true },
-        orderBy: (c, { desc }) => [desc(c.createdAt)],
-      }),
-    ),
-    withTenant(groupId, (tx) =>
-      tx
-        .select({
-          total: sql<string>`coalesce(sum(${contributions.amount}), 0)`,
-        })
-        .from(contributions)
-        .where(
-          and(
-            eq(contributions.groupId, groupId),
-            eq(contributions.type, "welfare"),
-            eq(contributions.status, "paid"),
-          ),
-        ),
-    ),
-    withTenant(groupId, (tx) =>
-      tx
-        .select({
-          total: sql<string>`coalesce(sum(${welfareClaims.amountApproved}), 0)`,
-        })
-        .from(welfareClaims)
-        .where(and(eq(welfareClaims.groupId, groupId), eq(welfareClaims.status, "disbursed"))),
-    ),
-  ]);
+  // Independent withTenant calls, not a shared transaction — see
+  // app/(dashboard)/page.tsx for why concurrent queries inside one
+  // withTenant call can race with RLS's transaction-local context.
+  const policy = await withTenant(groupId, (tx) => getOrCreateWelfarePolicy(tx, groupId));
+  const fund = await withTenant(groupId, (tx) => getOrCreateWelfareFund(tx, groupId));
 
-  const fund = {
-    totalCollected: Number(collected.total),
-    totalDisbursed: Number(disbursed.total),
-  };
+  const requestsWhere = isStaff
+    ? eq(welfareRequests.groupId, groupId)
+    : memberId
+      ? and(eq(welfareRequests.groupId, groupId), eq(welfareRequests.memberId, memberId))
+      : undefined;
+  const requests = requestsWhere
+    ? await withTenant(groupId, (tx) =>
+        tx.query.welfareRequests.findMany({
+          where: requestsWhere,
+          with: {
+            member: true,
+            grant: true,
+            advance: true,
+            approvals: { with: { member: true } },
+          },
+          orderBy: (r, { desc }) => [desc(r.createdAt)],
+        }),
+      )
+    : [];
+
+  const advancesWhere = isStaff
+    ? eq(welfareAdvances.groupId, groupId)
+    : memberId
+      ? and(eq(welfareAdvances.groupId, groupId), eq(welfareAdvances.memberId, memberId))
+      : undefined;
+  const advances = advancesWhere
+    ? await withTenant(groupId, (tx) =>
+        tx.query.welfareAdvances.findMany({
+          where: advancesWhere,
+          with: { member: true },
+          orderBy: (a, { desc }) => [desc(a.createdAt)],
+        }),
+      )
+    : [];
+
+  const myPendingApprovals = memberId
+    ? await withTenant(groupId, (tx) =>
+        tx.query.welfareApprovals.findMany({
+          where: and(
+            eq(welfareApprovals.groupId, groupId),
+            eq(welfareApprovals.memberId, memberId),
+            eq(welfareApprovals.status, "pending"),
+          ),
+          with: { request: { with: { member: true } } },
+        }),
+      )
+    : [];
+
+  const reserveLow = isBelowFloor(Number(fund.emergencyBalance), Number(policy.minEmergencyReserveFloor));
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Welfare" description="Claims and the welfare fund." />
-      <WelfareManager claims={claims} fund={fund} isStaff={isStaff} />
+      <PageHeader title="Welfare" description="The group's collective welfare fund." />
+      <WelfareManager
+        fund={fund}
+        policy={policy}
+        requests={requests}
+        advances={advances}
+        myPendingApprovals={myPendingApprovals}
+        reserveLow={reserveLow}
+        isStaff={isStaff}
+        memberId={memberId}
+      />
     </div>
   );
 }

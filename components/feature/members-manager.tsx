@@ -293,7 +293,6 @@ export function MembersManager({
                 <TableHead className="text-right">Capital</TableHead>
                 <TableHead className="text-right">Security</TableHead>
                 <TableHead className="text-right">Savings</TableHead>
-                {showWelfare && <TableHead className="text-right">Welfare</TableHead>}
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Fines</TableHead>
                 {canEdit && <TableHead />}
@@ -302,7 +301,7 @@ export function MembersManager({
             <TableBody>
               {members.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={canEdit ? 11 : 10} className="text-center text-muted-foreground">
+                  <TableCell colSpan={canEdit ? 10 : 9} className="text-center text-muted-foreground">
                     No members yet.
                   </TableCell>
                 </TableRow>
@@ -326,9 +325,6 @@ export function MembersManager({
                   <TableCell className="text-right">{ksh(m.capital)}</TableCell>
                   <TableCell className="text-right">{ksh(m.security)}</TableCell>
                   <TableCell className="text-right">{ksh(m.personalSavings)}</TableCell>
-                  {showWelfare && (
-                    <TableCell className="text-right">{ksh(m.welfareBalance)}</TableCell>
-                  )}
                   <TableCell className="text-right font-medium">
                     {ksh(totalSavings(m))}
                   </TableCell>

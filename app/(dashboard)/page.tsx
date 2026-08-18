@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, meetings, groups, mgrCycles, mgrSlots } from "@/lib/db/schema";
 import { computeNextMgrEvent } from "@/lib/domain/insights";
+import { getOrCreateWelfareFund } from "@/app/(dashboard)/welfare/welfare-data";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
@@ -57,7 +58,7 @@ export default async function DashboardPage() {
   // where this was caught: a race silently made RLS fail-safe to zero rows).
   // Each call below gets its own connection/transaction, so there's nothing
   // to race — still concurrent, just safely so.
-  const [totals, pendingFines, nextMeeting, group, mgrNext] = await Promise.all([
+  const [totals, pendingFines, nextMeeting, group, mgrNext, welfareFund] = await Promise.all([
     withTenant(groupId, (tx) =>
       tx
         .select({
@@ -65,7 +66,6 @@ export default async function DashboardPage() {
           capital: sql<string>`coalesce(sum(${members.capital}), 0)`,
           security: sql<string>`coalesce(sum(${members.security}), 0)`,
           personalSavings: sql<string>`coalesce(sum(${members.personalSavings}), 0)`,
-          welfareBalance: sql<string>`coalesce(sum(${members.welfareBalance}), 0)`,
         })
         .from(members)
         .where(and(eq(members.groupId, groupId), eq(members.active, true)))
@@ -107,6 +107,9 @@ export default async function DashboardPage() {
           );
         })
       : Promise.resolve(null),
+    products.welfare
+      ? withTenant(groupId, (tx) => getOrCreateWelfareFund(tx, groupId))
+      : Promise.resolve(null),
   ]);
 
   return (
@@ -141,7 +144,16 @@ export default async function DashboardPage() {
         <Metric label="Capital" value={ksh(totals.capital)} />
         <Metric label="Security" value={ksh(totals.security)} />
         <Metric label="Personal savings" value={ksh(totals.personalSavings)} />
-        {showWelfare && <Metric label="Welfare fund" value={ksh(totals.welfareBalance)} />}
+        {showWelfare && welfareFund && (
+          <Metric
+            label="Welfare fund"
+            value={ksh(
+              Number(welfareFund.emergencyBalance) +
+                Number(welfareFund.longTermBalance) +
+                Number(welfareFund.advanceBalance),
+            )}
+          />
+        )}
       </div>
 
       {products.mgr && (
