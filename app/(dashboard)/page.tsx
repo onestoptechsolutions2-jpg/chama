@@ -35,12 +35,17 @@ export default async function DashboardPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-muted-foreground">
-            You&apos;re not part of any group yet. Browse public groups and
-            request to join one, or ask an admin to add you directly.
+            You&apos;re not part of any group yet. Create one for your chama, or browse public groups
+            and request to join one.
           </p>
-          <Link href="/discover" className={buttonVariants()}>
-            Discover groups
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/onboarding" className={buttonVariants()}>
+              Create your group
+            </Link>
+            <Link href="/discover" className={buttonVariants({ variant: "outline" })}>
+              Discover groups
+            </Link>
+          </div>
         </CardContent>
       </Card>
     );

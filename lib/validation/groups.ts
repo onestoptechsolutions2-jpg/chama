@@ -31,5 +31,17 @@ export const createGroupSchema = z.object({
   adminEmail: z.string().trim().email("A valid email for the initial admin is required"),
 });
 
+export const onboardingGroupSchema = z.object({
+  name: z.string().trim().min(1, "Group name is required").max(200),
+  type: z.enum(groupTypes),
+  description: z.string().trim().max(1000).optional().or(z.literal("")),
+  contactPersonPhone: z.string().trim().max(40).optional().or(z.literal("")),
+  contactPersonRole: z.string().trim().max(100).optional().or(z.literal("")),
+  loansEnabled: z.literal("on").optional(),
+  mgrEnabled: z.literal("on").optional(),
+  welfareEnabled: z.literal("on").optional(),
+  projectsEnabled: z.literal("on").optional(),
+});
+
 export type JoinRequestInput = z.infer<typeof joinRequestSchema>;
 export type CreateGroupInput = z.infer<typeof createGroupSchema>;
