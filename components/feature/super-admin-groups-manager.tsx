@@ -8,6 +8,7 @@ import { visibleRuleTemplates, type RuleTemplate } from "@/lib/domain/rule-templ
 import {
   createGroupAction,
   setGroupActiveAction,
+  updateGroupAccountAction,
   updateGroupAction,
   type CreateGroupState,
 } from "@/app/super-admin/groups/actions";
@@ -40,6 +41,15 @@ import {
 } from "@/components/ui/dialog";
 
 type Group = typeof groupsTable.$inferSelect;
+type PlatformUser = { id: number; name: string; email: string | null };
+type AccountActivity = {
+  id: number;
+  groupId: number;
+  activityType: string;
+  note: string;
+  nextFollowUpAt: Date | null;
+  createdAt: Date;
+};
 
 const VEHICLE_OPTIONS = [
   {
@@ -528,7 +538,15 @@ function CreateGroupWizard() {
   );
 }
 
-export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
+export function SuperAdminGroupsManager({
+  groups,
+  platformUsers,
+  activities,
+}: {
+  groups: Group[];
+  platformUsers: PlatformUser[];
+  activities: AccountActivity[];
+}) {
   const [query, setQuery] = useState("");
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
@@ -572,6 +590,10 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead>Type</TableHead>
+                <TableHead>Onboarding</TableHead>
+                <TableHead>Tier</TableHead>
+                <TableHead>Owner</TableHead>
+                <TableHead>Next follow-up</TableHead>
                 <TableHead>Visibility</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
@@ -581,7 +603,7 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
             <TableBody>
               {groups.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                  <TableCell colSpan={10} className="text-center text-muted-foreground">
                     No groups match the current search.
                   </TableCell>
                 </TableRow>
@@ -590,6 +612,12 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
                 <TableRow key={g.id}>
                   <TableCell className="font-medium">{g.name}</TableCell>
                   <TableCell className="capitalize">{g.type}</TableCell>
+                  <TableCell className="capitalize">{g.onboardingStage.replace("_", " ")}</TableCell>
+                  <TableCell className="capitalize">{g.accountTier}</TableCell>
+                  <TableCell>{platformUsers.find((user) => user.id === g.accountOwnerUserId)?.name ?? "Unassigned"}</TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {g.nextFollowUpAt ? new Date(g.nextFollowUpAt).toLocaleDateString() : "None"}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={g.isPublic ? "secondary" : "outline"}>
                       {g.isPublic ? "Public" : "Private"}
@@ -625,13 +653,28 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
         </CardContent>
       </Card>
       {editingGroup && (
-        <EditGroupDialog group={editingGroup} onClose={() => setEditingGroup(null)} />
+        <EditGroupDialog
+          group={editingGroup}
+          platformUsers={platformUsers}
+          activities={activities.filter((activity) => activity.groupId === editingGroup.id)}
+          onClose={() => setEditingGroup(null)}
+        />
       )}
     </div>
   );
 }
 
-function EditGroupDialog({ group, onClose }: { group: Group; onClose: () => void }) {
+function EditGroupDialog({
+  group,
+  platformUsers,
+  activities,
+  onClose,
+}: {
+  group: Group;
+  platformUsers: PlatformUser[];
+  activities: AccountActivity[];
+  onClose: () => void;
+}) {
   const [name, setName] = useState(group.name);
   const [type, setType] = useState(group.type);
   const [description, setDescription] = useState(group.description ?? "");
@@ -639,6 +682,18 @@ function EditGroupDialog({ group, onClose }: { group: Group; onClose: () => void
   const [requireApproval, setRequireApproval] = useState(group.requireApproval ? "true" : "false");
   const [maxMembers, setMaxMembers] = useState(group.maxMembers?.toString() ?? "");
   const [pending, setPending] = useState(false);
+  const [contactPersonName, setContactPersonName] = useState(group.contactPersonName ?? "");
+  const [contactPersonRole, setContactPersonRole] = useState(group.contactPersonRole ?? "");
+  const [contactPersonPhone, setContactPersonPhone] = useState(group.contactPersonPhone ?? "");
+  const [contactPersonEmail, setContactPersonEmail] = useState(group.contactPersonEmail ?? "");
+  const [onboardingStage, setOnboardingStage] = useState(group.onboardingStage);
+  const [accountTier, setAccountTier] = useState(group.accountTier);
+  const [accountOwnerUserId, setAccountOwnerUserId] = useState(group.accountOwnerUserId?.toString() ?? "none");
+  const [nextFollowUpAt, setNextFollowUpAt] = useState(
+    group.nextFollowUpAt ? new Date(group.nextFollowUpAt).toISOString().slice(0, 16) : "",
+  );
+  const [internalNotes, setInternalNotes] = useState(group.internalNotes ?? "");
+  const [activityNote, setActivityNote] = useState("");
 
   async function save() {
     setPending(true);
@@ -656,6 +711,29 @@ function EditGroupDialog({ group, onClose }: { group: Group; onClose: () => void
       return;
     }
     toast.success("Group settings updated");
+    onClose();
+  }
+
+  async function saveAccountDetails() {
+    setPending(true);
+    const result = await updateGroupAccountAction(group.id, {
+      contactPersonName,
+      contactPersonRole,
+      contactPersonPhone,
+      contactPersonEmail,
+      onboardingStage,
+      accountTier,
+      accountOwnerUserId: accountOwnerUserId === "none" ? null : Number(accountOwnerUserId),
+      nextFollowUpAt,
+      internalNotes,
+      activityNote,
+    });
+    setPending(false);
+    if (result && "error" in result) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Account details updated");
     onClose();
   }
 
@@ -703,9 +781,38 @@ function EditGroupDialog({ group, onClose }: { group: Group; onClose: () => void
             <Label htmlFor="edit-group-max-members">Max members (optional)</Label>
             <Input id="edit-group-max-members" type="number" min="1" step="1" value={maxMembers} onChange={(event) => setMaxMembers(event.target.value)} />
           </div>
+          <div className="border-t pt-4">
+            <h3 className="mb-3 text-sm font-semibold">Account management</h3>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2"><Label htmlFor="contact-person-name">Contact person</Label><Input id="contact-person-name" value={contactPersonName} onChange={(event) => setContactPersonName(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="contact-person-role">Contact role</Label><Input id="contact-person-role" placeholder="Chairperson, secretary..." value={contactPersonRole} onChange={(event) => setContactPersonRole(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="contact-person-email">Contact email</Label><Input id="contact-person-email" type="email" value={contactPersonEmail} onChange={(event) => setContactPersonEmail(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="contact-person-phone">Contact phone</Label><Input id="contact-person-phone" value={contactPersonPhone} onChange={(event) => setContactPersonPhone(event.target.value)} /></div>
+              <div className="space-y-2"><Label htmlFor="onboarding-stage">Onboarding stage</Label>
+                <Select value={onboardingStage} onValueChange={(value) => setOnboardingStage(value ?? group.onboardingStage)} items={{ lead: "Lead", contacted: "Contacted", demo: "Demo", registration: "Registration", verification: "Verification", training: "Training", active: "Active", at_risk: "At risk", churned: "Churned" }}>
+                  <SelectTrigger id="onboarding-stage" className="w-full"><SelectValue /></SelectTrigger><SelectContent>{["lead", "contacted", "demo", "registration", "verification", "training", "active", "at_risk", "churned"].map((value) => <SelectItem key={value} value={value}>{value.replace("_", " ")}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label htmlFor="account-tier">Account tier</Label>
+                <Select value={accountTier} onValueChange={(value) => setAccountTier(value ?? group.accountTier)} items={{ standard: "Standard", key: "Key", strategic: "Strategic" }}>
+                  <SelectTrigger id="account-tier" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="standard">Standard</SelectItem><SelectItem value="key">Key</SelectItem><SelectItem value="strategic">Strategic</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label htmlFor="account-owner">Account owner</Label>
+                <Select value={accountOwnerUserId} onValueChange={(value) => setAccountOwnerUserId(value ?? "none")} items={Object.fromEntries([...[{ id: "none", name: "Unassigned" }], ...platformUsers].map((user) => [user.id.toString(), user.name]))}>
+                  <SelectTrigger id="account-owner" className="w-full"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">Unassigned</SelectItem>{platformUsers.map((user) => <SelectItem key={user.id} value={user.id.toString()}>{user.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2"><Label htmlFor="next-follow-up">Next follow-up</Label><Input id="next-follow-up" type="datetime-local" value={nextFollowUpAt} onChange={(event) => setNextFollowUpAt(event.target.value)} /></div>
+            </div>
+            <div className="mt-4 space-y-2"><Label htmlFor="internal-notes">Internal notes</Label><Input id="internal-notes" value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} /></div>
+            <div className="mt-4 space-y-2"><Label htmlFor="activity-note">Log follow-up note</Label><Input id="activity-note" placeholder="What happened or what needs attention?" value={activityNote} onChange={(event) => setActivityNote(event.target.value)} /></div>
+            {activities.length > 0 && <div className="mt-4 space-y-2"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>{activities.slice(0, 5).map((activity) => <div key={activity.id} className="rounded-md border p-2 text-sm"><p>{activity.note}</p><p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p></div>)}</div>}
+          </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button onClick={save} disabled={pending}>{pending ? "Saving..." : "Save changes"}</Button>
+            <Button onClick={saveAccountDetails} disabled={pending}>{pending ? "Saving..." : "Save account"}</Button>
           </div>
         </div>
       </DialogContent>

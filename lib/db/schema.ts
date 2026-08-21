@@ -39,6 +39,20 @@ export const membershipStatusEnum = pgEnum("membership_status", [
 
 export const platformRoleEnum = pgEnum("platform_role", ["owner", "support"]);
 
+export const onboardingStageEnum = pgEnum("onboarding_stage", [
+  "lead",
+  "contacted",
+  "demo",
+  "registration",
+  "verification",
+  "training",
+  "active",
+  "at_risk",
+  "churned",
+]);
+
+export const accountTierEnum = pgEnum("account_tier", ["standard", "key", "strategic"]);
+
 export const kycIdTypeEnum = pgEnum("kyc_id_type", ["national_id", "passport"]);
 
 export const ruleCategoryEnum = pgEnum("rule_category", [
@@ -370,6 +384,17 @@ export const groups = pgTable("groups", {
   // Contact
   phone: text("phone"),
   email: text("email"),
+  contactPersonName: text("contact_person_name"),
+  contactPersonRole: text("contact_person_role"),
+  contactPersonPhone: text("contact_person_phone"),
+  contactPersonEmail: text("contact_person_email"),
+  onboardingStage: onboardingStageEnum("onboarding_stage").notNull().default("lead"),
+  accountTier: accountTierEnum("account_tier").notNull().default("standard"),
+  accountOwnerUserId: integer("account_owner_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
+  internalNotes: text("internal_notes"),
 
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -410,6 +435,25 @@ export const platformUserAuditLogs = pgTable(
     index("platform_user_audit_logs_target_user_idx").on(t.targetUserId),
     index("platform_user_audit_logs_actor_user_idx").on(t.actorUserId),
     index("platform_user_audit_logs_created_at_idx").on(t.createdAt),
+  ],
+);
+
+export const groupAccountActivities = pgTable(
+  "group_account_activities",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    activityType: text("activity_type").notNull(),
+    note: text("note").notNull(),
+    nextFollowUpAt: timestamp("next_follow_up_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("group_account_activities_group_id_idx").on(t.groupId),
+    index("group_account_activities_created_at_idx").on(t.createdAt),
   ],
 );
 

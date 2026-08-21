@@ -3,7 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
-import { groups, groupMemberships, members, users, rules } from "@/lib/db/schema";
+import {
+  groupAccountActivities,
+  groups,
+  groupMemberships,
+  members,
+  users,
+  rules,
+} from "@/lib/db/schema";
 import { requirePlatformAdmin } from "@/lib/auth/session";
 import { createGroupSchema, groupTypes } from "@/lib/validation/groups";
 import { updateLoanSettingsSchema } from "@/lib/validation/settings";
@@ -12,6 +19,90 @@ import { visibleRuleTemplates } from "@/lib/domain/rule-templates";
 
 export type CreateGroupState = { error: string } | null;
 export type UpdateGroupState = { error: string } | null;
+
+const ONBOARDING_STAGES = [
+  "lead",
+  "contacted",
+  "demo",
+  "registration",
+  "verification",
+  "training",
+  "active",
+  "at_risk",
+  "churned",
+] as const;
+const ACCOUNT_TIERS = ["standard", "key", "strategic"] as const;
+
+export type AccountManagementState = { error: string } | null;
+
+export async function updateGroupAccountAction(
+  groupId: number,
+  input: {
+    contactPersonName: string;
+    contactPersonRole: string;
+    contactPersonPhone: string;
+    contactPersonEmail: string;
+    onboardingStage: string;
+    accountTier: string;
+    accountOwnerUserId: number | null;
+    nextFollowUpAt: string;
+    internalNotes: string;
+    activityNote: string;
+  },
+): Promise<AccountManagementState> {
+  const session = await requirePlatformAdmin();
+  if (!ONBOARDING_STAGES.includes(input.onboardingStage as (typeof ONBOARDING_STAGES)[number])) {
+    return { error: "Invalid onboarding stage" };
+  }
+  if (!ACCOUNT_TIERS.includes(input.accountTier as (typeof ACCOUNT_TIERS)[number])) {
+    return { error: "Invalid account tier" };
+  }
+
+  const followUp = input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : null;
+  if (followUp && Number.isNaN(followUp.getTime())) {
+    return { error: "Invalid follow-up date" };
+  }
+
+  const result = await withPlatformAdmin(async (tx) => {
+    if (input.accountOwnerUserId !== null) {
+      const owner = await tx.query.users.findFirst({ where: eq(users.id, input.accountOwnerUserId) });
+      if (!owner?.platformRole) return { error: "Account owner must be a platform team member" };
+    }
+
+    const [updated] = await tx
+      .update(groups)
+      .set({
+        contactPersonName: input.contactPersonName.trim() || null,
+        contactPersonRole: input.contactPersonRole.trim() || null,
+        contactPersonPhone: input.contactPersonPhone.trim() || null,
+        contactPersonEmail: input.contactPersonEmail.trim().toLowerCase() || null,
+        onboardingStage: input.onboardingStage as (typeof ONBOARDING_STAGES)[number],
+        accountTier: input.accountTier as (typeof ACCOUNT_TIERS)[number],
+        accountOwnerUserId: input.accountOwnerUserId,
+        nextFollowUpAt: followUp,
+        internalNotes: input.internalNotes.trim() || null,
+        updatedAt: new Date(),
+      })
+      .where(eq(groups.id, groupId))
+      .returning({ id: groups.id });
+    if (!updated) return { error: "Group not found" };
+
+    if (input.activityNote.trim()) {
+      await tx.insert(groupAccountActivities).values({
+        groupId,
+        actorUserId: session.user.id,
+        activityType: "account_update",
+        note: input.activityNote.trim(),
+        nextFollowUpAt: followUp,
+      });
+    }
+    return null;
+  });
+
+  if (result && "error" in result) return result;
+  revalidatePath("/super-admin/groups");
+  return null;
+}
 
 export async function updateGroupAction(
   groupId: number,
