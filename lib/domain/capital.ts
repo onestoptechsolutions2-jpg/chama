@@ -24,6 +24,10 @@ export type CapitalPools = {
   securityPool: number;
   personalSavingsPool: number;
   welfareAvailable: number;
+  /** @deprecated kept for compatibility with older callers/tests; prefer welfareAvailable. */
+  welfareCollected?: number;
+  /** @deprecated kept for compatibility with older callers/tests; prefer welfareAvailable. */
+  welfareDisbursed?: number;
   projectsCommitted: number;
   /** Sum of loans.principal for active/extended/overdue loans — cash actually drawn from the capital pool. */
   loanPrincipalOutstanding: number;
@@ -53,10 +57,15 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     securityPool,
     personalSavingsPool,
     welfareAvailable,
+    welfareCollected,
+    welfareDisbursed,
     projectsCommitted,
     loanPrincipalOutstanding,
     loanReceivableOutstanding,
   } = pools;
+
+  const normalizedWelfareAvailable =
+    Number(welfareAvailable ?? (Number(welfareCollected ?? 0) - Number(welfareDisbursed ?? 0)));
 
   const overextended = loanPrincipalOutstanding > capitalPool;
   const reserve = Math.max(0, capitalPool - loanPrincipalOutstanding);
@@ -72,7 +81,7 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     overextended,
     securityPool,
     personalSavingsPool,
-    welfareAvailable: Math.max(0, welfareAvailable),
+    welfareAvailable: Math.max(0, normalizedWelfareAvailable),
     projectsCommitted,
   };
 }

@@ -5,6 +5,7 @@ const basePools: CapitalPools = {
   capitalPool: 0,
   securityPool: 0,
   personalSavingsPool: 0,
+  welfareAvailable: 0,
   welfareCollected: 0,
   welfareDisbursed: 0,
   projectsCommitted: 0,

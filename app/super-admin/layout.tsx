@@ -19,6 +19,9 @@ export default async function SuperAdminLayout({
             <Link href="/super-admin/groups" className="text-muted-foreground hover:text-foreground">
               Groups
             </Link>
+            <Link href="/super-admin/users" className="text-muted-foreground hover:text-foreground">
+              Users
+            </Link>
             <Link href="/super-admin/stats" className="text-muted-foreground hover:text-foreground">
               Stats
             </Link>
