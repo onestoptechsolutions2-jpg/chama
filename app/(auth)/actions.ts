@@ -71,7 +71,10 @@ export async function loginAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { identifier, password } = parsed.data;
+  const { password } = parsed.data;
+  const identifier = parsed.data.identifier.includes("@")
+    ? parsed.data.identifier.toLowerCase()
+    : parsed.data.identifier;
 
   const user = await db.query.users.findFirst({
     where: or(eq(users.email, identifier), eq(users.phone, identifier)),

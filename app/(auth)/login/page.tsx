@@ -31,7 +31,7 @@ function LoginForm() {
           <CardTitle className="text-2xl">Sign in</CardTitle>
         </CardHeader>
         <CardContent>
-          <form action={formAction} className="space-y-4">
+          <form action={formAction} className="space-y-4" autoComplete="on">
             {next && <input type="hidden" name="next" value={next} />}
             <div className="space-y-2">
               <Label htmlFor="identifier">Email or phone</Label>
