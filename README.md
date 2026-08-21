@@ -15,7 +15,7 @@ Next.js (App Router) on Vercel, Neon Postgres via Drizzle ORM, Row-Level Securit
    - `APP_DATABASE_URL` — a separate, least-privilege Postgres role the app actually connects as. RLS only works because this role has no `BYPASSRLS`; see `docs/architecture.md`'s Phase 7 notes for exactly how to create it.
    - The rest (`CRON_SECRET`, `INTASEND_*`, `PORTAL_BASE_URL`) as documented inline in `.env.example`.
 2. `npm install`
-3. `npm run db:migrate` — applies every migration in `drizzle/`.
+3. `npm run db:migrate` — applies every migration in `drizzle/`. Vercel also runs this automatically before every production build, so `DATABASE_URL` must be configured in the Vercel project as the migration owner connection.
 4. `npm run db:seed` — creates one demo group + admin login (prints the credentials).
 5. `npm run dev`
 
