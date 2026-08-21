@@ -20,7 +20,7 @@ function safeNext(formData: FormData): string {
   if (typeof next === "string" && next.startsWith("/") && !next.startsWith("//")) {
     return next;
   }
-  return "/";
+    return "/dashboard";
 }
 
 export async function registerAction(
