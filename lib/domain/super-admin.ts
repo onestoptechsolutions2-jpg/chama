@@ -15,6 +15,13 @@ export function platformRoleLabel(role: PlatformRole | null): string {
   return "None";
 }
 
+export function platformRoleChangeSummary(
+  fromRole: PlatformRole | null,
+  toRole: PlatformRole | null,
+): string {
+  return `${platformRoleLabel(fromRole)} → ${platformRoleLabel(toRole)}`;
+}
+
 export function canGrantPlatformRole(
   callerRole: PlatformRole | null,
   targetRole: PlatformRole | null,

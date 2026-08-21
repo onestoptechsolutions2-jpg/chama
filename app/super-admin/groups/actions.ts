@@ -5,12 +5,76 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { groups, groupMemberships, members, users, rules } from "@/lib/db/schema";
 import { requirePlatformAdmin } from "@/lib/auth/session";
-import { createGroupSchema } from "@/lib/validation/groups";
+import { createGroupSchema, groupTypes } from "@/lib/validation/groups";
 import { updateLoanSettingsSchema } from "@/lib/validation/settings";
 import { isKycComplete } from "@/lib/domain/officials";
 import { visibleRuleTemplates } from "@/lib/domain/rule-templates";
 
 export type CreateGroupState = { error: string } | null;
+export type UpdateGroupState = { error: string } | null;
+
+export async function updateGroupAction(
+  groupId: number,
+  input: {
+    name: string;
+    type: string;
+    description: string;
+    isPublic: boolean;
+    requireApproval: boolean;
+    maxMembers: number | null;
+  },
+): Promise<UpdateGroupState> {
+  await requirePlatformAdmin();
+  const name = input.name.trim();
+  if (!name || !groupTypes.includes(input.type as (typeof groupTypes)[number])) {
+    return { error: "A valid group name and type are required" };
+  }
+  if (input.maxMembers !== null && (!Number.isInteger(input.maxMembers) || input.maxMembers < 1)) {
+    return { error: "Maximum members must be a positive whole number" };
+  }
+
+  const result = await withPlatformAdmin(async (tx) => {
+    const [updated] = await tx
+      .update(groups)
+      .set({
+        name,
+        type: input.type as (typeof groupTypes)[number],
+        description: input.description.trim() || null,
+        isPublic: input.isPublic,
+        requireApproval: input.requireApproval,
+        maxMembers: input.maxMembers,
+        updatedAt: new Date(),
+      })
+      .where(eq(groups.id, groupId))
+      .returning({ id: groups.id });
+    return updated ? null : { error: "Group not found" };
+  });
+
+  if (result && "error" in result) return result;
+  revalidatePath("/super-admin/groups");
+  revalidatePath("/discover");
+  return null;
+}
+
+export async function setGroupActiveAction(
+  groupId: number,
+  active: boolean,
+): Promise<UpdateGroupState> {
+  await requirePlatformAdmin();
+  const result = await withPlatformAdmin(async (tx) => {
+    const [updated] = await tx
+      .update(groups)
+      .set({ active, updatedAt: new Date() })
+      .where(eq(groups.id, groupId))
+      .returning({ id: groups.id });
+    return updated ? null : { error: "Group not found" };
+  });
+
+  if (result && "error" in result) return result;
+  revalidatePath("/super-admin/groups");
+  revalidatePath("/discover");
+  return null;
+}
 
 /**
  * The new-group setup wizard's single finishing action — creates the group,

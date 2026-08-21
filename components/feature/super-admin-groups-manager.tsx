@@ -5,7 +5,12 @@ import { toast } from "sonner";
 import type { groups as groupsTable } from "@/lib/db/schema";
 import { groupTypes } from "@/lib/validation/groups";
 import { visibleRuleTemplates, type RuleTemplate } from "@/lib/domain/rule-templates";
-import { createGroupAction, type CreateGroupState } from "@/app/super-admin/groups/actions";
+import {
+  createGroupAction,
+  setGroupActiveAction,
+  updateGroupAction,
+  type CreateGroupState,
+} from "@/app/super-admin/groups/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -524,13 +529,44 @@ function CreateGroupWizard() {
 }
 
 export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
+  const [query, setQuery] = useState("");
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
+
+  const filteredGroups = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return groups;
+    return groups.filter((group) =>
+      [group.name, group.type, group.description].some(
+        (value) => typeof value === "string" && value.toLowerCase().includes(needle),
+      ),
+    );
+  }, [groups, query]);
+
+  async function handleActiveChange(group: Group) {
+    setSavingId(group.id);
+    const result = await setGroupActiveAction(group.id, !group.active);
+    setSavingId(null);
+    if (result && "error" in result) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success(group.active ? "Group deactivated" : "Group reactivated");
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex justify-end">
         <CreateGroupWizard />
       </div>
       <Card>
-        <CardContent className="overflow-x-auto">
+        <CardContent className="space-y-4 overflow-x-auto">
+          <Input
+            aria-label="Search groups"
+            placeholder="Search by group name, type, or description"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
           <Table>
             <TableHeader>
               <TableRow>
@@ -539,17 +575,18 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
                 <TableHead>Visibility</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {groups.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center text-muted-foreground">
-                    No groups yet.
+                  <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    No groups match the current search.
                   </TableCell>
                 </TableRow>
               )}
-              {groups.map((g) => (
+              {filteredGroups.map((g) => (
                 <TableRow key={g.id}>
                   <TableCell className="font-medium">{g.name}</TableCell>
                   <TableCell className="capitalize">{g.type}</TableCell>
@@ -566,12 +603,112 @@ export function SuperAdminGroupsManager({ groups }: { groups: Group[] }) {
                   <TableCell className="text-muted-foreground">
                     {new Date(g.createdAt).toLocaleDateString()}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setEditingGroup(g)}>
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={g.active ? "secondary" : "default"}
+                        onClick={() => handleActiveChange(g)}
+                        disabled={savingId === g.id}
+                      >
+                        {savingId === g.id ? "Working..." : g.active ? "Deactivate" : "Activate"}
+                      </Button>
+                    </div>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+      {editingGroup && (
+        <EditGroupDialog group={editingGroup} onClose={() => setEditingGroup(null)} />
+      )}
     </div>
+  );
+}
+
+function EditGroupDialog({ group, onClose }: { group: Group; onClose: () => void }) {
+  const [name, setName] = useState(group.name);
+  const [type, setType] = useState(group.type);
+  const [description, setDescription] = useState(group.description ?? "");
+  const [isPublic, setIsPublic] = useState(group.isPublic ? "true" : "false");
+  const [requireApproval, setRequireApproval] = useState(group.requireApproval ? "true" : "false");
+  const [maxMembers, setMaxMembers] = useState(group.maxMembers?.toString() ?? "");
+  const [pending, setPending] = useState(false);
+
+  async function save() {
+    setPending(true);
+    const result = await updateGroupAction(group.id, {
+      name,
+      type,
+      description,
+      isPublic: isPublic === "true",
+      requireApproval: requireApproval === "true",
+      maxMembers: maxMembers ? Number(maxMembers) : null,
+    });
+    setPending(false);
+    if (result && "error" in result) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Group settings updated");
+    onClose();
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit group</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-group-name">Name</Label>
+            <Input id="edit-group-name" value={name} onChange={(event) => setName(event.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-group-type">Type</Label>
+            <Select value={type} onValueChange={(value) => setType(value ?? group.type)} items={Object.fromEntries(groupTypes.map((item) => [item, item]))}>
+              <SelectTrigger id="edit-group-type" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {groupTypes.map((item) => <SelectItem key={item} value={item} className="capitalize">{item}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-group-description">Description</Label>
+            <Input id="edit-group-description" value={description} onChange={(event) => setDescription(event.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-group-visibility">Visibility</Label>
+              <Select value={isPublic} onValueChange={(value) => setIsPublic(value ?? "true")} items={{ true: "Public", false: "Private" }}>
+                <SelectTrigger id="edit-group-visibility" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="true">Public</SelectItem><SelectItem value="false">Private</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-group-joining">Joining</Label>
+              <Select value={requireApproval} onValueChange={(value) => setRequireApproval(value ?? "true")} items={{ true: "Requires approval", false: "Auto-approve" }}>
+                <SelectTrigger id="edit-group-joining" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="true">Requires approval</SelectItem><SelectItem value="false">Auto-approve</SelectItem></SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-group-max-members">Max members (optional)</Label>
+            <Input id="edit-group-max-members" type="number" min="1" step="1" value={maxMembers} onChange={(event) => setMaxMembers(event.target.value)} />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button onClick={save} disabled={pending}>{pending ? "Saving..." : "Save changes"}</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -392,6 +392,27 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const platformUserAuditLogs = pgTable(
+  "platform_user_audit_logs",
+  {
+    id: serial("id").primaryKey(),
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    targetUserId: integer("target_user_id")
+      .notNull()
+      .references(() => users.id),
+    eventType: text("event_type").notNull().default("platform_user_event"),
+    fromPlatformRole: platformRoleEnum("from_platform_role"),
+    toPlatformRole: platformRoleEnum("to_platform_role"),
+    note: text("note"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("platform_user_audit_logs_target_user_idx").on(t.targetUserId),
+    index("platform_user_audit_logs_actor_user_idx").on(t.actorUserId),
+    index("platform_user_audit_logs_created_at_idx").on(t.createdAt),
+  ],
+);
+
 // ── Members (financial profile per user-in-group) ──────────────────────────
 // userId is unique PER GROUP, not globally — a user with financial profiles
 // in two different groups (the whole point of multi-tenancy) needs two rows

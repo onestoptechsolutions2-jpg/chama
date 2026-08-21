@@ -3,6 +3,7 @@ import {
   normalizePlatformRole,
   platformRoleLabel,
   canGrantPlatformRole,
+  platformRoleChangeSummary,
 } from "../lib/domain/super-admin";
 
 describe("super-admin helpers", () => {
@@ -24,5 +25,11 @@ describe("super-admin helpers", () => {
     expect(canGrantPlatformRole("owner", "support")).toBe(true);
     expect(canGrantPlatformRole("support", "owner")).toBe(false);
     expect(canGrantPlatformRole(null, "support")).toBe(false);
+  });
+
+  it("summarizes role changes in a readable audit label", () => {
+    expect(platformRoleChangeSummary("support", "owner")).toBe("Support → Owner");
+    expect(platformRoleChangeSummary(null, "support")).toBe("None → Support");
+    expect(platformRoleChangeSummary("owner", null)).toBe("Owner → None");
   });
 });
