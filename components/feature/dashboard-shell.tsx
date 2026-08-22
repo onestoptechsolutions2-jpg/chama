@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, ChevronsUpDown, LogOut, ShieldCheck } from "lucide-react";
+import { Menu, MoreHorizontal, ChevronsUpDown, LogOut, ShieldCheck } from "lucide-react";
 import { getVisibleNavItems, type NavItem } from "@/lib/nav-config";
 import type { Session } from "@/lib/auth/session";
 import { switchGroupAction } from "@/app/(dashboard)/actions";
@@ -152,6 +152,56 @@ function SidebarContent({
   );
 }
 
+/** Fixed bottom tab bar (mobile only) — a few essential destinations plus
+ * "More" for everything else, so the primary loop never needs the drawer. */
+function BottomTabBar({
+  navItems,
+  onMore,
+}: {
+  navItems: NavItem[];
+  onMore: () => void;
+}) {
+  const pathname = usePathname();
+  const tabs = navItems.filter((i) => i.primary).slice(0, 4);
+
+  return (
+    <nav className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur md:hidden">
+      <div className="flex" style={{ paddingBottom: "env(safe-area-inset-bottom)" }}>
+        {tabs.map((item) => {
+          const Icon = item.icon;
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+            >
+              <span
+                className={`flex size-9 items-center justify-center rounded-full transition-colors ${
+                  active ? "bg-primary text-primary-foreground" : "text-muted-foreground"
+                }`}
+              >
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className={active ? "text-foreground" : "text-muted-foreground"}>{item.label}</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          onClick={onMore}
+          className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+        >
+          <span className="flex size-9 items-center justify-center rounded-full text-muted-foreground">
+            <MoreHorizontal className="h-5 w-5" />
+          </span>
+          <span className="text-muted-foreground">More</span>
+        </button>
+      </div>
+    </nav>
+  );
+}
+
 export function DashboardShell({
   session,
   children,
@@ -190,10 +240,14 @@ export function DashboardShell({
               />
             </SheetContent>
           </Sheet>
-          <span className="font-semibold">Chama Platform</span>
+          <span className="truncate font-semibold">
+            {session.activeMembership?.groupName ?? "Chama Platform"}
+          </span>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 pb-20 md:p-6 md:pb-6">{children}</main>
+
+        <BottomTabBar navItems={navItems} onMore={() => setMobileOpen(true)} />
       </div>
     </div>
   );

@@ -15,6 +15,7 @@ import {
   welfareClaims,
   contributions,
 } from "@/lib/db/schema";
+import type { Report } from "@/components/feature/insights-view";
 import { computeCapitalPosition, computeAllocationDrift } from "@/lib/domain/capital";
 import {
   computeNextMgrEvent,
@@ -48,7 +49,7 @@ export default async function InsightsPage() {
   // group's meetings, then attendance for those meetings") are bundled into
   // one withTenant call each, since sequential awaits within a single
   // transaction don't have that race.
-  const [core, attendanceData, welfareCollected, welfareDisbursed, welfarePending] =
+  const [core, attendanceData, welfareCollected, welfareDisbursed, welfarePending, report] =
     await Promise.all([
       withTenant(groupId, async (tx) => {
         const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
@@ -200,6 +201,37 @@ export default async function InsightsPage() {
               .then((rows) => rows[0].total),
           )
         : Promise.resolve("0"),
+      // Folded in from the old standalone Reports page — staff only, and
+      // scoped to its own withTenant call rather than sharing core's
+      // transaction (same Promise.all/RLS-race reasoning as everywhere
+      // else in this function).
+      isStaff
+        ? withTenant(groupId, async (tx): Promise<Report> => {
+            const monthly = await tx
+              .select({ year: contributions.year, month: contributions.month, total: sql<string>`coalesce(sum(${contributions.amount}), 0)` })
+              .from(contributions)
+              .where(and(eq(contributions.groupId, groupId), eq(contributions.status, "paid")))
+              .groupBy(contributions.year, contributions.month)
+              .orderBy(contributions.year, contributions.month);
+            const balances = await tx
+              .select({ name: members.name, total: sql<string>`(${members.capital} + ${members.security} + ${members.personalSavings})` })
+              .from(members)
+              .where(and(eq(members.groupId, groupId), eq(members.active, true)))
+              .orderBy(sql`(${members.capital} + ${members.security} + ${members.personalSavings}) desc`)
+              .limit(10);
+            const loansByStatus = await tx
+              .select({ status: loans.status, count: sql<number>`count(*)::int`, outstanding: sql<string>`coalesce(sum(${loans.amountRemaining}), 0)` })
+              .from(loans)
+              .where(eq(loans.groupId, groupId))
+              .groupBy(loans.status);
+            const finesByStatus = await tx
+              .select({ status: fines.status, total: sql<string>`coalesce(sum(${fines.amount}), 0)` })
+              .from(fines)
+              .where(eq(fines.groupId, groupId))
+              .groupBy(fines.status);
+            return { monthly, balances, loansByStatus, finesByStatus };
+          })
+        : Promise.resolve(null),
     ]);
 
   if (!core.group) return null;
@@ -295,6 +327,7 @@ export default async function InsightsPage() {
         memberRiskFlags={isStaff ? memberRiskFlags : []}
         isStaff={isStaff}
         mgrEnabled={products.mgr}
+        report={report}
       />
     </div>
   );
