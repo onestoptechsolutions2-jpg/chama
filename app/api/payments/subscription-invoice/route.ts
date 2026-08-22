@@ -36,6 +36,23 @@ export async function POST(req: Request) {
     const amount = Number(invoice.totalAmount);
     if (amount <= 0) return { error: "This invoice has nothing owing" as const };
 
+    // Retriggering (e.g. the first STK prompt was missed) must not leave the
+    // prior attempt sitting as "pending" forever — with nothing to ever
+    // resolve it, it would keep counting toward super-admin's
+    // pendingPaymentAmount (summed straight from platform_payments) even
+    // though this invoice only owes one amount, once, on /dashboard/billing.
+    if (invoice.paymentId) {
+      const priorPayment = await tx.query.platformPayments.findFirst({
+        where: eq(platformPayments.id, invoice.paymentId),
+      });
+      if (priorPayment?.status === "pending") {
+        await tx
+          .update(platformPayments)
+          .set({ status: "failed", updatedAt: new Date() })
+          .where(eq(platformPayments.id, priorPayment.id));
+      }
+    }
+
     const normalizedPhone = normalizeKenyanPhone(phone);
 
     const [payment] = await tx
