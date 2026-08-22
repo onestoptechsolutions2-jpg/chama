@@ -50,6 +50,14 @@ type AccountActivity = {
   nextFollowUpAt: Date | null;
   createdAt: Date;
 };
+type GroupFinance = {
+  pendingAmount: string;
+  pendingCount: number;
+  latestStatus: string;
+  latestAmount: string;
+  paidAmount: string;
+  pendingPaymentAmount: string;
+};
 
 const VEHICLE_OPTIONS = [
   {
@@ -542,10 +550,12 @@ export function SuperAdminGroupsManager({
   groups,
   platformUsers,
   activities,
+  finance,
 }: {
   groups: Group[];
   platformUsers: PlatformUser[];
   activities: AccountActivity[];
+  finance: Map<number, GroupFinance>;
 }) {
   const [query, setQuery] = useState("");
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
@@ -594,6 +604,10 @@ export function SuperAdminGroupsManager({
                 <TableHead>Tier</TableHead>
                 <TableHead>Owner</TableHead>
                 <TableHead>Next follow-up</TableHead>
+                <TableHead>Subscription</TableHead>
+                <TableHead>Pending</TableHead>
+                <TableHead>Payment pending</TableHead>
+                <TableHead>Collected</TableHead>
                 <TableHead>Visibility</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Created</TableHead>
@@ -603,13 +617,16 @@ export function SuperAdminGroupsManager({
             <TableBody>
               {groups.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center text-muted-foreground">
+                  <TableCell colSpan={14} className="text-center text-muted-foreground">
                     No groups match the current search.
                   </TableCell>
                 </TableRow>
               )}
               {filteredGroups.map((g) => (
                 <TableRow key={g.id}>
+                  {(() => {
+                    const billing = finance.get(g.id) ?? { pendingAmount: "0", pendingCount: 0, latestStatus: "none", latestAmount: "0", paidAmount: "0", pendingPaymentAmount: "0" };
+                    return <>
                   <TableCell className="font-medium">{g.name}</TableCell>
                   <TableCell className="capitalize">{g.type}</TableCell>
                   <TableCell className="capitalize">{g.onboardingStage.replace("_", " ")}</TableCell>
@@ -618,6 +635,20 @@ export function SuperAdminGroupsManager({
                   <TableCell className="text-muted-foreground">
                     {g.nextFollowUpAt ? new Date(g.nextFollowUpAt).toLocaleDateString() : "None"}
                   </TableCell>
+                  <TableCell>
+                    <Badge variant={billing.latestStatus === "paid" ? "secondary" : billing.latestStatus === "pending" ? "outline" : "secondary"}>
+                      {billing.latestStatus === "none" ? "No invoice" : billing.latestStatus}
+                    </Badge>
+                    {billing.latestStatus !== "none" && <span className="ml-2 text-xs text-muted-foreground">Ksh {Number(billing.latestAmount).toLocaleString()}</span>}
+                  </TableCell>
+                  <TableCell className={Number(billing.pendingAmount) > 0 ? "font-medium text-destructive" : "text-muted-foreground"}>
+                    {Number(billing.pendingAmount) > 0 ? `Ksh ${Number(billing.pendingAmount).toLocaleString()}` : "None"}
+                    {billing.pendingCount > 1 && <span className="ml-1 text-xs">({billing.pendingCount})</span>}
+                  </TableCell>
+                  <TableCell className={Number(billing.pendingPaymentAmount) > 0 ? "font-medium text-amber-700" : "text-muted-foreground"}>
+                    {Number(billing.pendingPaymentAmount) > 0 ? `Ksh ${Number(billing.pendingPaymentAmount).toLocaleString()}` : "None"}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">Ksh {Number(billing.paidAmount).toLocaleString()}</TableCell>
                   <TableCell>
                     <Badge variant={g.isPublic ? "secondary" : "outline"}>
                       {g.isPublic ? "Public" : "Private"}
@@ -646,6 +677,8 @@ export function SuperAdminGroupsManager({
                       </Button>
                     </div>
                   </TableCell>
+                    </>;
+                  })()}
                 </TableRow>
               ))}
             </TableBody>
