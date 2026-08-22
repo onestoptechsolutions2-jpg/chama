@@ -19,6 +19,7 @@ import {
   HelpCircle,
   UserCircle,
   Lightbulb,
+  BarChart3,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/auth/session";
 import type { ProductFlags } from "@/lib/domain/products";
@@ -58,7 +59,7 @@ export type NavItem = {
  */
 export const navItems: NavItem[] = [
   {
-    href: "/",
+    href: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
     guide: "An overview of the group: member count, balances, pending fines, and the next meeting.",
@@ -69,6 +70,13 @@ export const navItems: NavItem[] = [
     icon: Lightbulb,
     guide:
       "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in.",
+  },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: BarChart3,
+    roles: ["admin", "treasurer", "secretary"],
+    guide: "Graphical reports for contributions, member balances, loan exposure, and fines, with CSV export for reconciliations and analysis.",
   },
   {
     href: "/members",

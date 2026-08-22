@@ -2,10 +2,14 @@ import Link from "next/link";
 import {
   ArrowRight,
   ArrowUpRight,
+  BarChart3,
+  CalendarCheck2,
+  CircleDollarSign,
   Check,
   HeartHandshake,
   Landmark,
   ShieldCheck,
+  Sparkles,
   UsersRound,
   WalletCards,
 } from "lucide-react";
@@ -31,6 +35,12 @@ const features = [
   },
 ];
 
+const steps = [
+  { number: "01", icon: UsersRound, title: "Create your circle", copy: "Set up your group, invite members, and make your shared rules visible to everyone." },
+  { number: "02", icon: CalendarCheck2, title: "Keep the rhythm", copy: "Record contributions and meetings in minutes, with a clear view of what is due next." },
+  { number: "03", icon: BarChart3, title: "Grow with confidence", copy: "Use your group’s real numbers to plan loans, projects, welfare, and the next big step." },
+];
+
 export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-[#f8f7f2] text-[#18332b]">
@@ -42,9 +52,11 @@ export default function HomePage() {
               chama
             </Link>
             <div className="flex items-center gap-3 text-sm font-semibold">
-              <Link href="/discover" className="hidden px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b] sm:block">
-                Find a group
-              </Link>
+              <div className="hidden items-center gap-1 md:flex">
+                <a href="#why-chama" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">Why Chama</a>
+                <a href="#how-it-works" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">How it works</a>
+                <Link href="/discover" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">Find a group</Link>
+              </div>
               <Link href="/login" className="rounded-full px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">
                 Sign in
               </Link>
@@ -130,7 +142,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
+      <section id="why-chama" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:gap-24">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">Less admin. More progress.</p>
@@ -146,6 +158,49 @@ export default function HomePage() {
               </article>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section id="how-it-works" className="border-y border-[#18332b]/10 bg-[#e9f0e9] px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
+        <div className="mx-auto max-w-7xl">
+          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">Simple by design</p>
+              <h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">A better group meeting starts before the meeting.</h2>
+            </div>
+            <p className="max-w-sm text-sm leading-6 text-[#18332b]/60">Everything your group needs to build a steady habit around money, together.</p>
+          </div>
+          <div className="mt-14 grid gap-8 md:grid-cols-3">
+            {steps.map(({ number, icon: Icon, title, copy }) => (
+              <article key={number} className="relative border-t border-[#18332b]/20 pt-5">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-[#c75b39]">{number}</span>
+                  <Icon className="size-6 text-[#18332b]/60" strokeWidth={1.6} />
+                </div>
+                <h3 className="mt-12 text-2xl font-bold tracking-[-0.035em]">{title}</h3>
+                <p className="mt-3 max-w-xs text-sm leading-6 text-[#18332b]/60">{copy}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_0.85fr] lg:items-center lg:gap-24 lg:px-12 lg:py-28">
+        <div>
+          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]"><ShieldCheck className="size-4" /> Trust is a feature</p>
+          <h2 className="mt-5 max-w-xl font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">Clarity is how a group stays strong.</h2>
+          <p className="mt-6 max-w-lg text-lg leading-8 text-[#18332b]/65">Your group’s money should never live in one person’s notebook. Chama keeps the record shared, actions accountable, and the next decision easier to make.</p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-2xl bg-[#18332b] p-6 text-[#f8f7f2]"><CircleDollarSign className="size-6 text-[#e3f17b]" /><p className="mt-8 text-lg font-bold">Every shilling has a place.</p><p className="mt-2 text-sm leading-6 text-white/60">Separate views for savings, welfare, loans, and projects.</p></div>
+          <div className="rounded-2xl bg-[#e3f17b] p-6"><Sparkles className="size-6" /><p className="mt-8 text-lg font-bold">Less chasing, more doing.</p><p className="mt-2 text-sm leading-6 text-[#18332b]/60">Clear dues and activity help everyone stay in step.</p></div>
+        </div>
+      </section>
+
+      <section className="px-5 pb-20 sm:px-8 lg:px-12 lg:pb-28">
+        <div className="mx-auto flex max-w-7xl flex-col items-start justify-between gap-8 rounded-[2rem] bg-[#c75b39] px-7 py-10 text-white sm:px-12 sm:py-14 lg:flex-row lg:items-center">
+          <div><p className="text-xs font-bold uppercase tracking-[0.18em] text-white/65">Your next chapter</p><h2 className="mt-3 max-w-xl font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">Make the group easier to run.</h2></div>
+          <Link href="/register" className="group inline-flex shrink-0 items-center gap-3 rounded-full bg-[#f8f7f2] px-6 py-3.5 font-semibold text-[#18332b] transition-transform hover:-translate-y-1">Create your group <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" /></Link>
         </div>
       </section>
 

@@ -6,6 +6,7 @@ import type { members as membersTable, groupMemberships as groupMembershipsTable
 import { contributionTypes } from "@/lib/validation/members";
 import {
   createMemberAction,
+  importMembersAction,
   recordContributionAction,
   createLoginForMemberAction,
   updateMemberRoleAction,
@@ -96,6 +97,26 @@ function AddMemberForm() {
             {pending ? "Adding…" : "Add member"}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ImportMembersForm() {
+  const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
+    importMembersAction,
+    null,
+  );
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Import members and opening balances</CardTitle></CardHeader>
+      <CardContent>
+        <form action={formAction} className="flex flex-wrap items-end gap-4">
+          <div className="min-w-64 flex-1 space-y-2"><Label htmlFor="member-import">CSV file</Label><Input id="member-import" name="file" type="file" accept=".csv,text/csv" required /></div>
+          <Button type="submit" variant="outline" disabled={pending}>{pending ? "Importing..." : "Import CSV"}</Button>
+          {state?.error && <p className="basis-full text-sm text-destructive">{state.error}</p>}
+        </form>
+        <p className="mt-3 text-xs text-muted-foreground">Headers: name, phone, email, capital, security, personal_savings, welfare_balance</p>
       </CardContent>
     </Card>
   );
@@ -280,6 +301,7 @@ export function MembersManager({
   return (
     <div className="space-y-6">
       {canEdit && <AddMemberForm />}
+      {canEdit && <ImportMembersForm />}
 
       <Card>
         <CardContent className="overflow-x-auto">

@@ -18,6 +18,69 @@ import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/a
 
 export type MemberActionState = { error: string } | null;
 
+function parseCsvLine(line: string): string[] {
+  const values: string[] = [];
+  let value = "";
+  let quoted = false;
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index];
+    if (char === '"' && line[index + 1] === '"' && quoted) {
+      value += '"';
+      index++;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      values.push(value.trim());
+      value = "";
+    } else {
+      value += char;
+    }
+  }
+  values.push(value.trim());
+  return values;
+}
+
+export async function importMembersAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const session = await requireRole("admin", "treasurer");
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a CSV file" };
+  if (file.size > 2_000_000) return { error: "CSV file must be smaller than 2 MB" };
+
+  const lines = (await file.text()).split(/\r?\n/).filter((line) => line.trim());
+  if (lines.length < 2) return { error: "CSV must include a header and at least one member" };
+  const headers = parseCsvLine(lines[0]).map((header) => header.toLowerCase());
+  const requiredHeaders = ["name", "phone", "email", "capital", "security", "personal_savings", "welfare_balance"];
+  const missing = requiredHeaders.filter((header) => !headers.includes(header));
+  if (missing.length) return { error: `Missing columns: ${missing.join(", ")}` };
+  if (lines.length > 501) return { error: "CSV cannot contain more than 500 members" };
+
+  let rows: { name: string; phone: string | null; email: string | null; capital: string; security: string; personalSavings: string; welfareBalance: string }[];
+  try {
+    rows = lines.slice(1).map((line, index) => {
+      const values = parseCsvLine(line);
+      const get = (header: string) => values[headers.indexOf(header)] ?? "";
+      const amounts = ["capital", "security", "personal_savings", "welfare_balance"].map((header) => Number(get(header) || 0));
+      if (!get("name") || amounts.some((amount) => !Number.isFinite(amount) || amount < 0)) {
+        throw new Error(`Invalid member or balance on CSV row ${index + 2}`);
+      }
+      return { name: get("name"), phone: get("phone") || null, email: get("email") || null, capital: String(amounts[0]), security: String(amounts[1]), personalSavings: String(amounts[2]), welfareBalance: String(amounts[3]) };
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Invalid CSV row" };
+  }
+
+  try {
+    await withTenant(session.activeMembership.groupId, (tx) => tx.insert(members).values(rows.map((row) => ({ ...row, groupId: session.activeMembership.groupId }))));
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Unable to import members" };
+  }
+  revalidatePath("/members");
+  return null;
+}
+
 /**
  * Recomputes groups.registrationComplete from the group's actual current
  * active roles — called after every role change rather than trusted to
