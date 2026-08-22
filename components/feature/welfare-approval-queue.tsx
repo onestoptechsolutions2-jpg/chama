@@ -6,7 +6,7 @@ import type {
   welfareRequests as welfareRequestsTable,
   members as membersTable,
 } from "@/lib/db/schema";
-import { respondToWelfareApprovalAction } from "@/app/(dashboard)/welfare/actions";
+import { respondToWelfareApprovalAction } from "@/app/(dashboard)/dashboard/welfare/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 

@@ -6,7 +6,7 @@
  *
  * "Table banking cycle" here = one mgr_cycles row per payout date; each
  * cycle has exactly one slot (mgr_slots), pre-claimed by the member whose
- * turn it is. This mirrors what generateScheduleAction (app/(dashboard)/mgr/actions.ts)
+ * turn it is. This mirrors what generateScheduleAction (app/(dashboard)/dashboard/mgr/actions.ts)
  * would produce for frequency=biweekly, recipientsPerCycle=1 — except the
  * dates/assignments are the group's actual agreed rotation, not computed,
  * so slots are inserted already "claimed" rather than "open".

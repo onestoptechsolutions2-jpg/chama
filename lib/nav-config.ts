@@ -65,21 +65,21 @@ export const navItems: NavItem[] = [
     guide: "An overview of the group: member count, balances, pending fines, and the next meeting.",
   },
   {
-    href: "/insights",
+    href: "/dashboard/insights",
     label: "Insights",
     icon: Lightbulb,
     guide:
       "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in.",
   },
   {
-    href: "/reports",
+    href: "/dashboard/reports",
     label: "Reports",
     icon: BarChart3,
     roles: ["admin", "treasurer", "secretary"],
     guide: "Graphical reports for contributions, member balances, loan exposure, and fines, with CSV export for reconciliations and analysis.",
   },
   {
-    href: "/members",
+    href: "/dashboard/members",
     label: "Members",
     icon: Users,
     roles: ["admin", "treasurer", "secretary"],
@@ -87,7 +87,7 @@ export const navItems: NavItem[] = [
       "The member roster and each member's financial profile — capital, security, savings, fines. Admins and treasurers can add members and record contributions directly here; admins can also create a login for a member who doesn't have one yet.",
   },
   {
-    href: "/pending-members",
+    href: "/dashboard/pending-members",
     label: "Pending members",
     icon: UserCheck,
     roles: ["admin", "treasurer"],
@@ -95,7 +95,7 @@ export const navItems: NavItem[] = [
       "Join requests from people who found this group via public discovery (/discover). Approving one activates their membership and automatically creates their member financial-profile row — rejecting just declines the request, nothing is created.",
   },
   {
-    href: "/fines",
+    href: "/dashboard/fines",
     label: "Fines",
     icon: Gavel,
     roles: ["admin", "treasurer", "secretary"],
@@ -103,7 +103,7 @@ export const navItems: NavItem[] = [
       "Every fine issued to a member — lateness, absence, rule violations, loan defaults — and whether it's been paid. Meetings auto-generate attendance fines; this is where you record manual ones and mark any of them paid.",
   },
   {
-    href: "/meetings",
+    href: "/dashboard/meetings",
     label: "Meetings",
     icon: CalendarDays,
     roles: ["admin", "treasurer", "secretary"],
@@ -111,7 +111,7 @@ export const navItems: NavItem[] = [
       "Schedule meetings and record attendance. Marking someone absent or late automatically creates the corresponding fine — you don't need to also go add it in Fines.",
   },
   {
-    href: "/loans",
+    href: "/dashboard/loans",
     label: "Loans",
     icon: Landmark,
     roles: ["admin", "treasurer"],
@@ -120,7 +120,7 @@ export const navItems: NavItem[] = [
       "Approve or reject member-submitted loan applications, disburse and track active loans, and record repayments. A member's loan limit is a multiple of their total savings (configurable in Settings), enforced automatically — you can't approve past it.",
   },
   {
-    href: "/loans/apply",
+    href: "/dashboard/loans/apply",
     label: "My Loan",
     icon: Wallet,
     roles: ["member"],
@@ -129,7 +129,7 @@ export const navItems: NavItem[] = [
       "Apply for a loan up to your current limit (shown on this page), track your active loan's balance and due date, or cancel a pending application before staff review it.",
   },
   {
-    href: "/mgr",
+    href: "/dashboard/mgr",
     label: "Merry-Go-Round",
     icon: RefreshCw,
     product: "mgr",
@@ -137,7 +137,7 @@ export const navItems: NavItem[] = [
       "The rotating-payout schedule. You'll be asked to sign a one-time agreement before you can claim a slot in the active cycle. Members claim open slots themselves (or staff can auto-assign/reassign); staff mark a slot paid once the actual payout has happened outside the app — that action is permanently logged against their account and can't be edited or deleted later, specifically so payouts stay accountable.",
   },
   {
-    href: "/welfare",
+    href: "/dashboard/welfare",
     label: "Welfare",
     icon: HeartHandshake,
     product: "welfare",
@@ -145,7 +145,7 @@ export const navItems: NavItem[] = [
       "Submit and review welfare claims (medical, bereavement, emergency, etc.) against the group's welfare fund, and see the fund's running balance.",
   },
   {
-    href: "/projects",
+    href: "/dashboard/projects",
     label: "Projects",
     icon: Hammer,
     product: "projects",
@@ -153,27 +153,27 @@ export const navItems: NavItem[] = [
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
   },
   {
-    href: "/capital",
+    href: "/dashboard/capital",
     label: "Capital Position",
     icon: PieChart,
     guide:
       "How the group's pooled capital is currently allocated — how much of the capital pool is out on loan versus held in reserve, plus the security, personal savings, welfare, and projects funds tracked alongside it. Visible to every member, not just staff — the point is to make it possible to see the group's money is being used sensibly without asking. Admins can set a target loan-deployment percentage in Settings to get drift alerts here.",
   },
   {
-    href: "/statement",
+    href: "/dashboard/statement",
     label: "Statement",
     icon: FileText,
     guide:
       "One merged timeline of your own contributions, fines, and loan activity — the closest thing to a bank statement for your standing in this group.",
   },
   {
-    href: "/rules",
+    href: "/dashboard/rules",
     label: "Rules",
     icon: ScrollText,
     guide: "The group's bylaws, each optionally tied to a penalty amount if referenced when issuing a fine.",
   },
   {
-    href: "/wallet",
+    href: "/dashboard/wallet",
     label: "Wallet",
     icon: WalletCards,
     roles: ["admin", "treasurer"],
@@ -181,7 +181,7 @@ export const navItems: NavItem[] = [
       "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
   },
   {
-    href: "/billing",
+    href: "/dashboard/billing",
     label: "Billing",
     icon: Receipt,
     roles: ["admin", "treasurer"],
@@ -189,7 +189,7 @@ export const navItems: NavItem[] = [
       "What this group owes the platform — computed live from your member count, which vehicles (Table Banking, Welfare, Investment) are active, and your real financial activity over the last 12 months, not a flat fee. Admins can generate this period's invoice and charge it, either instantly from the prepaid Wallet or via an M-Pesa STK push.",
   },
   {
-    href: "/settings",
+    href: "/dashboard/settings",
     label: "Settings",
     icon: Settings,
     roles: ["admin", "treasurer", "secretary"],
@@ -197,14 +197,14 @@ export const navItems: NavItem[] = [
       "The group's configurable business rules — share price, contribution day, loan interest/limit multiplier, fine amounts, meeting defaults. Changing these here is what actually takes effect; nothing else overrides them.",
   },
   {
-    href: "/profile",
+    href: "/dashboard/profile",
     label: "My Profile",
     icon: UserCircle,
     guide:
       "Your own KYC details — ID number, ID document, photo, and (for admins/treasurers/secretaries) address and signature. Filled in once here, it's reused automatically for every other group you belong to, not re-collected each time.",
   },
   {
-    href: "/guide",
+    href: "/dashboard/guide",
     label: "Guide",
     icon: HelpCircle,
     guide: "This page — a role-aware explanation of what everything in the sidebar does.",

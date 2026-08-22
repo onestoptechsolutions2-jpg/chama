@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { members as membersTable } from "@/lib/db/schema";
 import { attendanceStatuses } from "@/lib/validation/meetings";
-import { saveAttendanceAction } from "@/app/(dashboard)/meetings/actions";
+import { saveAttendanceAction } from "@/app/(dashboard)/dashboard/meetings/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {

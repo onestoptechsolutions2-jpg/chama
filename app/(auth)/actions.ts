@@ -36,7 +36,8 @@ export async function registerAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { name, email, phone, password } = parsed.data;
+  const { name, phone, password } = parsed.data;
+  const email = parsed.data.email ? parsed.data.email.toLowerCase() : parsed.data.email;
 
   const existing = email
     ? await db.query.users.findFirst({ where: eq(users.email, email) })

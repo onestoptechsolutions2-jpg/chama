@@ -20,7 +20,7 @@ import {
   createCycleAction,
   closeCycleAction,
   chargeFeeFromWalletAction,
-} from "@/app/(dashboard)/mgr/actions";
+} from "@/app/(dashboard)/dashboard/mgr/actions";
 import { mgrFrequencies } from "@/lib/validation/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { Button } from "@/components/ui/button";
@@ -157,7 +157,7 @@ function ChargeFeeDialog({
             <>
               <p className="text-sm text-muted-foreground">
                 Wallet balance ({ksh(walletBalance)}) doesn&apos;t cover this fee — top up in{" "}
-                <a href="/wallet" className="underline underline-offset-4">Wallet</a>, or send an
+                <a href="/dashboard/wallet" className="underline underline-offset-4">Wallet</a>, or send an
                 M-Pesa STK push instead.
               </p>
               <div className="space-y-2">

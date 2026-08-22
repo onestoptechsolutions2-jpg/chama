@@ -14,7 +14,7 @@ import {
   reviewApplicationAction,
   chargeLoanFeeFromWalletAction,
   type LoanActionState,
-} from "@/app/(dashboard)/loans/actions";
+} from "@/app/(dashboard)/dashboard/loans/actions";
 import { computeTransactionFee } from "@/lib/domain/billing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -277,7 +277,7 @@ function LoanFeeDialog({ loan, walletBalance }: { loan: Loan; walletBalance: str
             <>
               <p className="text-sm text-muted-foreground">
                 Wallet balance ({ksh(walletBalance)}) doesn&apos;t cover this fee — top up in{" "}
-                <a href="/wallet" className="underline underline-offset-4">Wallet</a>, or send an
+                <a href="/dashboard/wallet" className="underline underline-offset-4">Wallet</a>, or send an
                 M-Pesa STK push instead.
               </p>
               <div className="space-y-2">

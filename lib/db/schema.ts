@@ -331,7 +331,7 @@ export const groups = pgTable("groups", {
   // How many guarantors must have accepted (see loan_guarantors below)
   // before a self-service loan application can be approved. Doesn't gate
   // staff-direct loan creation — see reviewApplicationAction/createLoanAction
-  // in app/(dashboard)/loans/actions.ts for the reasoning.
+  // in app/(dashboard)/dashboard/loans/actions.ts for the reasoning.
   loanMinGuarantors: integer("loan_min_guarantors").notNull().default(1),
 
   // MGR settings

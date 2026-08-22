@@ -65,7 +65,7 @@ function DriftCallout({ drift, isStaff }: { drift: AllocationDrift | null; isSta
           <p className="text-sm text-muted-foreground">
             No target allocation is set — drift alerts are off until one is configured.
           </p>
-          <Link href="/settings" className={buttonVariants({ size: "sm", variant: "outline" })}>
+          <Link href="/dashboard/settings" className={buttonVariants({ size: "sm", variant: "outline" })}>
             Set a target
           </Link>
         </CardContent>

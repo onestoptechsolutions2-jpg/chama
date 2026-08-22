@@ -14,7 +14,7 @@ import {
   reviewWelfareRequestAction,
   recordAdvanceRepaymentAction,
   type WelfareActionState,
-} from "@/app/(dashboard)/welfare/actions";
+} from "@/app/(dashboard)/dashboard/welfare/actions";
 import { WelfareRequestForm } from "@/components/feature/welfare-request-form";
 import { WelfareApprovalQueue, type PendingApproval } from "@/components/feature/welfare-approval-queue";
 import { Button } from "@/components/ui/button";

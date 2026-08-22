@@ -29,7 +29,7 @@ export default async function SuperAdminLayout({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{session.user.name}</span>
-          <Link href="/" className={buttonVariants({ variant: "outline", size: "sm" })}>
+          <Link href="/dashboard" className={buttonVariants({ variant: "outline", size: "sm" })}>
             Back to app
           </Link>
           <form action={logoutAction}>

@@ -32,7 +32,7 @@ export default async function SuperAdminStatsPage() {
   // Independent withPlatformAdmin calls, not one Promise.all sharing a
   // transaction — concurrent queries against a single `tx` can race with
   // the transaction-local app.is_platform_admin context the same way they
-  // can with withTenant's app.current_group_id (see app/(dashboard)/page.tsx).
+  // can with withTenant's app.current_group_id (see app/(dashboard)/dashboard/page.tsx).
   const [groupCounts, userCount, membershipCounts, feeTotal, recentRuns] = await Promise.all([
     withPlatformAdmin((tx) =>
       tx

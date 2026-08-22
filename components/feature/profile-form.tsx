@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { toast } from "sonner";
 import type { members as membersTable } from "@/lib/db/schema";
-import { updateMyKycAction, type ProfileActionState } from "@/app/(dashboard)/profile/actions";
+import { updateMyKycAction, type ProfileActionState } from "@/app/(dashboard)/dashboard/profile/actions";
 import { requiredKycFields, isKycComplete, type MembershipRole } from "@/lib/domain/officials";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

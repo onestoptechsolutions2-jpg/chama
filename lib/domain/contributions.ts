@@ -18,7 +18,7 @@ export function validateContributionAmount(
 /**
  * Which members.* balance column a contribution type increments. `welfare`
  * is deliberately absent (Phase 8) — a welfare-type contribution now feeds
- * the collective welfare fund (app/(dashboard)/welfare/welfare-data.ts's
+ * the collective welfare fund (app/(dashboard)/dashboard/welfare/welfare-data.ts's
  * allocateContributionToWelfareFund) instead of a per-member balance, since
  * there is no such thing as an individual welfare balance. See
  * lib/db/schema.ts's comment on members.welfareBalance and

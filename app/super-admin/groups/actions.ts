@@ -87,8 +87,8 @@ export async function createOnboardingGroupAction(
   });
 
   await db.update(sessions).set({ activeGroupId: group.id }).where(eq(sessions.id, session.sessionId));
-  revalidatePath("/", "layout");
-  redirect("/");
+  revalidatePath("/dashboard", "layout");
+  redirect("/dashboard");
 }
 
 export async function updateGroupAccountAction(
@@ -228,7 +228,7 @@ export async function setGroupActiveAction(
  * its founding admin, its selected vehicles (and loan terms, if Table
  * Banking is one of them), and whichever starter rule templates were
  * picked, all in one transaction. Same reasoning as
- * app/(dashboard)/settings/actions.ts's activateProductAction: a group
+ * app/(dashboard)/dashboard/settings/actions.ts's activateProductAction: a group
  * shouldn't be able to exist half-configured because the wizard dialog was
  * closed partway through.
  */

@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { subscriptionInvoices as subscriptionInvoicesTable } from "@/lib/db/schema";
 import type { SubscriptionQuote } from "@/lib/domain/billing";
-import { generateInvoiceAction, chargeInvoiceFromWalletAction } from "@/app/(dashboard)/billing/actions";
+import { generateInvoiceAction, chargeInvoiceFromWalletAction } from "@/app/(dashboard)/dashboard/billing/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -156,7 +156,7 @@ function ChargeInvoiceDialog({ invoice, walletBalance }: { invoice: Invoice; wal
             <>
               <p className="text-sm text-muted-foreground">
                 Wallet balance ({ksh(walletBalance)}) doesn&apos;t cover this — top up in{" "}
-                <a href="/wallet" className="underline underline-offset-4">Wallet</a>, or send an
+                <a href="/dashboard/wallet" className="underline underline-offset-4">Wallet</a>, or send an
                 M-Pesa STK push instead.
               </p>
               <div className="space-y-2">

@@ -114,7 +114,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
   // Two independent withUser calls, not one Promise.all sharing a
   // transaction — concurrent queries against the same `tx` aren't
   // guaranteed to share the transaction-local SET LOCAL context withUser
-  // relies on for RLS (see app/(dashboard)/billing/data.ts for where this
+  // relies on for RLS (see app/(dashboard)/dashboard/billing/data.ts for where this
   // exact race was first caught). Here it silently dropped `myMemberRows`
   // to empty on an unlucky race, which meant a genuine member's own
   // activeMembership.memberId came back null — every member-scoped feature
@@ -177,27 +177,27 @@ export async function requireSession(): Promise<Session> {
 }
 
 /**
- * Redirects to /login if unauthenticated, or to / if authenticated but the
- * active-group role doesn't match. Coarse-grained gate — RLS is the
+ * Redirects to /login if unauthenticated, or to /dashboard if authenticated
+ * but the active-group role doesn't match. Coarse-grained gate — RLS is the
  * defense-in-depth net underneath every query these pages make.
  */
 export async function requireRole(...roles: MembershipRole[]): Promise<SessionWithGroup> {
   const session = await requireSession();
   if (!session.activeMembership || !roles.includes(session.activeMembership.role)) {
-    redirect("/");
+    redirect("/dashboard");
   }
   return session as SessionWithGroup;
 }
 
-/** Redirects to / unless the session has an active group selected. */
+/** Redirects to /dashboard unless the session has an active group selected. */
 export async function requireActiveGroup(): Promise<SessionWithGroup> {
   const session = await requireSession();
-  if (!session.activeMembership) redirect("/");
+  if (!session.activeMembership) redirect("/dashboard");
   return session as SessionWithGroup;
 }
 
 /**
- * Redirects to / unless the active group has `product` turned on
+ * Redirects to /dashboard unless the active group has `product` turned on
  * (Settings > Products — lib/domain/products.ts), and optionally unless
  * the role also matches. Every product page (loans, mgr, welfare,
  * projects) previously relied ONLY on the nav menu hiding the link for
@@ -211,14 +211,14 @@ export async function requireProduct(
   ...roles: MembershipRole[]
 ): Promise<SessionWithGroup> {
   const session = roles.length ? await requireRole(...roles) : await requireActiveGroup();
-  if (!session.activeMembership.products[product]) redirect("/");
+  if (!session.activeMembership.products[product]) redirect("/dashboard");
   return session;
 }
 
-/** Redirects to / unless the user has a platform-level (super-admin) role. */
+/** Redirects to /dashboard unless the user has a platform-level (super-admin) role. */
 export async function requirePlatformAdmin(): Promise<Session> {
   const session = await requireSession();
-  if (!session.user.platformRole) redirect("/");
+  if (!session.user.platformRole) redirect("/dashboard");
   return session;
 }
 

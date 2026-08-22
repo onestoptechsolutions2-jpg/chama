@@ -4,7 +4,7 @@
  * record history" idea lib/domain/capital.ts's allocation drift already
  * uses. Pure and DB-free by the same convention every lib/domain/* module
  * follows (see lib/domain/officials.ts's identical reasoning) — callers in
- * app/(dashboard)/insights/page.tsx do the fetching, these functions just
+ * app/(dashboard)/dashboard/insights/page.tsx do the fetching, these functions just
  * turn already-fetched rows into judgments.
  */
 import type { AllocationDrift } from "./capital";

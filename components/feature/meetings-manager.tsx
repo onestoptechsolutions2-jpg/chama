@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import type { meetings as meetingsTable } from "@/lib/db/schema";
 import { meetingTypes } from "@/lib/validation/meetings";
-import { createMeetingAction, type MeetingActionState } from "@/app/(dashboard)/meetings/actions";
+import { createMeetingAction, type MeetingActionState } from "@/app/(dashboard)/dashboard/meetings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -95,7 +95,7 @@ export function MeetingsManager({ meetings }: { meetings: Meeting[] }) {
           {meetings.map((m) => (
             <Link
               key={m.id}
-              href={`/meetings/${m.id}`}
+              href={`/dashboard/meetings/${m.id}`}
               className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-muted"
             >
               <div>

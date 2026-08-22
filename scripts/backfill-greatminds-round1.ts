@@ -11,7 +11,7 @@
  *  - "Agnes" (a mid-round draft name for the #4 slot, 30 May) and
  *    "Skiner"/"Skinner" both resolve to the already-seeded member Skina.
  *  - The MGR feature has no per-member "who paid into this cycle" table
- *    (see lib/domain/mgr.ts / app/(dashboard)/mgr/actions.ts — only the
+ *    (see lib/domain/mgr.ts / app/(dashboard)/dashboard/mgr/actions.ts — only the
  *    pool total on mgr_cycles and the payout on mgr_slots are tracked), so
  *    this does not fabricate 81 individual contribution rows; it records
  *    each cycle's pool total and each slot's payout, same granularity the

@@ -3,7 +3,7 @@
 import { useActionState, useTransition } from "react";
 import type { fines as finesTable, members as membersTable } from "@/lib/db/schema";
 import { fineTypes } from "@/lib/validation/fines";
-import { createFineAction, resolveFineAction, type FineActionState } from "@/app/(dashboard)/fines/actions";
+import { createFineAction, resolveFineAction, type FineActionState } from "@/app/(dashboard)/dashboard/fines/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

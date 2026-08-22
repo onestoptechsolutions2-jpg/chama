@@ -44,7 +44,7 @@ export function RoleGuide({
   products: ProductFlags;
 }) {
   const items = getVisibleNavItems({ role, products }).filter(
-    (item) => item.href !== "/" && item.href !== "/guide",
+    (item) => item.href !== "/dashboard" && item.href !== "/dashboard/guide",
   );
 
   return (

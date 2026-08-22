@@ -6,7 +6,7 @@ import type { groupMemberships as groupMembershipsTable, users as usersTable } f
 import {
   approveMembershipAction,
   rejectMembershipAction,
-} from "@/app/(dashboard)/pending-members/actions";
+} from "@/app/(dashboard)/dashboard/pending-members/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {

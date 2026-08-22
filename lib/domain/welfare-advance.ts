@@ -1,6 +1,6 @@
 // defaultDueDate is deliberately NOT duplicated here — welfare advances
 // reuse lib/domain/loans.ts's defaultDueDate directly at the call site
-// (app/(dashboard)/welfare/welfare-data.ts), same due-date math as a loan.
+// (app/(dashboard)/dashboard/welfare/welfare-data.ts), same due-date math as a loan.
 
 export function computeAdvanceFee(principal: number, feePct: number): number {
   return Math.round(principal * (feePct / 100) * 100) / 100;

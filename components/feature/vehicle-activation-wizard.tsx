@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { RULE_TEMPLATES, type RuleCategory } from "@/lib/domain/rule-templates";
-import { activateProductAction, type ActivateProductState } from "@/app/(dashboard)/settings/actions";
+import { activateProductAction, type ActivateProductState } from "@/app/(dashboard)/dashboard/settings/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

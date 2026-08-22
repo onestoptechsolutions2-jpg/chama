@@ -2,7 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { welfareClaimTypes } from "@/lib/validation/welfare";
-import { submitWelfareRequestAction, type WelfareActionState } from "@/app/(dashboard)/welfare/actions";
+import { submitWelfareRequestAction, type WelfareActionState } from "@/app/(dashboard)/dashboard/welfare/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

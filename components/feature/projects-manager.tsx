@@ -8,7 +8,7 @@ import {
   addProjectContributionAction,
   updateProjectStatusAction,
   type ProjectActionState,
-} from "@/app/(dashboard)/projects/actions";
+} from "@/app/(dashboard)/dashboard/projects/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
