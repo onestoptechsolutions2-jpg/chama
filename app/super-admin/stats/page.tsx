@@ -4,6 +4,7 @@ import { groups, users, groupMemberships, platformPayments } from "@/lib/db/sche
 import { PageHeader } from "@/components/feature/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { StatusBarList } from "@/components/feature/charts";
 import {
   Table,
   TableBody,
@@ -82,11 +83,26 @@ export default async function SuperAdminStatsPage() {
         <Metric label="Groups" value={`${groupCounts.active} / ${groupCounts.total} active`} />
         <Metric label="Users" value={String(userCount)} />
         <Metric label="Active memberships" value={String(membershipCounts.active)} />
-        <Metric label="Pending join requests" value={String(membershipCounts.pending)} />
+        <Metric label="Platform fees collected" value={ksh(feeTotal)} />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Metric label="Platform fees collected" value={ksh(feeTotal)} />
+        <StatusBarList
+          title="Groups"
+          rows={[
+            { label: "Active", value: groupCounts.active, status: "good" },
+            { label: "Inactive", value: groupCounts.total - groupCounts.active, status: "neutral" },
+          ]}
+          formatValue={String}
+        />
+        <StatusBarList
+          title="Memberships"
+          rows={[
+            { label: "Active", value: membershipCounts.active, status: "good" },
+            { label: "Pending", value: membershipCounts.pending, status: "warning" },
+          ]}
+          formatValue={String}
+        />
       </div>
 
       <Card>

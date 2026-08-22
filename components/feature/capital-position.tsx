@@ -4,6 +4,7 @@ import type { ProductFlags } from "@/lib/domain/products";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
+import { CompositionBar, Meter } from "@/components/feature/charts";
 
 function ksh(n: number) {
   return `Ksh ${Math.round(n).toLocaleString()}`;
@@ -27,30 +28,30 @@ function AllocationBar({ position }: { position: CapitalPosition }) {
 
   return (
     <div className="space-y-2">
-      <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted">
+      <div className="flex h-4 w-full overflow-hidden rounded-full" style={{ background: "var(--viz-grid)" }}>
         {loanPct > 0 && (
           <div
-            className="h-full bg-primary"
-            style={{ width: `${loanPct}%` }}
+            className="h-full rounded-l-[4px]"
+            style={{ width: `${loanPct}%`, background: "var(--viz-cat-2)" }}
             title={`Out on loan: ${loanPct.toFixed(1)}%`}
           />
         )}
         {reservePct > 0 && (
           <div
-            className="h-full bg-emerald-500/60"
-            style={{ width: `${reservePct}%` }}
+            className="h-full rounded-r-[4px]"
+            style={{ width: `${reservePct}%`, background: "var(--viz-cat-3)", marginLeft: loanPct > 0 ? 2 : 0 }}
             title={`Reserve: ${reservePct.toFixed(1)}%`}
           />
         )}
       </div>
       <div className="flex justify-between text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full bg-primary" /> Out on loan —{" "}
+          <span className="size-2 rounded-full" style={{ background: "var(--viz-cat-2)" }} /> Out on loan —{" "}
           {position.loanDeploymentPct.toFixed(1)}%
         </span>
         <span className="flex items-center gap-1.5">
           Reserve — {(100 - position.loanDeploymentPct).toFixed(1)}%{" "}
-          <span className="size-2 rounded-full bg-emerald-500/60" />
+          <span className="size-2 rounded-full" style={{ background: "var(--viz-cat-3)" }} />
         </span>
       </div>
     </div>
@@ -73,32 +74,38 @@ function DriftCallout({ drift, isStaff }: { drift: AllocationDrift | null; isSta
     ) : null;
   }
 
-  if (drift.severity === "on_target") {
-    return (
-      <Card className="border-emerald-500/40 bg-emerald-500/5">
-        <CardContent className="pt-6 text-sm">
-          On target — {drift.actualPct.toFixed(1)}% deployed against a {drift.targetPct.toFixed(0)}%
-          goal.
-        </CardContent>
-      </Card>
-    );
-  }
+  const severity = drift.severity === "on_target" ? "good" : drift.severity === "over_deployed" ? "warning" : "serious";
 
-  const over = drift.severity === "over_deployed";
   return (
-    <Card className={over ? "border-amber-500/50 bg-amber-500/5" : "border-sky-500/50 bg-sky-500/5"}>
-      <CardContent className="pt-6 text-sm">
-        <Badge variant={over ? "destructive" : "secondary"} className="mb-2">
-          {over ? "Over-deployed" : "Under-deployed"}
-        </Badge>
-        <p>
-          Target is {drift.targetPct.toFixed(0)}% of the capital pool out on loan; actual is{" "}
-          {drift.actualPct.toFixed(1)}% ({drift.deltaPts > 0 ? "+" : ""}
-          {drift.deltaPts.toFixed(1)} points).{" "}
-          {over
-            ? "Liquidity is thinner than the group's own target — consider slowing new loan approvals until reserve recovers."
-            : "More of the capital pool could be deployed, or the target may be worth revisiting."}
-        </p>
+    <Card>
+      <CardContent className="space-y-3 pt-6">
+        <Meter
+          label="Deployment vs. target"
+          value={drift.actualPct}
+          max={100}
+          target={drift.targetPct}
+          formatValue={(n) => `${n.toFixed(1)}%`}
+          severity={severity}
+        />
+        {drift.severity === "on_target" ? (
+          <p className="text-sm text-muted-foreground">
+            On target — {drift.actualPct.toFixed(1)}% deployed against a {drift.targetPct.toFixed(0)}% goal.
+          </p>
+        ) : (
+          <div className="text-sm">
+            <Badge variant={drift.severity === "over_deployed" ? "destructive" : "secondary"} className="mb-2">
+              {drift.severity === "over_deployed" ? "Over-deployed" : "Under-deployed"}
+            </Badge>
+            <p className="text-muted-foreground">
+              Target is {drift.targetPct.toFixed(0)}% of the capital pool out on loan; actual is{" "}
+              {drift.actualPct.toFixed(1)}% ({drift.deltaPts > 0 ? "+" : ""}
+              {drift.deltaPts.toFixed(1)} points).{" "}
+              {drift.severity === "over_deployed"
+                ? "Liquidity is thinner than the group's own target — consider slowing new loan approvals until reserve recovers."
+                : "More of the capital pool could be deployed, or the target may be worth revisiting."}
+            </p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -115,6 +122,15 @@ export function CapitalPositionView({
   products: ProductFlags;
   isStaff: boolean;
 }) {
+  const composition = [
+    { label: "Out on loan", value: position.loanPrincipalOutstanding },
+    { label: "Reserve", value: position.reserve },
+    { label: "Security fund", value: position.securityPool },
+    { label: "Personal savings", value: position.personalSavingsPool },
+    ...(products.welfare ? [{ label: "Welfare fund", value: position.welfareAvailable }] : []),
+    ...(products.projects ? [{ label: "Projects committed", value: position.projectsCommitted }] : []),
+  ];
+
   return (
     <div className="space-y-6">
       {position.overextended && (
@@ -149,37 +165,7 @@ export function CapitalPositionView({
 
       <DriftCallout drift={drift} isStaff={isStaff} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Other balances</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <p className="text-sm text-muted-foreground">Security fund</p>
-            <p className="text-lg font-medium">{ksh(position.securityPool)}</p>
-            <p className="text-xs text-muted-foreground">Collateral deposits, not deployed to loans</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">Personal savings</p>
-            <p className="text-lg font-medium">{ksh(position.personalSavingsPool)}</p>
-            <p className="text-xs text-muted-foreground">Individually-owned, not deployed to loans</p>
-          </div>
-          {products.welfare && (
-            <div>
-              <p className="text-sm text-muted-foreground">Welfare fund available</p>
-              <p className="text-lg font-medium">{ksh(position.welfareAvailable)}</p>
-              <p className="text-xs text-muted-foreground">Collected minus disbursed claims</p>
-            </div>
-          )}
-          {products.projects && (
-            <div>
-              <p className="text-sm text-muted-foreground">Projects committed</p>
-              <p className="text-lg font-medium">{ksh(position.projectsCommitted)}</p>
-              <p className="text-xs text-muted-foreground">Collected toward open projects</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <CompositionBar title="Every fund at a glance" data={composition} formatValue={ksh} />
     </div>
   );
 }

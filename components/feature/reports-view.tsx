@@ -1,7 +1,7 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SequentialColumnChart, RankedBarList, StatusBarList } from "@/components/feature/charts";
 
 type Report = {
   monthly: { year: number | null; month: number | null; total: string }[];
@@ -10,13 +10,81 @@ type Report = {
   finesByStatus: { status: string; total: string }[];
 };
 
-function money(value: string | number) { return `Ksh ${Number(value).toLocaleString()}`; }
-function BarList({ rows, label }: { rows: { label: string; value: number }[]; label: string }) {
-  const max = Math.max(...rows.map((row) => row.value), 1);
-  return <Card><CardHeader><CardTitle className="text-base">{label}</CardTitle></CardHeader><CardContent className="space-y-3">{rows.length === 0 && <p className="text-sm text-muted-foreground">No data yet.</p>}{rows.map((row) => <div key={row.label} className="space-y-1"><div className="flex justify-between text-sm"><span>{row.label}</span><span className="font-medium">{money(row.value)}</span></div><div className="h-2 rounded-full bg-muted"><div className="h-2 rounded-full bg-primary transition-all" style={{ width: `${Math.max((row.value / max) * 100, 2)}%` }} /></div></div>)}</CardContent></Card>;
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const LOAN_STATUS_ROLE: Record<string, "good" | "warning" | "serious" | "critical" | "neutral"> = {
+  cleared: "good",
+  active: "neutral",
+  pending: "warning",
+  extended: "serious",
+  overdue: "critical",
+  rejected: "neutral",
+};
+
+const FINE_STATUS_ROLE: Record<string, "good" | "warning" | "serious" | "critical" | "neutral"> = {
+  paid: "good",
+  pending: "warning",
+  waived: "neutral",
+};
+
+function money(value: string | number) {
+  return `Ksh ${Number(value).toLocaleString()}`;
 }
 
 export function ReportsView({ report }: { report: Report }) {
-  function exportCsv() { window.location.assign("/dashboard/reports/export"); }
-  return <div className="space-y-6"><div className="flex justify-end"><Button onClick={exportCsv}>Export CSV</Button></div><div className="grid gap-4 lg:grid-cols-2"><BarList label="Contributions by month" rows={report.monthly.map((row) => ({ label: `${row.year ?? ""}-${String(row.month ?? 0).padStart(2, "0")}`, value: Number(row.total) }))} /><BarList label="Top member balances" rows={report.balances.map((row) => ({ label: row.name, value: Number(row.total) }))} /></div><div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-base">Loan exposure</CardTitle></CardHeader><CardContent className="space-y-2">{report.loansByStatus.map((row) => <div key={row.status} className="flex justify-between text-sm"><span className="capitalize">{row.status}</span><span>{row.count} · {money(row.outstanding)}</span></div>)}</CardContent></Card><Card><CardHeader><CardTitle className="text-base">Fines by status</CardTitle></CardHeader><CardContent className="space-y-2">{report.finesByStatus.map((row) => <div key={row.status} className="flex justify-between text-sm"><span className="capitalize">{row.status}</span><span>{money(row.total)}</span></div>)}</CardContent></Card></div></div>;
+  function exportCsv() {
+    window.location.assign("/dashboard/reports/export");
+  }
+
+  const monthly = report.monthly.map((row) => ({
+    label: row.month ? `${MONTH_LABELS[row.month - 1]} ${String(row.year ?? "").slice(2)}` : "—",
+    value: Number(row.total),
+  }));
+
+  return (
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button onClick={exportCsv}>Export CSV</Button>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <SequentialColumnChart
+          title="Contributions by month"
+          data={monthly}
+          formatValue={money}
+          emptyLabel="No contributions recorded yet."
+        />
+        <RankedBarList
+          title="Top member balances"
+          data={report.balances.map((row) => ({ label: row.name, value: Number(row.total) }))}
+          formatValue={money}
+          emptyLabel="No member balances yet."
+        />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <StatusBarList
+          title="Loan exposure"
+          rows={report.loansByStatus.map((row) => ({
+            label: row.status,
+            value: Number(row.outstanding),
+            secondary: `${row.count} loan${row.count === 1 ? "" : "s"}`,
+            status: LOAN_STATUS_ROLE[row.status] ?? "neutral",
+          }))}
+          formatValue={money}
+          emptyLabel="No loans recorded yet."
+        />
+        <StatusBarList
+          title="Fines by status"
+          rows={report.finesByStatus.map((row) => ({
+            label: row.status,
+            value: Number(row.total),
+            status: FINE_STATUS_ROLE[row.status] ?? "neutral",
+          }))}
+          formatValue={money}
+          emptyLabel="No fines recorded yet."
+        />
+      </div>
+    </div>
+  );
 }

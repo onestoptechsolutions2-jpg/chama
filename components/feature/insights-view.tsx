@@ -1,6 +1,7 @@
 import type { NextMgrEvent, MgrPace, Recommendation, MemberRiskFlag } from "@/lib/domain/insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Meter } from "@/components/feature/charts";
 
 const SEVERITY_STYLES: Record<Recommendation["severity"], { card: string; badge: "destructive" | "secondary" | "outline" }> = {
   critical: { card: "border-destructive/50 bg-destructive/5", badge: "destructive" },
@@ -51,12 +52,24 @@ function PaceCard({ pace }: { pace: MgrPace | null }) {
     );
   }
 
+  const ratio = Math.max(pace.averageIntervalDays, pace.expectedIntervalDays);
+
   return (
     <Card className={pace.onPace ? undefined : "border-amber-500/50 bg-amber-500/5"}>
-      <CardContent className="pt-6">
-        <p className="text-sm text-muted-foreground">Rotation pace</p>
-        <p className="text-2xl font-semibold">{pace.averageIntervalDays.toFixed(0)} days/cycle</p>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <CardContent className="space-y-3 pt-6">
+        <div>
+          <p className="text-sm text-muted-foreground">Rotation pace</p>
+          <p className="text-2xl font-semibold">{pace.averageIntervalDays.toFixed(0)} days/cycle</p>
+        </div>
+        <Meter
+          label="Actual vs. target interval"
+          value={pace.averageIntervalDays}
+          max={ratio * 1.15}
+          target={pace.expectedIntervalDays}
+          formatValue={(n) => `${n.toFixed(0)}d`}
+          severity={pace.onPace ? "good" : "warning"}
+        />
+        <p className="text-sm text-muted-foreground">
           Target is {pace.expectedIntervalDays} days — {pace.onPace ? "on pace" : "drifting"}
         </p>
       </CardContent>
