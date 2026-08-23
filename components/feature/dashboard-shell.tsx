@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, MoreHorizontal, ChevronsUpDown, LogOut, ShieldCheck } from "lucide-react";
+import { Menu, MoreHorizontal, ChevronsUpDown, LogOut, ShieldCheck, Bell } from "lucide-react";
 import { getVisibleNavItems, type NavItem } from "@/lib/nav-config";
 import type { Session } from "@/lib/auth/session";
 import { switchGroupAction } from "@/app/(dashboard)/actions";
@@ -25,6 +25,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+
+function NotificationBell({ unreadCount }: { unreadCount: number }) {
+  return (
+    <Link
+      href="/dashboard/notifications"
+      className="relative inline-flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      title="Notifications"
+    >
+      <Bell className="h-5 w-5" />
+      {unreadCount > 0 && (
+        <span className="absolute right-1 top-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+          {unreadCount > 9 ? "9+" : unreadCount}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 function initials(name: string) {
   return name
@@ -109,15 +126,20 @@ function GroupSwitcher({ session }: { session: Session }) {
 function SidebarContent({
   session,
   navItems,
+  unreadNotifications,
   onNavigate,
 }: {
   session: Session;
   navItems: NavItem[];
+  unreadNotifications: number;
   onNavigate?: () => void;
 }) {
   return (
     <div className="flex h-full flex-col gap-4 p-4">
-      <div className="px-1 text-lg font-semibold">Chama Platform</div>
+      <div className="flex items-center justify-between px-1">
+        <span className="text-lg font-semibold">Chama Platform</span>
+        <NotificationBell unreadCount={unreadNotifications} />
+      </div>
       <GroupSwitcher session={session} />
       <div className="flex-1 overflow-y-auto">
         <NavLinks items={navItems} onNavigate={onNavigate} />
@@ -204,9 +226,11 @@ function BottomTabBar({
 
 export function DashboardShell({
   session,
+  unreadNotifications = 0,
   children,
 }: {
   session: Session;
+  unreadNotifications?: number;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -222,7 +246,7 @@ export function DashboardShell({
         className="hidden w-64 shrink-0 border-r bg-background md:block"
         data-tour="sidebar"
       >
-        <SidebarContent session={session} navItems={navItems} />
+        <SidebarContent session={session} navItems={navItems} unreadNotifications={unreadNotifications} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -236,12 +260,16 @@ export function DashboardShell({
               <SidebarContent
                 session={session}
                 navItems={navItems}
+                unreadNotifications={unreadNotifications}
                 onNavigate={() => setMobileOpen(false)}
               />
             </SheetContent>
           </Sheet>
           <span className="truncate font-semibold">
             {session.activeMembership?.groupName ?? "Chama Platform"}
+          </span>
+          <span className="ml-auto">
+            <NotificationBell unreadCount={unreadNotifications} />
           </span>
         </header>
 
