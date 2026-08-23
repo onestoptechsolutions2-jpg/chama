@@ -25,6 +25,9 @@ export default async function SuperAdminLayout({
             <Link href="/super-admin/stats" className="text-muted-foreground hover:text-foreground">
               Stats
             </Link>
+            <Link href="/super-admin/integrations" className="text-muted-foreground hover:text-foreground">
+              Integrations
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">
