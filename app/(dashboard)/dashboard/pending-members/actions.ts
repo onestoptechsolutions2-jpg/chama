@@ -7,6 +7,8 @@ import { withTenant, withPlatformAdmin } from "@/lib/db/rls";
 import { groupMemberships, members, groups } from "@/lib/db/schema";
 import { requireRole } from "@/lib/auth/session";
 import { isKycComplete } from "@/lib/domain/officials";
+import { insertNotification } from "@/lib/db/notifications";
+import { buildMembershipNotification } from "@/lib/domain/notifications";
 
 export type PendingMemberActionState = { error: string } | null;
 
@@ -89,6 +91,15 @@ export async function approveMembershipAction(
       });
     }
 
+    await insertNotification(tx, {
+      groupId,
+      userId: membership.userId,
+      template: buildMembershipNotification({ type: "join_request_approved", groupName: group.name }),
+      link: "/dashboard",
+      sourceType: "group_membership",
+      sourceId: membershipId,
+    });
+
     return { ok: true };
   });
 
@@ -103,8 +114,8 @@ export async function rejectMembershipAction(membershipId: number): Promise<void
   const session = await requireRole("admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, (tx) =>
-    tx
+  await withTenant(groupId, async (tx) => {
+    const [rejected] = await tx
       .update(groupMemberships)
       .set({ status: "rejected", reviewedBy: session.user.id, reviewedAt: new Date() })
       .where(
@@ -113,8 +124,22 @@ export async function rejectMembershipAction(membershipId: number): Promise<void
           eq(groupMemberships.groupId, groupId),
           eq(groupMemberships.status, "pending"),
         ),
-      ),
-  );
+      )
+      .returning();
+    if (!rejected) return;
+
+    const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+    if (!group) return;
+
+    await insertNotification(tx, {
+      groupId,
+      userId: rejected.userId,
+      template: buildMembershipNotification({ type: "join_request_rejected", groupName: group.name }),
+      link: "/discover",
+      sourceType: "group_membership",
+      sourceId: membershipId,
+    });
+  });
 
   revalidatePath("/dashboard/pending-members");
 }

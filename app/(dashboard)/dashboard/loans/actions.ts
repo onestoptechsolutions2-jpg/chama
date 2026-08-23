@@ -26,6 +26,15 @@ import { computeLoanLimit, computeTotalRepayable, defaultDueDate } from "@/lib/d
 import { computeTransactionFee } from "@/lib/domain/billing";
 import { hasMinimumAcceptedGuarantors } from "@/lib/domain/guarantors";
 import { evaluateGuarantorEligibility } from "./guarantor-data";
+import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
+import { buildLoanNotification } from "@/lib/domain/notifications";
+import type { Tx } from "@/lib/db/rls";
+
+/** memberId -> userId, or null if that member has no linked login (e.g. staff-added, no account). */
+async function memberUserId(tx: Tx, memberId: number): Promise<number | null> {
+  const member = await tx.query.members.findFirst({ where: eq(members.id, memberId) });
+  return member?.userId ?? null;
+}
 
 export type LoanActionState = { error: string } | null;
 
@@ -243,6 +252,23 @@ export async function applyForLoanAction(
         memberId: guarantorId,
         status: "pending",
       });
+      const guarantorUserId = await memberUserId(tx, guarantorId);
+      if (guarantorUserId) {
+        await insertNotification(tx, {
+          groupId,
+          userId: guarantorUserId,
+          template: buildLoanNotification({ type: "guarantee_requested", requesterName: session.user.name, amount: amountRequested }),
+          link: "/dashboard/loans/apply",
+          sourceType: "loan_application",
+          sourceId: app.id,
+        });
+      }
+    }
+
+    const staffUserIds = await listActiveStaffUserIds(tx, groupId, ["admin", "treasurer"]);
+    const staffTemplate = buildLoanNotification({ type: "application_submitted", requesterName: session.user.name, amount: amountRequested });
+    for (const userId of staffUserIds) {
+      await insertNotification(tx, { groupId, userId, template: staffTemplate, link: "/dashboard/loans", sourceType: "loan_application", sourceId: app.id });
     }
 
     return { ok: true } as const;
@@ -353,6 +379,22 @@ export async function reviewApplicationAction(
         updatedAt: new Date(),
       })
       .where(eq(loanApplications.id, applicationId));
+
+    const applicantUserId = await memberUserId(tx, app.memberId);
+    if (applicantUserId) {
+      const template =
+        decision === "approved"
+          ? buildLoanNotification({ type: "application_approved", amount: Number(app.amountRequested) })
+          : buildLoanNotification({ type: "application_rejected", reason: reviewNotes || null });
+      await insertNotification(tx, {
+        groupId,
+        userId: applicantUserId,
+        template,
+        link: "/dashboard/loans/apply",
+        sourceType: "loan_application",
+        sourceId: applicationId,
+      });
+    }
 
     return { ok: true } as const;
   });
@@ -483,6 +525,22 @@ export async function respondToGuaranteeRequestAction(
       .update(loanGuarantors)
       .set({ status: decision, respondedAt: new Date() })
       .where(eq(loanGuarantors.id, guarantorRowId));
+
+    const applicantUserId = await memberUserId(tx, application.memberId);
+    if (applicantUserId) {
+      const template =
+        decision === "accepted"
+          ? buildLoanNotification({ type: "guarantee_accepted", guarantorName: session.user.name })
+          : buildLoanNotification({ type: "guarantee_declined", guarantorName: session.user.name });
+      await insertNotification(tx, {
+        groupId,
+        userId: applicantUserId,
+        template,
+        link: "/dashboard/loans/apply",
+        sourceType: "loan_application",
+        sourceId: application.id,
+      });
+    }
 
     return { ok: true } as const;
   });

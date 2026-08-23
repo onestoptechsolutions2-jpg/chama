@@ -3,9 +3,36 @@
 import { revalidatePath } from "next/cache";
 import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
+import { withTenant } from "@/lib/db/rls";
 import { groups, groupMemberships } from "@/lib/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import { joinRequestSchema } from "@/lib/validation/groups";
+import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
+import { buildMembershipNotification } from "@/lib/domain/notifications";
+
+/**
+ * notifications is FORCE RLS'd on app.current_group_id (see
+ * lib/db/notifications.ts), but the rest of this action deliberately uses
+ * the plain `db` client — group_memberships isn't RLS-protected and the
+ * requester isn't a tenant member yet, so there's no group context to scope
+ * the rest of the function to. This is the one write here that needs one.
+ */
+async function notifyStaffOfJoinRequest(groupId: number, requesterName: string, membershipId: number) {
+  await withTenant(groupId, async (tx) => {
+    const staffUserIds = await listActiveStaffUserIds(tx, groupId, ["admin", "treasurer"]);
+    const template = buildMembershipNotification({ type: "join_request_submitted", requesterName });
+    for (const userId of staffUserIds) {
+      await insertNotification(tx, {
+        groupId,
+        userId,
+        template,
+        link: "/dashboard/pending-members",
+        sourceType: "group_membership",
+        sourceId: membershipId,
+      });
+    }
+  });
+}
 
 export type JoinRequestState = { error: string } | { ok: true } | null;
 
@@ -55,6 +82,7 @@ export async function requestToJoinAction(
         reviewedAt: null,
       })
       .where(eq(groupMemberships.id, existing.id));
+    await notifyStaffOfJoinRequest(groupId, session.user.name, existing.id);
     revalidatePath(`/discover/${groupId}`);
     return { ok: true };
   }
@@ -69,13 +97,17 @@ export async function requestToJoinAction(
     }
   }
 
-  await db.insert(groupMemberships).values({
-    userId: session.user.id,
-    groupId,
-    role: "member",
-    status: "pending",
-    joinMessage: message || null,
-  });
+  const [created] = await db
+    .insert(groupMemberships)
+    .values({
+      userId: session.user.id,
+      groupId,
+      role: "member",
+      status: "pending",
+      joinMessage: message || null,
+    })
+    .returning();
+  await notifyStaffOfJoinRequest(groupId, session.user.name, created.id);
 
   revalidatePath(`/discover/${groupId}`);
   return { ok: true };

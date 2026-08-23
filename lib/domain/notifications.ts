@@ -1,8 +1,10 @@
 // Generic notification formatting — the notifications table itself
 // (lib/db/schema.ts) is deliberately not welfare-named, even though welfare
-// is the first feature to populate it. This module's event union is
-// welfare-specific for now; a future feature adds its own event type rather
-// than overloading this one.
+// was the first feature to populate it. Each feature gets its own event
+// union and builder (WelfareNotificationEvent, MembershipNotificationEvent,
+// LoanNotificationEvent, ...) rather than one union overloaded across
+// domains — see lib/db/notifications.ts for the shared insert helper every
+// builder's output feeds into.
 
 export type NotificationCategory = "info" | "success" | "warning" | "action_required";
 
@@ -78,6 +80,83 @@ export function buildWelfareNotification(event: WelfareNotificationEvent): Notif
         category: "info",
         title: "Welfare policy updated",
         body: "The group's welfare funding and approval rules were updated.",
+      };
+  }
+}
+
+export type MembershipNotificationEvent =
+  | { type: "join_request_submitted"; requesterName: string }
+  | { type: "join_request_approved"; groupName: string }
+  | { type: "join_request_rejected"; groupName: string };
+
+export function buildMembershipNotification(event: MembershipNotificationEvent): NotificationTemplate {
+  switch (event.type) {
+    case "join_request_submitted":
+      return {
+        category: "action_required",
+        title: "New join request",
+        body: `${event.requesterName} asked to join this group.`,
+      };
+    case "join_request_approved":
+      return {
+        category: "success",
+        title: "You're in!",
+        body: `Your request to join ${event.groupName} was approved.`,
+      };
+    case "join_request_rejected":
+      return {
+        category: "warning",
+        title: "Join request declined",
+        body: `Your request to join ${event.groupName} wasn't approved.`,
+      };
+  }
+}
+
+export type LoanNotificationEvent =
+  | { type: "application_submitted"; requesterName: string; amount: number }
+  | { type: "application_approved"; amount: number }
+  | { type: "application_rejected"; reason: string | null }
+  | { type: "guarantee_requested"; requesterName: string; amount: number }
+  | { type: "guarantee_accepted"; guarantorName: string }
+  | { type: "guarantee_declined"; guarantorName: string };
+
+export function buildLoanNotification(event: LoanNotificationEvent): NotificationTemplate {
+  switch (event.type) {
+    case "application_submitted":
+      return {
+        category: "action_required",
+        title: "New loan application",
+        body: `${event.requesterName} applied for Ksh ${event.amount.toLocaleString()}.`,
+      };
+    case "application_approved":
+      return {
+        category: "success",
+        title: "Your loan was approved",
+        body: `Ksh ${event.amount.toLocaleString()} was approved and is now active.`,
+      };
+    case "application_rejected":
+      return {
+        category: "warning",
+        title: "Your loan application was declined",
+        body: event.reason ?? "No reason was given.",
+      };
+    case "guarantee_requested":
+      return {
+        category: "action_required",
+        title: "You've been asked to guarantee a loan",
+        body: `${event.requesterName} asked you to guarantee their Ksh ${event.amount.toLocaleString()} loan application.`,
+      };
+    case "guarantee_accepted":
+      return {
+        category: "success",
+        title: "A guarantor accepted",
+        body: `${event.guarantorName} accepted your guarantee request.`,
+      };
+    case "guarantee_declined":
+      return {
+        category: "warning",
+        title: "A guarantor declined",
+        body: `${event.guarantorName} declined your guarantee request.`,
       };
   }
 }
