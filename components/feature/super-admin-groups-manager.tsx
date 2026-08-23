@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import type { groups as groupsTable } from "@/lib/db/schema";
 import { groupTypes } from "@/lib/validation/groups";
@@ -40,9 +41,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type Group = typeof groupsTable.$inferSelect;
-type PlatformUser = { id: number; name: string; email: string | null };
-type AccountActivity = {
+export type Group = typeof groupsTable.$inferSelect;
+export type PlatformUser = { id: number; name: string; email: string | null };
+export type AccountActivity = {
   id: number;
   groupId: number;
   activityType: string;
@@ -627,7 +628,11 @@ export function SuperAdminGroupsManager({
                   {(() => {
                     const billing = finance.get(g.id) ?? { pendingAmount: "0", pendingCount: 0, latestStatus: "none", latestAmount: "0", paidAmount: "0", pendingPaymentAmount: "0" };
                     return <>
-                  <TableCell className="font-medium">{g.name}</TableCell>
+                  <TableCell className="font-medium">
+                    <Link href={`/super-admin/groups/${g.id}`} className="underline-offset-4 hover:underline">
+                      {g.name}
+                    </Link>
+                  </TableCell>
                   <TableCell className="capitalize">{g.type}</TableCell>
                   <TableCell className="capitalize">{g.onboardingStage.replace("_", " ")}</TableCell>
                   <TableCell className="capitalize">{g.accountTier}</TableCell>
@@ -697,7 +702,7 @@ export function SuperAdminGroupsManager({
   );
 }
 
-function EditGroupDialog({
+export function EditGroupDialog({
   group,
   platformUsers,
   activities,
