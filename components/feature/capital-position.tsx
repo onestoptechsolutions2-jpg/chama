@@ -1,3 +1,5 @@
+"use client";
+
 import Link from "next/link";
 import type { CapitalPosition, AllocationDrift } from "@/lib/domain/capital";
 import type { ProductFlags } from "@/lib/domain/products";

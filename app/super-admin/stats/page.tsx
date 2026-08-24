@@ -93,7 +93,6 @@ export default async function SuperAdminStatsPage() {
             { label: "Active", value: groupCounts.active, status: "good" },
             { label: "Inactive", value: groupCounts.total - groupCounts.active, status: "neutral" },
           ]}
-          formatValue={String}
         />
         <StatusBarList
           title="Memberships"
@@ -101,7 +100,6 @@ export default async function SuperAdminStatsPage() {
             { label: "Active", value: membershipCounts.active, status: "good" },
             { label: "Pending", value: membershipCounts.pending, status: "warning" },
           ]}
-          formatValue={String}
         />
       </div>
 

@@ -33,8 +33,20 @@ export default async function GroupProfilePage({
   const groupId = Number(id);
   if (!Number.isInteger(groupId)) notFound();
 
+  const group = await withPlatformAdmin((tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) }));
+  if (!group) notFound();
+
+  // Independent withPlatformAdmin calls, run concurrently via this outer
+  // Promise.all — NOT one withPlatformAdmin wrapping an inner Promise.all.
+  // Concurrent queries sharing a single transaction can race the
+  // transaction-local SET LOCAL app.is_platform_admin context (the same bug
+  // class this project has hit and fixed repeatedly — see
+  // docs/architecture.md's Scale Audit and getSession() entries); this
+  // page hit it for real in testing: getOrCreateWelfareFund's insert threw
+  // "new row violates row-level security policy" under load, because its
+  // transaction's platform-admin context wasn't reliably set by the time
+  // that concurrent query ran.
   const [
-    group,
     membershipStats,
     activeRoles,
     capitalTotals,
@@ -48,25 +60,8 @@ export default async function GroupProfilePage({
     payments,
     activities,
     platformUsers,
-  ] = await withPlatformAdmin(async (tx) => {
-    const groupRow = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
-    if (!groupRow) return [null] as const;
-
-    const [
-      membershipStatsRow,
-      activeRolesRows,
-      capitalTotalsRow,
-      loanTotalsRow,
-      loansByStatusRows,
-      finesByStatusRows,
-      monthlyRows,
-      mgrDataResult,
-      welfareFundRow,
-      invoiceRows,
-      paymentRows,
-      activityRows,
-      platformUserRows,
-    ] = await Promise.all([
+  ] = await Promise.all([
+    withPlatformAdmin((tx) =>
       tx
         .select({
           active: sql<number>`count(*) filter (where ${groupMemberships.status} = 'active')::int`,
@@ -75,9 +70,13 @@ export default async function GroupProfilePage({
         .from(groupMemberships)
         .where(eq(groupMemberships.groupId, groupId))
         .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
       tx.query.groupMemberships.findMany({
         where: and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.status, "active")),
       }),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({
           capitalPool: sql<string>`coalesce(sum(${members.capital}), 0)`,
@@ -87,6 +86,8 @@ export default async function GroupProfilePage({
         .from(members)
         .where(and(eq(members.groupId, groupId), eq(members.active, true)))
         .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({
           principal: sql<string>`coalesce(sum(${loans.principal}), 0)`,
@@ -95,16 +96,22 @@ export default async function GroupProfilePage({
         .from(loans)
         .where(and(eq(loans.groupId, groupId), inArray(loans.status, OUTSTANDING_LOAN_STATUSES)))
         .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({ status: loans.status, count: sql<number>`count(*)::int`, outstanding: sql<string>`coalesce(sum(${loans.amountRemaining}), 0)` })
         .from(loans)
         .where(eq(loans.groupId, groupId))
         .groupBy(loans.status),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({ status: fines.status, total: sql<string>`coalesce(sum(${fines.amount}), 0)` })
         .from(fines)
         .where(eq(fines.groupId, groupId))
         .groupBy(fines.status),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({ year: contributions.year, month: contributions.month, total: sql<string>`coalesce(sum(${contributions.amount}), 0)` })
         .from(contributions)
@@ -112,18 +119,23 @@ export default async function GroupProfilePage({
         .groupBy(contributions.year, contributions.month)
         .orderBy(contributions.year, contributions.month)
         .then((rows) => rows.slice(-MONTHS_BACK)),
-      groupRow.mgrEnabled
-        ? Promise.all([
-            tx.query.mgrCycles.findMany({ where: eq(mgrCycles.groupId, groupId) }),
-            tx.query.mgrSlots.findMany({ where: eq(mgrSlots.groupId, groupId), with: { member: true } }),
-          ])
-        : Promise.resolve(null),
-      groupRow.welfareEnabled ? getOrCreateWelfareFund(tx, groupId) : Promise.resolve(null),
+    ),
+    group.mgrEnabled
+      ? withPlatformAdmin(async (tx) => {
+          const cycles = await tx.query.mgrCycles.findMany({ where: eq(mgrCycles.groupId, groupId) });
+          const slots = await tx.query.mgrSlots.findMany({ where: eq(mgrSlots.groupId, groupId), with: { member: true } });
+          return [cycles, slots] as const;
+        })
+      : Promise.resolve(null),
+    group.welfareEnabled ? withPlatformAdmin((tx) => getOrCreateWelfareFund(tx, groupId)) : Promise.resolve(null),
+    withPlatformAdmin((tx) =>
       tx.query.subscriptionInvoices.findMany({
         where: eq(subscriptionInvoices.groupId, groupId),
         orderBy: (i, { desc }) => [desc(i.periodStart)],
         limit: 6,
       }),
+    ),
+    withPlatformAdmin((tx) =>
       tx
         .select({
           paidAmount: sql<string>`coalesce(sum(${platformPayments.amount}) filter (where ${platformPayments.status} = 'paid'), 0)`,
@@ -132,44 +144,27 @@ export default async function GroupProfilePage({
         .from(platformPayments)
         .where(eq(platformPayments.groupId, groupId))
         .then((r) => r[0]),
+    ),
+    withPlatformAdmin((tx) =>
       tx.query.groupAccountActivities.findMany({
         where: eq(groupAccountActivities.groupId, groupId),
         orderBy: (a, { desc }) => [desc(a.createdAt)],
         limit: 20,
       }),
-      tx.query.users.findMany({ where: (u, { isNotNull }) => isNotNull(u.platformRole) }),
-    ]);
-
-    return [
-      groupRow,
-      membershipStatsRow,
-      activeRolesRows,
-      capitalTotalsRow,
-      loanTotalsRow,
-      loansByStatusRows,
-      finesByStatusRows,
-      monthlyRows,
-      mgrDataResult,
-      welfareFundRow,
-      invoiceRows,
-      paymentRows,
-      activityRows,
-      platformUserRows,
-    ] as const;
-  });
-
-  if (!group) notFound();
+    ),
+    withPlatformAdmin((tx) => tx.query.users.findMany({ where: (u, { isNotNull }) => isNotNull(u.platformRole) })),
+  ]);
 
   const position = computeCapitalPosition({
-    capitalPool: Number(capitalTotals!.capitalPool),
-    securityPool: Number(capitalTotals!.securityPool),
-    personalSavingsPool: Number(capitalTotals!.personalSavingsPool),
+    capitalPool: Number(capitalTotals.capitalPool),
+    securityPool: Number(capitalTotals.securityPool),
+    personalSavingsPool: Number(capitalTotals.personalSavingsPool),
     welfareAvailable: welfareFund
       ? Number(welfareFund.emergencyBalance) + Number(welfareFund.longTermBalance) + Number(welfareFund.advanceBalance)
       : 0,
     projectsCommitted: 0,
-    loanPrincipalOutstanding: Number(loanTotals!.principal),
-    loanReceivableOutstanding: Number(loanTotals!.remaining),
+    loanPrincipalOutstanding: Number(loanTotals.principal),
+    loanReceivableOutstanding: Number(loanTotals.remaining),
   });
 
   const nextMgrEvent = mgrData
@@ -181,9 +176,9 @@ export default async function GroupProfilePage({
     : null;
 
   const officials = {
-    admin: activeRoles!.some((r) => r.role === "admin"),
-    treasurer: activeRoles!.some((r) => r.role === "treasurer"),
-    secretary: activeRoles!.some((r) => r.role === "secretary"),
+    admin: activeRoles.some((r) => r.role === "admin"),
+    treasurer: activeRoles.some((r) => r.role === "treasurer"),
+    secretary: activeRoles.some((r) => r.role === "secretary"),
   };
 
   return (
@@ -191,18 +186,18 @@ export default async function GroupProfilePage({
       <PageHeader title={group.name} description={`${group.type} · created ${new Date(group.createdAt).toLocaleDateString()}`} />
       <GroupProfileView
         group={group}
-        activeMemberCount={membershipStats!.active}
-        pendingMemberCount={membershipStats!.pending}
+        activeMemberCount={membershipStats.active}
+        pendingMemberCount={membershipStats.pending}
         officials={officials}
         position={position}
-        loansByStatus={loansByStatus!}
-        finesByStatus={finesByStatus!}
-        monthly={monthly!}
+        loansByStatus={loansByStatus}
+        finesByStatus={finesByStatus}
+        monthly={monthly}
         nextMgrEvent={nextMgrEvent}
-        invoices={invoices!}
-        billing={payments!}
-        activities={activities!}
-        platformUsers={platformUsers!}
+        invoices={invoices}
+        billing={payments}
+        activities={activities}
+        platformUsers={platformUsers}
       />
     </div>
   );

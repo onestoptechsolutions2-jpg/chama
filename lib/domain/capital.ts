@@ -16,7 +16,9 @@
  * welfareAvailable (Phase 8) is read directly from the welfare fund's own
  * cached reserve balances (welfare_funds.emergency/long_term/advance) —
  * previously this was collected-minus-disbursed derived from contributions/
- * welfare_claims, which the new ledger-backed fund makes unnecessary.
+ * welfare_claims, which the new ledger-backed fund makes unnecessary. Every
+ * real caller has passed a real welfareAvailable number since Phase 8, so
+ * there's no fallback to derive it from anymore — see docs/architecture.md.
  */
 
 export type CapitalPools = {
@@ -24,10 +26,6 @@ export type CapitalPools = {
   securityPool: number;
   personalSavingsPool: number;
   welfareAvailable: number;
-  /** @deprecated kept for compatibility with older callers/tests; prefer welfareAvailable. */
-  welfareCollected?: number;
-  /** @deprecated kept for compatibility with older callers/tests; prefer welfareAvailable. */
-  welfareDisbursed?: number;
   projectsCommitted: number;
   /** Sum of loans.principal for active/extended/overdue loans — cash actually drawn from the capital pool. */
   loanPrincipalOutstanding: number;
@@ -57,15 +55,10 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     securityPool,
     personalSavingsPool,
     welfareAvailable,
-    welfareCollected,
-    welfareDisbursed,
     projectsCommitted,
     loanPrincipalOutstanding,
     loanReceivableOutstanding,
   } = pools;
-
-  const normalizedWelfareAvailable =
-    Number(welfareAvailable ?? (Number(welfareCollected ?? 0) - Number(welfareDisbursed ?? 0)));
 
   const overextended = loanPrincipalOutstanding > capitalPool;
   const reserve = Math.max(0, capitalPool - loanPrincipalOutstanding);
@@ -81,7 +74,7 @@ export function computeCapitalPosition(pools: CapitalPools): CapitalPosition {
     overextended,
     securityPool,
     personalSavingsPool,
-    welfareAvailable: Math.max(0, normalizedWelfareAvailable),
+    welfareAvailable: Math.max(0, Number(welfareAvailable)),
     projectsCommitted,
   };
 }

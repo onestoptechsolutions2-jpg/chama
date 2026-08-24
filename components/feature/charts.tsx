@@ -34,6 +34,17 @@ const STATUS_ICON: Record<StatusRole, typeof CheckCircle2> = {
 const CAT_VAR = (i: number) => `var(--viz-cat-${(i % 8) + 1})`;
 const SEQ_VAR = (step: number) => `var(--viz-seq-${Math.min(Math.max(step, 1), 6)})`;
 
+/**
+ * Every chart here defaults to this when a caller (often a Server
+ * Component) doesn't have a currency/unit-specific formatter to pass —
+ * `formatValue` is optional precisely so a server-rendered page never has
+ * to hand a plain function to these Client Components (functions aren't
+ * serializable across that boundary; see the App Router docs on the
+ * server/client props boundary). Pass your own only when you need
+ * currency or unit formatting beyond a plain grouped number.
+ */
+const defaultFormatValue = (n: number) => n.toLocaleString();
+
 function Tooltip({ label, value, visible }: { label: string; value: string; visible: boolean }) {
   return (
     <div
@@ -54,12 +65,12 @@ function EmptyState({ label }: { label: string }) {
 export function SequentialColumnChart({
   title,
   data,
-  formatValue,
+  formatValue = defaultFormatValue,
   emptyLabel = "No data yet.",
 }: {
   title: string;
   data: { label: string; value: number }[];
-  formatValue: (n: number) => string;
+  formatValue?: (n: number) => string;
   emptyLabel?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -124,12 +135,12 @@ export function SequentialColumnChart({
 export function RankedBarList({
   title,
   data,
-  formatValue,
+  formatValue = defaultFormatValue,
   emptyLabel = "No data yet.",
 }: {
   title: string;
   data: { label: string; value: number }[];
-  formatValue: (n: number) => string;
+  formatValue?: (n: number) => string;
   emptyLabel?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -180,12 +191,12 @@ export function RankedBarList({
 export function StatusBarList({
   title,
   rows,
-  formatValue,
+  formatValue = defaultFormatValue,
   emptyLabel = "No data yet.",
 }: {
   title: string;
   rows: { label: string; value: number; secondary?: string; status: StatusRole }[];
-  formatValue: (n: number) => string;
+  formatValue?: (n: number) => string;
   emptyLabel?: string;
 }) {
   const [hover, setHover] = useState<number | null>(null);
@@ -245,11 +256,11 @@ export function StatusBarList({
 export function CompositionBar({
   title,
   data,
-  formatValue,
+  formatValue = defaultFormatValue,
 }: {
   title: string;
   data: { label: string; value: number }[];
-  formatValue: (n: number) => string;
+  formatValue?: (n: number) => string;
 }) {
   const id = useId();
   const total = data.reduce((s, d) => s + Math.max(d.value, 0), 0);
@@ -312,14 +323,14 @@ export function Meter({
   value,
   max,
   target,
-  formatValue,
+  formatValue = defaultFormatValue,
   severity = "good",
 }: {
   label: string;
   value: number;
   max: number;
   target?: number;
-  formatValue: (n: number) => string;
+  formatValue?: (n: number) => string;
   severity?: StatusRole;
 }) {
   const pct = max > 0 ? Math.min(100, Math.max(0, (value / max) * 100)) : 0;

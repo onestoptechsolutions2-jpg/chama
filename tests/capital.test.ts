@@ -6,8 +6,6 @@ const basePools: CapitalPools = {
   securityPool: 0,
   personalSavingsPool: 0,
   welfareAvailable: 0,
-  welfareCollected: 0,
-  welfareDisbursed: 0,
   projectsCommitted: 0,
   loanPrincipalOutstanding: 0,
   loanReceivableOutstanding: 0,
@@ -54,17 +52,13 @@ describe("computeCapitalPosition", () => {
     expect(pos.loanDeploymentPct).toBe(100); // capped, not 150%
   });
 
-  it("nets welfareAvailable against disbursed claims, floored at 0", () => {
-    const pos = computeCapitalPosition({
-      ...basePools,
-      welfareCollected: 50_000,
-      welfareDisbursed: 20_000,
-    });
+  it("passes welfareAvailable through unchanged (Phase 8: read directly from welfare_funds, not derived here)", () => {
+    const pos = computeCapitalPosition({ ...basePools, welfareAvailable: 30_000 });
     expect(pos.welfareAvailable).toBe(30_000);
   });
 
-  it("never returns a negative welfareAvailable even if disbursed somehow exceeds collected", () => {
-    const pos = computeCapitalPosition({ ...basePools, welfareCollected: 10_000, welfareDisbursed: 15_000 });
+  it("never returns a negative welfareAvailable even if the caller somehow passes one", () => {
+    const pos = computeCapitalPosition({ ...basePools, welfareAvailable: -5_000 });
     expect(pos.welfareAvailable).toBe(0);
   });
 
