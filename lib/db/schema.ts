@@ -316,6 +316,18 @@ export const groups = pgTable("groups", {
     .default("2000"),
   sharesPerMember: integer("shares_per_member").notNull().default(1),
   contributionDay: integer("contribution_day").notNull().default(1),
+  // The floor below which a personal_savings contribution is rejected
+  // (capital/security have no such floor — see
+  // lib/domain/contributions.ts's validateContributionAmount). Was a
+  // hardcoded platform-wide MIN_PERSONAL_SAVINGS_INCREMENT=500 despite that
+  // module's own doc comment already saying group config should win where
+  // configured. Same default, so behavior is unchanged unless edited.
+  minPersonalSavingsIncrement: numeric("min_personal_savings_increment", {
+    precision: 14,
+    scale: 2,
+  })
+    .notNull()
+    .default("500"),
 
   // Loan settings
   loanInterestRate: numeric("loan_interest_rate", { precision: 5, scale: 2 })
@@ -333,6 +345,21 @@ export const groups = pgTable("groups", {
   // staff-direct loan creation — see reviewApplicationAction/createLoanAction
   // in app/(dashboard)/dashboard/loans/actions.ts for the reasoning.
   loanMinGuarantors: integer("loan_min_guarantors").notNull().default(1),
+  // How many loans a member may guarantee at once, group-side — was a
+  // hardcoded platform-wide MAX_CONCURRENT_GUARANTEES=2 in
+  // lib/domain/guarantors.ts until this column existed; see
+  // docs/architecture.md's hardcoded-values sweep. Default matches that
+  // prior constant so no group's behavior changes unless they raise or
+  // lower it.
+  loanMaxConcurrentGuarantees: integer("loan_max_concurrent_guarantees").notNull().default(2),
+  // The floor below which a loan application/direct-approval is rejected.
+  // Was a hardcoded platform-wide MIN_LOAN_AMOUNT=1000 baked directly into
+  // lib/validation/loans.ts's zod schemas — that module's own doc comment
+  // already said group config should win where configured; this closes
+  // that gap. Same default, so behavior is unchanged unless a group edits it.
+  minLoanAmount: numeric("min_loan_amount", { precision: 14, scale: 2 })
+    .notNull()
+    .default("1000"),
 
   // MGR settings
   mgrPoolAmount: numeric("mgr_pool_amount", { precision: 14, scale: 2 }).default(

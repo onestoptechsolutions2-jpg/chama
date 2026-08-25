@@ -18,6 +18,14 @@ export type GuarantorEligibilityInput = {
   hasOwnOverdueLoan: boolean;
   /** How many other loans this member is currently an accepted guarantor for (not yet cleared/rejected). */
   currentGuaranteeCount: number;
+  /**
+   * The group's own `loanMaxConcurrentGuarantees` — defaults to the platform
+   * constant only for callers with no group in scope (e.g. a unit test).
+   * Different groups have different risk tolerance; this used to be a
+   * single hardcoded cap applied identically to every group regardless of
+   * their own configured loanMinGuarantors.
+   */
+  maxConcurrentGuarantees?: number;
 };
 
 export type GuarantorEligibilityResult = { eligible: true } | { eligible: false; reason: string };
@@ -25,15 +33,16 @@ export type GuarantorEligibilityResult = { eligible: true } | { eligible: false;
 export function checkGuarantorEligibility(
   input: GuarantorEligibilityInput,
 ): GuarantorEligibilityResult {
+  const maxConcurrentGuarantees = input.maxConcurrentGuarantees ?? MAX_CONCURRENT_GUARANTEES;
   if (input.isSelf) return { eligible: false, reason: "A member cannot guarantee their own loan" };
   if (!input.isActiveMember) return { eligible: false, reason: "Guarantor must be an active member" };
   if (input.hasOwnOverdueLoan) {
     return { eligible: false, reason: "This member has a defaulted loan of their own" };
   }
-  if (input.currentGuaranteeCount >= MAX_CONCURRENT_GUARANTEES) {
+  if (input.currentGuaranteeCount >= maxConcurrentGuarantees) {
     return {
       eligible: false,
-      reason: `Already guaranteeing the maximum of ${MAX_CONCURRENT_GUARANTEES} loans`,
+      reason: `Already guaranteeing the maximum of ${maxConcurrentGuarantees} loans`,
     };
   }
   return { eligible: true };

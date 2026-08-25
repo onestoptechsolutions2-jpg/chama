@@ -149,13 +149,15 @@ export async function recordContributionAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { memberId, type, amount, reference, notes } = parsed.data;
-
-  const amountError = validateContributionAmount(type, amount);
-  if (amountError) return { error: amountError };
-
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+    const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+    if (!group) return { error: "Group not found" };
+
+    const amountError = validateContributionAmount(type, amount, Number(group.minPersonalSavingsIncrement));
+    if (amountError) return { error: amountError };
+
     const [contribution] = await tx
       .insert(contributions)
       .values({
@@ -188,7 +190,7 @@ export async function recordContributionAction(
         });
         await allocateContributionToWelfareFund(tx, groupId, contribution.id, routed, split);
       }
-      return;
+      return { ok: true };
     }
 
     const balanceField = CONTRIBUTION_BALANCE_FIELD[type];
@@ -199,7 +201,10 @@ export async function recordContributionAction(
         updatedAt: new Date(),
       })
       .where(and(eq(members.id, memberId), eq(members.groupId, groupId)));
+    return { ok: true };
   });
+
+  if ("error" in result) return { error: result.error };
 
   revalidatePath("/dashboard/members");
   revalidatePath("/dashboard/welfare");

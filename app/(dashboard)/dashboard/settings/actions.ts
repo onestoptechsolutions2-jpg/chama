@@ -37,6 +37,10 @@ export async function updateSettingsAction(
         fineAbsence: values.fineAbsence !== undefined ? String(values.fineAbsence) : undefined,
         fineRuleViolation:
           values.fineRuleViolation !== undefined ? String(values.fineRuleViolation) : undefined,
+        minPersonalSavingsIncrement:
+          values.minPersonalSavingsIncrement !== undefined
+            ? String(values.minPersonalSavingsIncrement)
+            : undefined,
         updatedAt: new Date(),
       })
       .where(eq(groups.id, groupId)),
@@ -102,6 +106,8 @@ export async function updateLoanSettingsAction(
         loanLatePenalty:
           values.loanLatePenalty !== undefined ? String(values.loanLatePenalty) : undefined,
         loanMinGuarantors: values.loanMinGuarantors,
+        loanMaxConcurrentGuarantees: values.loanMaxConcurrentGuarantees,
+        minLoanAmount: values.minLoanAmount !== undefined ? String(values.minLoanAmount) : undefined,
         updatedAt: new Date(),
       })
       .where(eq(groups.id, groupId)),

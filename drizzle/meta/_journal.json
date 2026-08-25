@@ -281,6 +281,13 @@
       "when": 1787339000000,
       "tag": "0039_self_service_group_creation",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1787625535821,
+      "tag": "0040_sturdy_rafael_vega",
+      "breakpoints": true
     }
   ]
 }

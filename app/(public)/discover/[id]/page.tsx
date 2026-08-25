@@ -104,7 +104,7 @@ export default async function GroupDetailPage({
         <Card>
           <CardContent className="pt-6 text-sm">
             You&apos;re already a member of this group.{" "}
-            <Link href="/" className="underline underline-offset-4">
+            <Link href="/dashboard" className="underline underline-offset-4">
               Go to dashboard
             </Link>
           </CardContent>

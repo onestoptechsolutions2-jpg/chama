@@ -18,6 +18,11 @@ describe("validateContributionAmount", () => {
     expect(validateContributionAmount("security", 1)).toBeNull();
     expect(validateContributionAmount("mgr", 1)).toBeNull();
   });
+
+  it("honors a group's own configured minimum instead of the platform default", () => {
+    expect(validateContributionAmount("personal_savings", 100, 200)).toContain("200");
+    expect(validateContributionAmount("personal_savings", 100, 50)).toBeNull();
+  });
 });
 
 describe("CONTRIBUTION_BALANCE_FIELD", () => {

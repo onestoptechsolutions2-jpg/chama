@@ -44,6 +44,23 @@ describe("checkGuarantorEligibility", () => {
   it("is still eligible just under the cap", () => {
     expect(checkGuarantorEligibility({ ...baseEligible, currentGuaranteeCount: 1 }).eligible).toBe(true);
   });
+
+  it("honors the group's own configured cap instead of the platform default", () => {
+    const stricter = checkGuarantorEligibility({
+      ...baseEligible,
+      currentGuaranteeCount: 1,
+      maxConcurrentGuarantees: 1,
+    });
+    expect(stricter.eligible).toBe(false);
+    if (!stricter.eligible) expect(stricter.reason).toMatch(/maximum of 1/);
+
+    const looser = checkGuarantorEligibility({
+      ...baseEligible,
+      currentGuaranteeCount: 3,
+      maxConcurrentGuarantees: 5,
+    });
+    expect(looser.eligible).toBe(true);
+  });
 });
 
 describe("countAcceptedGuarantors", () => {

@@ -47,46 +47,55 @@ export async function createOnboardingGroupAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid group details" };
 
   const { name, type, description, contactPersonPhone, contactPersonRole } = parsed.data;
-  const group = await withUser(session.user.id, async (tx) => {
-    const [created] = await tx
-      .insert(groups)
-      .values({
-        name,
-        type,
-        description: description || null,
-        isPublic: false,
-        requireApproval: true,
-        loansEnabled: parsed.data.loansEnabled === "on",
-        mgrEnabled: parsed.data.mgrEnabled === "on",
-        welfareEnabled: parsed.data.welfareEnabled === "on",
-        projectsEnabled: parsed.data.projectsEnabled === "on",
-        contactPersonName: session.user.name,
-        contactPersonEmail: session.user.email,
-        contactPersonPhone: contactPersonPhone || session.user.phone,
-        contactPersonRole: contactPersonRole || "Group administrator",
-        onboardingStage: "registration",
-      })
-      .returning();
+  const groupId = await withUser(session.user.id, async (tx) => {
+    // No .returning() here, deliberately: at the instant this row is
+    // inserted, none of groups' three SELECT policies match yet (not
+    // public/registration-complete, app.current_group_id isn't set under
+    // withUser, and the founding membership row below doesn't exist yet)
+    // — under FORCE ROW LEVEL SECURITY, INSERT ... RETURNING must ALSO
+    // satisfy a SELECT policy on the new row, so it throws "new row
+    // violates row-level security policy" instead of just returning it.
+    // lastval() reads back the id the session's own INSERT just consumed
+    // from the sequence — a session-local read, not a table SELECT, so it
+    // isn't subject to groups' RLS at all.
+    await tx.insert(groups).values({
+      name,
+      type,
+      description: description || null,
+      isPublic: false,
+      requireApproval: true,
+      loansEnabled: parsed.data.loansEnabled === "on",
+      mgrEnabled: parsed.data.mgrEnabled === "on",
+      welfareEnabled: parsed.data.welfareEnabled === "on",
+      projectsEnabled: parsed.data.projectsEnabled === "on",
+      contactPersonName: session.user.name,
+      contactPersonEmail: session.user.email,
+      contactPersonPhone: contactPersonPhone || session.user.phone,
+      contactPersonRole: contactPersonRole || "Group administrator",
+      onboardingStage: "registration",
+    });
+    const lastvalResult = await tx.execute<{ id: number }>(sql`select lastval()::int as id`);
+    const newGroupId = lastvalResult.rows[0].id;
 
-    await tx.execute(sql`select set_config('app.current_group_id', ${String(created.id)}, true)`);
+    await tx.execute(sql`select set_config('app.current_group_id', ${String(newGroupId)}, true)`);
     await tx.insert(groupMemberships).values({
       userId: session.user.id,
-      groupId: created.id,
+      groupId: newGroupId,
       role: "admin",
       status: "active",
       rulesAcceptedAt: new Date(),
     });
     await tx.insert(members).values({
-      groupId: created.id,
+      groupId: newGroupId,
       userId: session.user.id,
       name: session.user.name,
       phone: session.user.phone,
       email: session.user.email,
     });
-    return created;
+    return newGroupId;
   });
 
-  await db.update(sessions).set({ activeGroupId: group.id }).where(eq(sessions.id, session.sessionId));
+  await db.update(sessions).set({ activeGroupId: groupId }).where(eq(sessions.id, session.sessionId));
   revalidatePath("/dashboard", "layout");
   redirect("/dashboard");
 }

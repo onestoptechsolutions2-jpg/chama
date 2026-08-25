@@ -16,6 +16,7 @@ export const updateSettingsSchema = z.object({
   sharePrice: z.coerce.number().nonnegative().optional(),
   sharesPerMember: z.coerce.number().int().positive().optional(),
   contributionDay: z.coerce.number().int().min(1).max(31).optional(),
+  minPersonalSavingsIncrement: z.coerce.number().nonnegative().optional(),
   fineLateness: z.coerce.number().nonnegative().optional(),
   fineAbsence: z.coerce.number().nonnegative().optional(),
   fineRuleViolation: z.coerce.number().nonnegative().optional(),
@@ -58,6 +59,10 @@ export const updateLoanSettingsSchema = z.object({
   // 0 means the group has deliberately opted out of requiring guarantors —
   // see lib/domain/guarantors.ts's hasMinimumAcceptedGuarantors.
   loanMinGuarantors: z.coerce.number().int().min(0).max(10).optional(),
+  // How many loans a member may guarantee at once — see
+  // lib/domain/guarantors.ts's checkGuarantorEligibility.
+  loanMaxConcurrentGuarantees: z.coerce.number().int().min(1).max(20).optional(),
+  minLoanAmount: z.coerce.number().nonnegative().optional(),
 });
 
 export type UpdateLoanSettingsInput = z.infer<typeof updateLoanSettingsSchema>;

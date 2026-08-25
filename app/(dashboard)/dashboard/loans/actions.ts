@@ -82,6 +82,10 @@ export async function createLoanAction(
     const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
     if (!group) return { error: "Group not found" };
 
+    const minAmount = Number(group.minLoanAmount);
+    if (principal < minAmount) {
+      return { error: `Minimum loan amount is Ksh ${minAmount.toLocaleString()}` };
+    }
     const limit = computeLoanLimit(member, group);
     if (principal > limit) {
       return { error: `Exceeds loan limit of Ksh ${limit.toLocaleString()}` };
@@ -219,6 +223,10 @@ export async function applyForLoanAction(
     const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
     if (!group) return { error: "Group not found" };
 
+    const minAmount = Number(group.minLoanAmount);
+    if (amountRequested < minAmount) {
+      return { error: `Minimum loan amount is Ksh ${minAmount.toLocaleString()}` };
+    }
     const limit = computeLoanLimit(member, group);
     if (amountRequested > limit) {
       return { error: `Exceeds your loan limit of Ksh ${limit.toLocaleString()}` };
@@ -228,7 +236,13 @@ export async function applyForLoanAction(
     // partially-created application with only some guarantors requested
     // would be confusing to recover from.
     for (const guarantorId of guarantorMemberIds) {
-      const eligibility = await evaluateGuarantorEligibility(tx, groupId, memberId, guarantorId);
+      const eligibility = await evaluateGuarantorEligibility(
+        tx,
+        groupId,
+        memberId,
+        guarantorId,
+        group.loanMaxConcurrentGuarantees,
+      );
       if (!eligibility.eligible) {
         return { error: eligibility.reason };
       }
@@ -517,7 +531,15 @@ export async function respondToGuaranteeRequestAction(
     // changed since the borrower first asked (e.g. this member accepted
     // another guarantee, or their own loan went overdue, in between).
     if (decision === "accepted") {
-      const eligibility = await evaluateGuarantorEligibility(tx, groupId, application.memberId, memberId);
+      const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+      if (!group) return { error: "Group not found" };
+      const eligibility = await evaluateGuarantorEligibility(
+        tx,
+        groupId,
+        application.memberId,
+        memberId,
+        group.loanMaxConcurrentGuarantees,
+      );
       if (!eligibility.eligible) return { error: eligibility.reason };
     }
 

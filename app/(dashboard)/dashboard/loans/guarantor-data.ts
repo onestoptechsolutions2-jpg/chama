@@ -63,6 +63,7 @@ export async function evaluateGuarantorEligibility(
   groupId: number,
   borrowerMemberId: number,
   candidateMemberId: number,
+  maxConcurrentGuarantees?: number,
 ): Promise<GuarantorEligibilityResult> {
   const candidate = await tx.query.members.findFirst({
     where: and(eq(members.id, candidateMemberId), eq(members.groupId, groupId)),
@@ -79,5 +80,6 @@ export async function evaluateGuarantorEligibility(
     isActiveMember: candidate.active,
     hasOwnOverdueLoan: !!ownOverdueLoan,
     currentGuaranteeCount,
+    maxConcurrentGuarantees,
   });
 }

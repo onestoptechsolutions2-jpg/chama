@@ -1,21 +1,23 @@
 import { z } from "zod";
-import { MIN_LOAN_AMOUNT } from "@/lib/domain/constants";
 
+/**
+ * Zod only enforces "a real positive amount" here — the actual configurable
+ * floor is the group's own `minLoanAmount`, checked in the action (where
+ * `group` is already fetched) against `Number(group.minLoanAmount)`. This
+ * used to be a hardcoded MIN_LOAN_AMOUNT=1000 applied identically to every
+ * group; see docs/architecture.md's hardcoded-values sweep.
+ */
 export const repaymentMonthsOptions = [3, 6, 9, 12] as const;
 
 export const applyForLoanSchema = z.object({
-  amountRequested: z.coerce
-    .number()
-    .min(MIN_LOAN_AMOUNT, `Minimum loan amount is Ksh ${MIN_LOAN_AMOUNT}`),
+  amountRequested: z.coerce.number().positive("Amount must be greater than 0"),
   purpose: z.string().trim().optional(),
   repaymentMonths: z.coerce.number().int().positive(),
 });
 
 export const createLoanSchema = z.object({
   memberId: z.coerce.number().int().positive(),
-  principal: z.coerce
-    .number()
-    .min(MIN_LOAN_AMOUNT, `Minimum loan amount is Ksh ${MIN_LOAN_AMOUNT}`),
+  principal: z.coerce.number().positive("Amount must be greater than 0"),
   purpose: z.string().trim().optional(),
 });
 

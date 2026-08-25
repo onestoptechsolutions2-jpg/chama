@@ -203,6 +203,31 @@ function LoanSettingsForm({ group, isAdmin }: { group: Group; isAdmin: boolean }
                 guarantors aren&apos;t required.
               </p>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="loanMaxConcurrentGuarantees">Max loans a member may guarantee at once</Label>
+              <Input
+                id="loanMaxConcurrentGuarantees"
+                name="loanMaxConcurrentGuarantees"
+                type="number"
+                min="1"
+                max="20"
+                step="1"
+                defaultValue={group.loanMaxConcurrentGuarantees}
+                disabled={!isAdmin}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="minLoanAmount">Minimum loan amount (Ksh)</Label>
+              <Input
+                id="minLoanAmount"
+                name="minLoanAmount"
+                type="number"
+                min="0"
+                step="1"
+                defaultValue={group.minLoanAmount}
+                disabled={!isAdmin}
+              />
+            </div>
           </CardContent>
         </Card>
       </TabsContent>
@@ -379,6 +404,20 @@ export function SettingsManager({
                   defaultValue={group.contributionDay}
                   disabled={!isAdmin}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="minPersonalSavingsIncrement">Minimum personal savings increment (Ksh)</Label>
+                <Input
+                  id="minPersonalSavingsIncrement"
+                  name="minPersonalSavingsIncrement"
+                  type="number"
+                  min="0"
+                  defaultValue={group.minPersonalSavingsIncrement}
+                  disabled={!isAdmin}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Capital and security contributions have no minimum; this only applies to personal savings.
+                </p>
               </div>
             </CardContent>
           </Card>
