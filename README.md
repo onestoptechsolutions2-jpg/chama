@@ -2,7 +2,12 @@
 
 Multi-tenant SaaS for managing African group-savings associations (chama/SACCO/welfare/self-help groups) — contributions, loans, fines, meetings, welfare claims, table-banking projects, and merry-go-round (MGR) rotations, with M-Pesa collection via IntaSend.
 
-Full architecture, design decisions, and the phase-by-phase build history (including every real bug found and fixed along the way) live in [`docs/architecture.md`](./docs/architecture.md) — read that first for anything beyond initial setup.
+Documentation lives in [`docs/`](./docs/) — read the one that matches what you're doing:
+- [`docs/architecture.md`](./docs/architecture.md) — current-state technical reference (stack, data model, multi-tenancy/RLS, auth). Start here for anything beyond initial setup.
+- [`docs/developer-guide.md`](./docs/developer-guide.md) — conventions for adding a feature, and a list of gotchas that have actually bitten this codebase (read before you rediscover one).
+- [`docs/api.md`](./docs/api.md) — every HTTP-facing route and the IntaSend webhook contract.
+- [`docs/user-guide.md`](./docs/user-guide.md) — what the app does, written for the people who use it.
+- [`docs/CHANGELOG.md`](./docs/CHANGELOG.md) — the full phase-by-phase build history and every real bug found along the way, plus a running list of known gaps.
 
 ## Stack
 

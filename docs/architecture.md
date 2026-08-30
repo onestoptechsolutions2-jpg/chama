@@ -1,414 +1,348 @@
-> This is the context and architecture document for the Next.js/Vercel rewrite
-> of the Chama Platform, carried over from the planning phase so it survives
-> as part of the repo rather than only in an external plan file. Read this
-> before making architectural changes.
->
-> **Provenance note:** the legacy `backend/`/`frontend/` split this rewrite
-> replaced was removed from the working tree once this document was written,
-> but it remains fully retrievable from git history (e.g.
-> `git log --all -- backend/src/routes/mgr.js`, `git show <commit>:path`) —
-> nothing described below as "ported from the old X" was destroyed, just
-> cleaned out of the working tree.
+# Architecture
 
-# Chama Platform — Ground-Up Rewrite (Next.js / Vercel)
+Current-state technical reference for the Chama Platform. For *why* things
+are shaped this way and the bugs that shaped them, see
+[`CHANGELOG.md`](./CHANGELOG.md) — that file has the full phase-by-phase
+build history and every real bug found along the way. This file only
+describes what's true today.
 
-## Context
+See also: [`user-guide.md`](./user-guide.md) (what the app does, by role),
+[`developer-guide.md`](./developer-guide.md) (how to work on it), and
+[`api.md`](./api.md) (every HTTP-facing route and the IntaSend webhook
+contract).
 
-### Why this rewrite
-The original app (Node/Express + raw-SQL Postgres backend, Vite/React SPA frontend) worked but had accumulated real, live schema-drift bugs from writing SQL by hand against a schema that evolved across four migrations without a compiler/ORM to catch mismatches. A deep-dive review (two rounds of codebase exploration, ~9 backend route files + all 18 frontend pages + all 4 migrations read in full) surfaced **9 confirmed live bugs**, several architectural inconsistencies, and confirmed the team already had Vercel deploy experience (the original frontend's `vercel.json` was a working static-SPA deploy). The decision was a full rewrite rather than patching bugs incrementally, on the condition that:
-- Same feature scope, "done right" — not a rescope, not a trim.
-- Hosted on Vercel (Next.js, so backend + frontend live in one deploy).
-- Clean slate — no production data to migrate, fresh seed data is fine.
+## What this app is
 
-### What this app is
-A multi-tenant SaaS for managing African group-savings associations ("chama" = Kenyan savings circle). One deployment serves many independent **groups** (tenants), each of one of four **types** — `chama`, `welfare`, `hybrid`, `selfhelp` — where the type determines which features are active:
+A multi-tenant SaaS for managing African group-savings associations
+("chama" = Kenyan savings circle). One deployment serves many independent
+**groups** (tenants), each of one of four **types** — `chama`, `welfare`,
+`hybrid`, `selfhelp` — which seed a default set of active **products**
+(loans, MGR, welfare, projects) at creation. Products are independently
+toggleable after that (Settings → Products) — `type` is just a descriptive
+label and a one-time default, not a permanent gate.
 
-| Feature | chama | welfare | hybrid | selfhelp |
-|---|---|---|---|---|
-| Members, contributions, rules, meetings, fines | ✅ | ✅ | ✅ | ✅ |
-| Loans (20% interest) | ✅ | ❌ | ✅ | ✅ |
-| MGR / merry-go-round rotation | ✅ | ❌ | ✅ | ❌ |
-| Welfare claims | ❌ | ✅ | ✅ | ❌ |
-| Projects (table-banking style) | ❌ | ❌ | ✅ | ✅ |
+| Product | What it is |
+|---|---|
+| Members, contributions, rules, meetings, fines | The base ledger every group always has |
+| Loans | Member-requested or staff-direct loans, interest + guarantors + repayment tracking |
+| MGR (merry-go-round) | Rotating-payout cycles — each member takes a turn receiving the pooled contribution |
+| Welfare | A multi-reserve fund (emergency/long-term/advance) with tiered-approval claims |
+| Projects | Table-banking style group-funded projects, target vs. collected |
 
-A user can belong to multiple groups with a **different role per group** (`admin`, `treasurer`, `secretary`, `member`) via a `group_memberships` join table — this is the multi-tenancy backbone. There's also a platform-level **super-admin** surface (originally a shared-secret header, not integrated with normal auth) for cross-tenant ops (creating new tenant groups).
+A user can belong to multiple groups with a **different role per group**
+(`admin`, `treasurer`, `secretary`, `member`) via `group_memberships` — this
+is the multi-tenancy backbone. A separate, platform-wide `users.platformRole`
+(`owner` | `support` | `null`) gates the super-admin console, independent of
+any per-group role.
 
-### Full domain model (from the original 4 migrations — reimplemented via Drizzle schema, not hand-written SQL)
-- **groups** — tenant row + ~20 business-rule config columns (share_price, loan_interest_rate default 20%, loan_max_multiplier default 3.0, loan_repayment_months, loan_late_penalty, mgr_frequency/cycle_day/recipients_per_cycle/start_date/contribution_amount, mgr_fee_pct default 5.0, fine_lateness/fine_absence/fine_rule_violation, is_public/require_approval/max_members, platform_terms).
-- **users** — login identity (email/phone/password_hash), no longer the source of role (see group_memberships).
-- **members** — financial profile per (user, group): capital, security, personal_savings, welfare_balance, total_fines, limit_reduced (flag set after a loan extension halves future limit), active. Deliberately separate from `users` so financial data is isolated.
-- **group_memberships** — (user_id, group_id) unique, role, status (pending/active/rejected/suspended), join_message, reviewed_by/at. **This is what authorization actually checks** — not any field on `users`.
-- **contributions** — amount, type (capital/security/mgr/welfare/personal_savings/project/other), month/year, status (paid/pending/waived), reference.
-- **loans** — principal, interest_rate, total_repayable, amount_remaining, status (pending/active/extended/overdue/cleared/rejected), extended/limit_reduced_by_extension flags, overdue_flagged_at, penalty_total.
-- **loan_repayments** — amount, reference, notes per loan.
-- **loan_applications** — member self-service: amount_requested, purpose, repayment_months, status (pending/approved/rejected/cancelled), links to resulting loan_id on approval.
-- **contribution_dues** — expected-payment tracking per member per period, drives the overdue-fine cron.
-- **fines** — type (lateness/absence/rule_violation/loan_default/other), amount, status (pending/paid/waived), reason.
-- **meetings** + **attendance** — meeting_date/type/venue/agenda/minutes; attendance status (present/absent/late/excused) unique per (meeting, member), auto-generates fines.
-- **welfare_claims** — claim_type (medical/bereavement/emergency/education/maternity/disability/other), amount_requested/approved, status (pending/under_review/approved/rejected/disbursed), beneficiary info.
-- **projects** + **project_contributions** — target/collected amounts, status (planning/active/on_hold/completed/cancelled).
-- **rules** — group bylaws, categorized, penalty_amount, soft-delete via `active`.
-- **announcements** — title/content/pinned.
-- **mgr_cycles** — rotation cycle: cycle_number, status (active/planned/completed/closed), scheduled_date, slot_count, payout_per_slot, total_contributions.
-- **mgr_slots** — one row per recipient slot per cycle: slot_number, member_id, status (open/claimed/auto_assigned/paid/skipped), payout_amount.
-- **mgr_member_turns** — how many rotation turns a member gets (turns_total) and their contribution_multiplier (multi-turn members pay/receive N× per cycle).
-- **mgr_agreements** — 4-field legal signature (platform_terms, group_terms, financial_acknowledged, digital_signature) gating MGR participation — carries real legal/compliance text, must be preserved verbatim.
-- **platform_payments** — the 5% platform fee charged on MGR payouts via M-Pesa STK push; tracks checkout_request_id/mpesa_ref/status (pending/paid/failed/cancelled).
+## Stack
 
-### Full API surface to preserve (~70 endpoints across 17 route files in the original)
-auth (register/login/me/change-password), groups (public discovery + join-request flow), group+settings (tenant profile + business-rule config — originally two overlapping routers, merged in the rewrite), users (admin manages group's user accounts), members (CRUD), contributions (record + summary), loans (approve/update/repay/statement + member self-service apply/list/review/cancel), mgr (config/schedule/generate/turns/slot-claim/auto-assign/cycles/agreement — the most complex feature), fines, meetings (+ attendance with auto-fine), welfare (+ fund summary), projects (+ contributions), rules, dashboard (single aggregate), payments (M-Pesa Daraja STK push + webhook callback), super-admin (cross-tenant ops).
+| Layer | Choice |
+|---|---|
+| Hosting | Vercel, Node.js serverless runtime (not Edge — needs the full Postgres driver) |
+| Framework | Next.js App Router, Server Actions for app-triggered writes, Route Handlers for third-party callers |
+| Database | Neon Postgres, connected directly (not the Vercel Postgres wrapper) — plain Postgres so RLS, `FOR UPDATE`, and advisory locks all work unmodified |
+| ORM | Drizzle — `lib/db/schema.ts` is the single source of truth; a phantom-column reference is a compile error, not a runtime 500 |
+| Auth | Hand-rolled DB-backed session cookie (not NextAuth) — see [Auth](#auth-db-backed-session-cookie) |
+| Design system | Tailwind + shadcn/ui on **Base UI** primitives (not Radix) — this install uses a `render` prop for composition (`<Trigger render={<Button />} />`), not Radix's `asChild`/`Slot` |
+| Payments | IntaSend (M-Pesa gateway) — see [`api.md`](./api.md) |
+| File storage | Vercel Blob (`@vercel/blob`) for KYC document/photo/signature uploads |
 
-The full original frontend page inventory (18 pages) and the exact `api.js` → endpoint map were captured during research and should be treated as the acceptance checklist for feature parity — retrievable from git history if needed (`frontend/src/api.js`, `frontend/src/pages/*.jsx` as of commit `ffe7580`).
+## Multi-tenancy & Row-Level Security
 
-### The 9 known bugs — fixed by design, not ported
-1. `mgr.js` queried `m.status`/`m.member_id` on `members` — neither column existed. Broke turns/generate/schedule entirely.
-2. `loans.js` `/statement` queried `c.payment_date`/`c.month_label` on `contributions` — neither existed. Broke member statement.
-3. `meetings.js` attendance auto-fine inserted `fines.type = 'absent'/'late'`, but the CHECK constraint only allowed `lateness/absence/rule_violation/loan_default/other` — every attendance submission with an absent/late member threw.
-4. `welfare.js` `GET /fund` used a `CROSS JOIN` that silently returned zero rows (zeroing totals) when there were no disbursed claims yet.
-5. `payments.js` hardcoded the 5% platform fee instead of reading `groups.mgr_fee_pct`.
-6. `users.js` updated `users.role` directly, but authorization actually checked `group_memberships.role` — two sources of truth that could diverge.
-7. `migrate.js` only ran migration 001, silently omitting 002-004 — masked because `server.js` re-ran all four on every boot (a pattern with no equivalent in serverless).
-8. `seed.js` never created `group_memberships` rows for the members/admin it seeded — those accounts couldn't pass the membership check.
-9. Loan limit formula was inconsistent: `groups.loan_max_multiplier` (default 3.0) was exposed in Settings UI but ignored — actual logic hardcoded limit = 2× total savings (1× if `limit_reduced`).
+RLS is **defense-in-depth**, not the sole mechanism — the query layer still
+writes explicit `WHERE group_id = ...`, and RLS is the fail-safe net.
+Forgetting the tenant wrapper means RLS returns zero rows (safe failure),
+not another tenant's data.
 
-See "How each of the 9 bugs is prevented by design" below for the structural fix applied to each.
+- Every tenant-scoped table: `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL
+  SECURITY` (FORCE is required because the app connects as one Postgres
+  role, not per-tenant credentials — see [Roles](#database-roles) below).
+- Standard tenant policy shape: `USING (group_id = NULLIF(current_setting
+  ('app.current_group_id', true), '')::int OR current_setting
+  ('app.is_platform_admin', true) = 'true')`. The `NULLIF` guard matters —
+  on a pooled connection, once any transaction has set the GUC, a later one
+  that never sets it sees `''`, not `NULL`, and `''::int` throws.
+- `groups` gets extra policies beyond the standard tenant one: anonymous
+  `SELECT` where `is_public = true AND registration_complete = true`
+  (`groups_public_read`, encoding the discovery business rule
+  declaratively), a member's own groups regardless of visibility
+  (`groups_own_membership_read`), and a self-service insert for an
+  authenticated active user creating their own group
+  (`groups_self_service_insert`).
+- Append-only tables (`mgr_slot_events`, `wallet_transactions`,
+  `welfare_ledger`) deliberately have only `SELECT`/`INSERT` RLS policies —
+  no `UPDATE`/`DELETE` policy exists at all, so under FORCE those commands
+  are denied outright for any role without `BYPASSRLS`.
 
-### Business-rule constants to preserve (originally hardcoded in scattered places — centralized in the rewrite)
-Loan interest 20%, default repayment 3 months, fines Ksh 50 lateness / 100 absence, min personal-savings increment Ksh 500, min loan Ksh 1,000, MGR platform fee 5% (via M-Pesa STK push), loan limit = 2× total savings (1× after an extension flags `limit_reduced`).
+### Transaction wrappers (`lib/db/rls.ts`)
 
-### Original auth/multi-tenancy mechanism (redesigned for SSR in the rewrite)
-JWT bearer token in `localStorage`; an `X-Group-Id` header (also from `localStorage`, set on group-switch) told the backend which tenant to scope to; middleware verified an active `group_memberships` row and attached that row's `role`. This pattern didn't suit Next.js Server Components (no client-side header injection available server-side) — replaced with an httpOnly-cookie-based session that carries both identity and active-group server-side (see Architecture below).
+Every query touching an RLS-protected table goes through one of these —
+each sets its GUC as the *first* statement of its own transaction:
 
----
-
-## Architecture
-
-Grounded against the actual original code (all 4 migrations, `middleware/auth.js`, `mgr.js`, `loans.js`, `payments.js`, `superAdmin.js`, `jobs/enforcement.js`, `server.js`, `App.jsx`/`Layout.jsx` read directly) — every decision below is built to make each bug's *class* structurally impossible, not just patch the instance.
-
-### Stack (opinionated, one choice each)
-
-| Decision | Choice | Why |
+| Wrapper | Sets | Use for |
 |---|---|---|
-| Hosting | Vercel, Node.js serverless runtime (not Edge) | Needed for full Postgres driver + Drizzle |
-| Database | **Neon**, connected directly (not the Vercel Postgres marketplace wrapper) | Plain Postgres (RLS, `FOR UPDATE`, advisory locks all work unmodified); instant branching gives a per-PR DB branch to catch constraint-affecting changes (i.e. bugs 1–3) before merge |
-| ORM | **Drizzle**, not Prisma | Prisma's schema DSL has no first-class CHECK-constraint modeling — this schema is full of them. Drizzle's SQL-first migrations let CHECK/RLS/advisory-lock SQL live directly in the migration. No query-engine binary → better serverless cold starts. Schema-as-TypeScript is the actual mechanism that kills bugs 1–3: referencing a nonexistent column becomes a compile error, not a 500. |
-| Auth | Hand-rolled DB-backed session cookie, not NextAuth/Auth.js | Per-group role + required custom "switch group" flow doesn't map cleanly onto Auth.js's session-callback model; simple enough here to not need the abstraction |
-| Design system | Tailwind + shadcn/ui, full rebuild | The original hand-rolled modals/dropdowns didn't compose with RSC/streaming; shadcn is server-rendered by default, only goes client where interactivity requires it. |
-| Repo shape | **Single Next.js app at repo root** — the `frontend/`/`backend/` split has been retired | No separate backend process anymore; a Turborepo/monorepo would be pure overhead for one deployable |
+| `withTenant(groupId, fn)` | `app.current_group_id` | Anything scoped to one tenant — almost everything |
+| `withPlatformAdmin(fn)` | `app.is_platform_admin` | Super-admin cross-tenant reads/writes, and any genuinely tenant-less operation (bootstrapping a new group, a webhook that doesn't know its tenant until it looks up a payment by invoice ID) |
+| `withUser(userId, fn)` | `app.current_user_id` | "My own data across every tenant I belong to" — session loading, self-service group creation |
 
-### Repo structure
+**The one rule that matters more than any other here: never share one
+transaction across concurrent queries.** `Promise.all([withTenant(id, q1),
+withTenant(id, q2)])` — independent transactions run concurrently — is
+correct and fast. `withTenant(id, async (tx) => { await Promise.all([q1(tx),
+q2(tx)]) })` — concurrent queries *sharing* one transaction — is a bug: it
+can silently drop the transaction-local `SET LOCAL` context on the unlucky
+query, so RLS fails safe to zero rows instead of throwing. This exact class
+of bug has been found and fixed **three separate times** in this codebase
+(see [`CHANGELOG.md`](./CHANGELOG.md)'s Phase 7, subscription-billing, and
+guarantors entries) — including once in `getSession()`, the single
+most-executed function in the app. Sequential `await`s against one shared
+`tx` are fine; concurrent ones are not.
+
+### Database roles
+
+Neon's project-default/owner role (`neondb_owner`) has `BYPASSRLS` — a
+Postgres attribute that exempts a role from RLS entirely regardless of how
+carefully the policies are written. The app never connects as that role:
+
+- `DATABASE_URL` → the owner role, used **only** by `drizzle-kit
+  generate`/`migrate` (DDL requires ownership).
+- `APP_DATABASE_URL` → `chama_app`, a second, least-privilege role
+  (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`) the running app
+  actually connects as. `lib/db/client.ts` throws a clear error if this
+  isn't set, rather than silently falling back to the bypass-capable owner.
+  `tests/rls.test.ts`'s first assertion checks `pg_roles.rolbypassrls`
+  directly so this can't silently regress.
+
+## Auth: DB-backed session cookie
+
+- Login creates a `sessions` row (`id`, `user_id`, `active_group_id`,
+  `expires_at`); one httpOnly/Secure/SameSite=Lax cookie holds the opaque
+  session id.
+- **DB-backed, not stateless JWT, deliberately** — `group_memberships.status`
+  can flip to `suspended` and must take effect immediately; a stateless JWT
+  can't be revoked without a blocklist.
+- `active_group_id` lives server-side on the session row — never
+  client-tamperable.
+- `getSession()` (`lib/auth/session.ts`, wrapped in React `cache()`) reads
+  the cookie once per request, loads `{ user, activeGroupId,
+  activeMembership, memberships }`. Every Server Component/Action/Route
+  Handler uses this instead of trusting anything client-supplied.
+- `switchGroup(groupId)` validates the target membership is `active`,
+  updates `sessions.active_group_id`.
+- Real enforcement is `requireSession()` / `requireRole(...roles)` /
+  `requireActiveGroup()` / `requireProduct(product, ...roles)` /
+  `requirePlatformAdmin()` at the top of every protected surface — same
+  "coarse gate + RLS as the real net" pattern RLS itself uses. All of these
+  redirect to `/login` (unauthenticated) or `/dashboard` (authenticated but
+  not permitted) on failure.
+
+## Data model
+
+Grouped by concern; see `lib/db/schema.ts` for the authoritative column
+list — every table there is documented inline.
+
+**Identity & tenancy** — `users` (login identity; no per-group role lives
+here), `groups` (tenant row + ~30 business-rule config columns — share
+price, loan terms, MGR config, fine amounts, capital policy, minimums — see
+[`user-guide.md`](./user-guide.md#settings) for what each one does),
+`group_memberships` (the (user, group) join — **this is what authorization
+actually checks**, not any field on `users`), `members` (financial profile
+per (user, group): capital/security/personal_savings/total_fines + KYC
+fields — deliberately separate from `users` so a person can exist in a
+group's roster before they have a login), `sessions`.
+
+**Core ledger** — `contributions`, `contribution_dues` (expected-payment
+tracking that drives the overdue-fine cron), `fines`, `meetings` +
+`attendance` (auto-generates fines), `rules`, `announcements` (schema
+exists, no UI built yet).
+
+**Loans** — `loans`, `loan_repayments`, `loan_applications` (self-service
+apply/review flow), `loan_guarantors` (real consent — `applicationId`/
+`loanId` are both nullable, exactly one set at a time; approval re-points
+the same rows rather than creating fresh ones, so the acceptance record
+survives the application→loan transition).
+
+**MGR** — `mgr_cycles`, `mgr_slots`, `mgr_member_turns` (multi-turn
+members), `mgr_agreements` (a 4-field legal signature gating participation,
+scoped per (user, cycle) since terms can differ between cycles),
+`mgr_slot_events` (append-only audit log — see [RLS](#multi-tenancy--row-level-security) above).
+
+**Welfare** — `welfare_policies` (per-group config: funding method,
+reserve-allocation split, grant/advance caps, approval tiers, tenure/cooldown
+rules), `welfare_funds` (cached balances — emergency/long-term/advance
+reserves), `welfare_requests` + `welfare_approvals` (tiered co-sign),
+`welfare_grants`, `welfare_advances` + `welfare_advance_repayments`,
+`welfare_ledger` (append-only source of truth the cached balances derive
+from). The legacy `welfare_claims` table predates this and is unused by any
+current code path.
+
+**Projects** — `projects`, `project_contributions`.
+
+**Payments & billing** — `platform_payments` (every STK-push-triggering
+event: MGR fee, loan fee, subscription, wallet top-up), `payment_webhook_events`
+(every inbound webhook attempt, verified or not — see [`api.md`](./api.md)),
+`group_wallets` + `wallet_transactions` (a prepaid balance for platform
+fees *only*, never member funds), `subscription_invoices`.
+
+**Notifications** — `notifications` (generic — see
+[Notifications](#notifications) below).
+
+**Platform / super-admin** — `cron_runs` (audit log), `group_account_activities`
++ CRM-ish columns on `groups` (onboarding stage, account tier/owner,
+follow-up date), `platform_user_audit_logs` (audit trail for platform-role
+grants).
+
+## Repo structure
 
 ```
 app/
-  (public)/                    # no auth — group discovery + join requests
-    page.tsx
-    groups/[slug]/page.tsx
-  (auth)/
-    login/page.tsx
-    register/page.tsx
-  (dashboard)/                 # authenticated, tenant-scoped
-    layout.tsx                 # requireSession(), renders sidebar from nav-config
-    page.tsx                   # branches staff-aggregate vs member-home view
-    members/page.tsx
-    loans/{page.tsx, apply/page.tsx, actions.ts}
-    mgr/{page.tsx, actions.ts}          # tabs: schedule/turns/admin
-    fines/page.tsx
-    meetings/page.tsx
-    welfare/page.tsx
-    projects/page.tsx
-    rules/page.tsx
-    settings/page.tsx          # 5 tabs → 5 narrow Server Actions, ONE table write path
-    users/page.tsx
-    pending-members/page.tsx
-    statement/page.tsx
-  super-admin/                 # literal URL segment, not a route group — a
-    layout.tsx                 # (super-admin) route group would produce
-    groups/page.tsx            # /groups, /stats etc. at the root, colliding
-    stats/page.tsx              # with (dashboard)'s own routes. requirePlatformAdmin() in layout.tsx.
+  page.tsx                      # public marketing landing page
+  (public)/discover/            # anonymous group discovery + join requests
+  (auth)/{login,register}/      # ?next= redirect support (open-redirect-guarded)
+  (dashboard)/                  # route group — NOT a URL segment
+    layout.tsx                  # requireSession(), renders DashboardShell
+    actions.ts                  # switchGroupAction — shared across the group
+    dashboard/                  # the literal /dashboard/* URL prefix
+      page.tsx                  # dashboard home
+      insights/                 # MGR pacing, recommendations, staff-only reports
+      members/, loans/, mgr/, welfare/, projects/, fines/, meetings/,
+      rules/, settings/, capital/, billing/, wallet/, statement/,
+      profile/, notifications/, pending-members/, onboarding/, guide/
+  super-admin/                  # literal URL segment (not a route group —
+    layout.tsx                  # would collide with (dashboard)'s own routes)
+    groups/, groups/[id]/, users/, stats/, integrations/
   api/
-    cron/contribution-dues/route.ts
-    cron/loan-overdue/route.ts
-    payments/platform-fee/route.ts
-    payments/callback/route.ts     # Daraja webhook
+    cron/{contribution-dues,loan-overdue}/
+    payments/{callback,platform-fee,loan-fee,subscription-invoice,wallet-topup}/
+    upload/
 lib/
-  db/{schema.ts, client.ts, rls.ts}     # schema.ts = single source of truth
-  domain/{loans.ts, fines.ts, mgr.ts, payments.ts, constants.ts}  # pure, DB-free, unit-testable
-  auth/{session.ts, cookies.ts}
-  nav-config.ts
-  validation/                          # zod, drizzle-zod derived
-components/ui/                         # shadcn primitives
-components/<feature>/
-drizzle/                               # generated SQL migrations
-scripts/seed.ts
+  db/{schema.ts, client.ts, rls.ts}
+  domain/          # pure, DB-free, unit-tested business logic
+  auth/session.ts
+  nav-config.ts    # single source of truth for the sidebar + role/product gating
+  validation/      # zod schemas
+  payments/intasend.ts
+  cron/helpers.ts
+components/ui/      # shadcn primitives
+components/feature/ # everything app-specific
+drizzle/             # hand-reviewed SQL migrations
+scripts/             # seed + one-off data scripts
 tests/
+docs/
 ```
 
-**Server Actions vs Route Handlers** — deliberate split. Server Actions for everything triggered from the app's own UI (record contribution, approve loan, claim MGR slot, switch group, submit welfare claim, update settings) — colocated per feature, no parallel REST contract to maintain. Route Handlers reserved for things a *third party* calls: the Daraja webhook, Vercel Cron triggers. This directly fixes the original `group.js`/`settings.js` "two overlapping routers" problem — one settings write-path per section, nothing left to drift.
-
-**Shared domain logic** lives in `lib/domain/*` as pure functions with no Next/DB imports (`computeLoanLimit`, `calcPlatformFee`, `attendanceStatusToFineType`, the MGR schedule-generation algorithm). Unit-tested without a DB, imported everywhere the rule applies — one function per business rule, one place it can be wrong.
-
-### Database & multi-tenancy: RLS as defense-in-depth, not the sole mechanism
-
-App-level scoping alone (the original `group_memberships` check in middleware) is what let 8 of the 9 bugs ship — a route can always forget to filter by `group_id`. With a fresh DB:
-
-- Every tenant-scoped table: `ENABLE ROW LEVEL SECURITY` + `FORCE ROW LEVEL SECURITY` (force is required since the app connects as one Postgres role, not per-tenant credentials).
-- Policy: `USING (group_id = NULLIF(current_setting('app.current_group_id', true), '')::int OR ...)`.
-- A `withTenant(groupId, fn)` Drizzle transaction wrapper runs `SET LOCAL app.current_group_id = $1` as the first statement of every transaction; every Server Action/Route Handler touching tenant data goes through it. `withUser(userId, fn)` is the equivalent for "my own data across every tenant I belong to" reads (session loading, seeding) that aren't scoped to one group.
-- The query layer **still** writes explicit `WHERE group_id = ...` — RLS is the fail-safe net. Forgetting `withTenant` means RLS returns zero rows (safe failure), not another tenant's data.
-- `groups` table gets its own policies: anonymous `SELECT` where `is_public = true` (encodes the public-discovery business rule declaratively instead of "no auth on this route"), plus a member's own groups regardless of visibility.
-- Super-admin queries run through a separate elevated path (`withPlatformAdmin`) that sets `app.is_platform_admin` instead of granting `BYPASSRLS` to the app's role.
-
-**This last point was true in design from Phase 0 but not in practice until Phase 7.** Neon's project-default/owner role (`neondb_owner`, what `DATABASE_URL` points at) has `BYPASSRLS` — a Postgres attribute, not something this schema's migrations control — which silently exempted the app from every policy above regardless of `FORCE`, for every table, for the entire project up to that point. The fix (see the Phase 7 build-order entry below for the full writeup) was a second, least-privilege role — `chama_app`, no bypass — that the running app actually connects as via `APP_DATABASE_URL`; `DATABASE_URL`/the owner role is now used only for migrations. `tests/rls.test.ts` asserts the connected role isn't bypass-capable as its first check, specifically so this can't silently regress.
-
-### Auth: DB-backed session cookie
-
-- Login creates a `sessions` row (`id`, `user_id`, `active_group_id`, `expires_at`); one httpOnly/Secure/SameSite=Lax cookie holds the opaque session id.
-- **DB-backed, not stateless JWT, deliberately**: `group_memberships.status` can flip to `suspended` and must take effect immediately — a stateless JWT can't be revoked without a blocklist.
-- `active_group_id` lives server-side on the session row — the direct replacement for the `X-Group-Id` header, not tamperable client-side.
-- `getSession()` (wrapped in React `cache()`) reads the cookie once per request, loads `{ user, activeGroupId, activeMembership, memberships }` — every Server Component/Action/Route Handler uses this instead of trusting a client header. See `lib/auth/session.ts`.
-- `switchGroup(groupId)` Server Action validates the target membership is `active`, updates `sessions.active_group_id` — no client-side header juggling.
-- Real enforcement happens in `requireSession()`/`requireRole()`/`requirePlatformAdmin()` at the top of each protected surface — same "coarse gate + real enforcement" pattern as RLS.
-
-### How each of the 9 bugs is prevented by design
-
-| # | Bug | Design fix |
-|---|---|---|
-| 1 | `mgr.js` queried nonexistent `members.status`/`members.member_id` | Drizzle `schema.ts` is the only place columns are defined — a phantom-column reference is a compile error |
-| 2 | `loans.js /statement` queried nonexistent `contributions.payment_date`/`month_label` | Same mechanism — statement query generated against the real schema |
-| 3 | Attendance fines inserted `type='absent'/'late'` but CHECK only allowed `absence`/`lateness` | One `attendanceStatusToFineType` map in `lib/domain/fines.ts`; the Postgres enum is generated from the same TS enum via Drizzle `pgEnum` — TS and DB constraint can't diverge |
-| 4 | `welfare.js GET /fund` CROSS JOIN returned 0 rows when no disbursed claims existed | Rewritten as one aggregate query with `FILTER (WHERE status = 'disbursed')`, no join against an empty subquery; test asserts an empty group returns zeros, not zero rows |
-| 5 | `payments.js` hardcoded 5% instead of reading `mgr_fee_pct` | One `calcPlatformFee(amount, group.mgrFeePct)` in `lib/domain/payments.ts` |
-| 6 | `users.js` mutated `users.role` while authz checked `group_memberships.role` | **Structural fix**: the rewritten `users` table has no `role` column at all — role exists only on `group_memberships`. Nothing left to drift from. |
-| 7 | `migrate.js` only ran migration 001; masked by `server.js` re-running all 4 on every boot | No boot-time migration runner exists on serverless. `drizzle-kit migrate` runs once as a required CI/build step — a partial migration fails the deploy loudly |
-| 8 | `seed.js` never created `group_memberships`, so seeded accounts couldn't log in | `scripts/seed.ts` does group → user → membership as one transaction; regression-tested by `tests/seed-membership.test.ts` |
-| 9 | `loan_max_multiplier` (3x, configurable) vs hardcoded `2x`/`1x` in route logic | One `computeLoanLimit(member, group)` in `lib/domain/loans.ts`, reading `group.loanMaxMultiplier`, used by both staff-approval and self-service paths |
-
-The standing rule behind 5/6/9: one domain function per business rule, imported everywhere it's needed, always reading the group's actual config row.
-
-### Cron replacement (Vercel Cron)
-
-`app/api/cron/contribution-dues/route.ts` and `app/api/cron/loan-overdue/route.ts`, declared in `vercel.json`'s `crons` array. Vercel Cron is UTC-only, Nairobi is UTC+3 year-round (no DST) — 08:00/08:15 EAT become `0 5 * * *` / `15 5 * * *` UTC.
-
-- **Auth**: verify `Authorization: Bearer $CRON_SECRET` (Vercel attaches this automatically when `CRON_SECRET` is set).
-- **Idempotency**: `pg_try_advisory_lock(hashtext('cron:contribution-dues'))` at the top — if not acquired, return 200 immediately (another invocation in flight; serverless cron is at-least-once and can double-fire).
-- **Fine-grained lock**: wrap each row's select→insert-fine→update-due→update-balance sequence in one transaction with `SELECT ... FOR UPDATE` on the row — fixes a TOCTOU gap present in the original implementation.
-- A `cron_runs` audit table (`job_name`, `started_at`, `finished_at`, `rows_affected`, `status`) — gives a queryable answer to "did today's enforcement run," which ephemeral serverless logs don't.
-
-### Payments & super-admin
-
-**Payments go through IntaSend, not raw Safaricom Daraja** (changed from the original Daraja-based plan at the user's request, after pulling IntaSend's actual API details rather than assuming). It's a gateway layer over M-Pesa that removes the need to manage a Daraja app, OAuth token, and certificate directly.
-
-(A UMSPay integration existed briefly as a second, selectable provider — added, fully built, and verified end-to-end — but was removed at the user's request in favor of IntaSend only. `lib/payments/intasend.ts` is called directly again; there's no provider dispatcher.)
-
-- Base URLs: sandbox `https://sandbox.intasend.com/api/`, live `https://payment.intasend.com/api/` — selected by `INTASEND_ENV`.
-- Auth: `Authorization: Bearer <secret key>` (`ISSecretKey_test_...` / `ISSecretKey_live_...`, backend-only — **not** the publishable key, `ISPubKey_...`, which IntaSend issues for client-side use and which this Bearer-auth server call rejects). `POST {base}/v1/payment/mpesa-stk-push/` with `{ amount, phone_number, api_ref }`.
-- Webhook (`POST /api/payments/callback`, public): a flat JSON body (`invoice_id`, `state`: PENDING/COMPLETE/FAILED, `api_ref`, `net_amount`, `mpesa_reference` when available, and a `challenge` field) rather than a computed HMAC signature — verification is `isValidIntasendChallenge()` (`lib/domain/payments.ts`): a plain equality check against `INTASEND_WEBHOOK_CHALLENGE`, a static shared secret configured once in the IntaSend dashboard's webhook settings.
-
-The webhook route logs every attempt — verified or not — to `payment_webhook_events` (an unverified attempt is itself worth a permanent record) before touching `platform_payments`, and updates it idempotently keyed on IntaSend's `invoice_id`.
-
-No OAuth token to fetch/cache (that complexity was specific to calling Daraja directly) — one credential-bearing request per STK push.
-
-**Super-admin**: no shared-secret header. A genuinely-global `platformRole: 'owner' | 'support' | null` column on `users` — the one place a global role flag is correct, since platform admin isn't scoped to any group (distinct from the per-group role that fixes bug 6). Super-admin routes live under `app/super-admin/...` (a literal URL segment, not a `(super-admin)` route group — see the repo-structure sketch above), gated by `requirePlatformAdmin()` reading the same session cookie as everyone else — one auth mechanism, real audit trail. Built in Phase 6: `/super-admin/groups` (list every tenant + create new groups with an initial admin) and `/super-admin/stats` (cross-tenant metrics via `withPlatformAdmin`).
-
-### Design system
-
-Tailwind + shadcn/ui, built on Base UI primitives (not Radix) — this specific shadcn install uses a `render` prop for composition (`<Trigger render={<Button />} />`), not Radix's `asChild` + `Slot` pattern. MGR's 3 tabs and Settings' 5 tabs use shadcn `Tabs`; the MGR agreement modal uses a shadcn `Dialog`. The `App.jsx`/`Layout.jsx` nav-guard duplication from the original app is fixed by construction: one `lib/nav-config.ts` array (`{ href, label, icon, roles, groupTypes }`) plus a pure `getVisibleNavItems()` filter, consumed by both the sidebar and each page's own role/group-type check.
-
-### Phased build order
-
-- **Phase 0 — Foundations.** ✅ Done. Scaffold, Tailwind+shadcn, Neon + branching, Drizzle schema for `groups`/`users`/`members`/`group_memberships`/`sessions` + RLS on `members`/`groups`, session auth, seed script (bug 8 fixed from day one, regression-tested).
-- **Phase 1 — Core tenant CRUD.** ✅ Done. Rules, members (+ contribution recording, + create-login-for-member so member self-service has an account to sign in with), manual fines, meetings+attendance (fixed fine-type mapping — bug 3 verified fixed end-to-end), dashboard aggregate, unified settings (merged the two overlapping routers into one write path). `announcements` has a schema/RLS policy but no UI yet — deferred, not part of any phase's critical path so far. *Demoable: day-to-day recordkeeping.*
-- **Phase 2 — Loans.** ✅ Done. `computeLoanLimit` (bug 9 fixed — reads `group.loanMaxMultiplier` instead of a hardcoded 2x/1x, verified via both the staff-direct and self-service+review paths), loan CRUD, repayments, self-service apply/cancel, staff review, member statement (bug 2 fixed — verified end-to-end with real contribution/loan/repayment/fine data rendering in one merged timeline). *Demoable: full loan lifecycle.*
-- **Phase 3 — Welfare + Projects.** ✅ Done. Claims + fund-summary query (bug 4 fixed — two independent `COALESCE(SUM(...),0)` aggregates instead of a CROSS JOIN, verified against the exact zero-disbursed-claims edge case that broke the original), projects + contributions. Also found and fixed a real, pervasive UI bug while verifying this phase: Base UI's `Select.Value` shows the raw `value` string unless the `Select.Root` gets an `items={{value: label}}` map — every `<Select>` in the app up to this point was silently displaying raw values/IDs (e.g. a member picker showing "2" instead of "Bob Otieno") instead of labels; fixed across all 8 affected components. The seeded demo group's type was changed from `chama` to `hybrid` for testing (unlocks loans/welfare/projects/MGR at once) and left that way as a fuller demo. *Demoable: welfare/selfhelp/hybrid types fully functional.*
-- **Phase 4 — MGR.** ✅ Done. Config, turns, schedule generation (`lib/domain/mgr.ts`, 11 Vitest unit tests, no DB) with slot claim/auto-assign/cycles/4-field agreement gate. Bug 1 fixed and verified end-to-end: generated a real 3-member schedule (3 cycles, correct payout math), signed the agreement, auto-assigned all slots — the exact `POST /generate` flow that 500'd on every call in the original. Found and fixed one gap in the original design while building this: nothing in the original ever transitioned a cycle from `planned` to `active` after the first (seed-bootstrapped) one, which would have permanently stuck the agreement gate on cycle 1 — `closeCycleAction` now activates the next planned cycle automatically. Also tightened `mgr_agreements` to be scoped per (user, cycle) instead of the original's per (user, group), since financial terms can differ between cycles.
-- **Phase 5 — Payments + Cron.** ✅ Done (mostly — a real IntaSend secret key is still needed from the user to prove out a live STK push; everything up to that boundary is built and verified). IntaSend payments (see "Payments & super-admin" above) + webhook callback, `calcPlatformFee` fix (bug 5, verified against real data: Ksh 150 = Ksh 3,000 payout × 5% `mgrFeePct`, not a hardcoded literal), Vercel Cron with advisory-lock + audit table. Also added `contribution_dues` (never built in any earlier phase, and never actually populated by any code path in the original app either — the cron generates each period's due rows itself now, so the enforcement half has real data to act on instead of being permanently dead code). Real bugs caught while verifying, all fixed:
-  1. `date + $1` with a plain numeric parameter is type-ambiguous to Postgres — needed an explicit `::integer` cast in the overdue-dues query.
-  2. `new Date(y, m, d)` (separate numeric args) builds a local-time `Date`, but `.toISOString().split("T")[0]` always converts to UTC — in Africa/Nairobi (UTC+3) this silently shifted every generated due date back by one day. Fixed with manual local-component formatting instead.
-  3. `isValidIntasendChallenge` was originally written inside `lib/payments/intasend.ts`, which imports `"server-only"` — a guard that throws when imported outside Next.js's bundler, so this pure, easily-unit-testable check was silently never actually tested. Moved to `lib/domain/payments.ts` (no server-only guard, matches where every other pure business-rule function already lives).
-  4. `drizzle-kit generate`'s rename-vs-drop+add disambiguation needs an interactive TTY prompt this environment doesn't have — hit while trying to rename `payment_webhook_events.challenge_valid` to something provider-neutral (back when a second provider existed). Rather than fight the tooling (a botched manual attempt at forcing it through left the migration journal and snapshot files briefly inconsistent, causing `drizzle-kit migrate` to hang with no error), the rename was abandoned — the column keeps its original name with a comment explaining its meaning.
-
-  A second payment provider (UMSPay) was added shortly after this phase, fully built and verified end-to-end (dual-provider dispatch, its own webhook route, its own tests), then removed again at the user's request in favor of IntaSend only — see the Phase 6 entry below for that revert and the schema bug it caught on the way out.
-
-  Verified end-to-end: cron auth (401 without the header), advisory-lock idempotency (re-running produces 0 rows, no double-fining), the full audit trail (cron_runs correctly captured both a real failure and the fix), webhook challenge verification (both valid and invalid cases, both logged), and both providers' platform-fee trigger failure paths (IntaSend: clean "INTASEND_SECRET_KEY is not set"; UMSPay: clean "UMSPAY_API_KEY / UMSPAY_EMAIL is not set" — each surfaced to the admin, payment record correctly marked `failed` with the right `provider`, no crash) — the only thing not yet proven is a real STK push actually reaching a phone, which needs live sandbox credentials for either provider. *Demoable: fee collection and automated enforcement, once IntaSend or UMSPay credentials are supplied.*
-- **Phase 6 — Multi-tenancy polish + Super-admin.** ✅ Done. Public discovery (`/discover`, `/discover/[id]`) reading `groups` anonymously via the `groups_public_read` RLS policy (safe-columns-only select, no staff-only fields exposed), join-request flow (`group_memberships` insert with `status: 'pending'`, re-request supported after a rejection, `maxMembers` cap enforced), pending-members approval (`/pending-members`, admin/treasurer-gated — approving creates the member's `members` financial-profile row in the same transaction if one doesn't already exist), and a `platformRole`-gated super-admin console at `/super-admin` (`groups` list + create-group-with-initial-admin form using `withPlatformAdmin`, `stats` cross-tenant metrics). Login/register gained a `?next=` redirect (open-redirect-guarded — only same-origin relative paths accepted) so a visitor can discover a group, register, and land back on the join-request form in one flow. Group-switcher UI was already built in Phase 0 (`GroupSwitcher` in `dashboard-shell.tsx`) — this phase just added a link into it for platform admins.
-
-  Real bugs caught while verifying, all fixed:
-  1. **`members.userId` had a bare column-level `.unique()` constraint** — meaning a user could only ever have a financial-profile row in *one group on the entire platform*, silently contradicting the "a user belongs to multiple groups" multi-tenancy premise every other table in this schema was built around. Latent since Phase 0; nothing before Phase 6 exercised a single user joining two groups. Caught live: super-admin tried to make Carol (already a member of "My Chama") the admin of a second group, and the `members` insert threw `duplicate key value violates unique constraint "members_user_id_unique"`. Fixed by dropping the global unique constraint and replacing it with a composite `unique(user_id, group_id)` (migration `0015_phase6_members_composite_unique.sql`) — a user now gets one `members` row per group, which is what the table's own doc comment always claimed.
-  2. **`Button` composed with `render={<Link .../>}` triggers a real Base UI accessibility issue**, not just a console warning: Base UI's `Button` defaults `nativeButton` to `true`, and when the rendered element isn't an actual `<button>`, it stamps `role="button"` onto whatever is — including an anchor tag that navigates via `href`, overriding the anchor's correct implicit `role="link"`. Passing `nativeButton={false}` silences the warning but keeps the wrong role. The actual fix: for plain navigation styled as a button, don't use Base UI's Button-as-trigger composition at all (that mechanism is for interactive triggers — dialogs, menus, sheets) — use the exported `buttonVariants()` class-name function directly on a plain `<Link>` instead, so it keeps its native `role="link"` semantics. Applied across all 5 new Link-styled-as-button usages this phase introduced.
-  3. Zod's `.default()` on a `.transform()`-piped schema applies to the *pre-transform* input type, not the post-transform output — `z.enum(["true","false"]).transform(v => v === "true").default("true")` fails to typecheck because `.default()` there expects a `boolean`, not a `"true"` string. Fixed by moving `.default()` before `.transform()` in the pipe (`lib/validation/groups.ts`'s `boolString` helper, used for the create-group form's Select-driven `isPublic`/`requireApproval` fields).
-  4. `useSearchParams()` in the login/register client pages (for reading `?next=`) needs a `<Suspense>` boundary or `next build` fails prerendering with "should be wrapped in a suspense boundary" — split each page into an outer default export wrapping an inner form component.
-
-  Verified end-to-end via Playwright + direct DB checks: anonymous discovery lists the public group; register-with-`next` lands back on the join-request form; a join request appears in `/pending-members` and approving it both activates the membership and creates the `members` row; the same flow's rejection path (unregistered admin email) is cleanly rejected by `createGroupAction`; and — the scenario that caught bug 1 — creating a second group with an already-a-member user as its admin now succeeds and that user ends up with two independent `members` rows, one per group. *Demoable: platform-wide operability without DB console access.*
-
-  **Post-Phase-6: UMSPay removed.** At the user's request, the UMSPay integration (added after Phase 5, verified working) was fully removed in favor of IntaSend only — `lib/payments/umspay.ts`, the provider dispatcher (`lib/payments/index.ts`), `app/api/payments/callback/umspay/route.ts`, the `payment_provider` enum, and `platform_payments.provider` column are all gone (migration `0016_drop_payment_provider.sql`); the IntaSend webhook route moved back to its pre-dual-provider path, `app/api/payments/callback/route.ts`. `PAYMENT_PROVIDER` and all `UMSPAY_*` env vars were removed from `.env.local`/`.env.example`. The user first supplied an IntaSend *publishable* key (`ISPubKey_live_...`) rather than the *secret* key the server-side Bearer-auth STK push call actually needs — flagged rather than silently misused, since a publishable key would just 401 — then supplied the real secret key (`ISSecretKey_live_...`). With `INTASEND_ENV=live` and a real MGR slot, a live "Charge platform fee" was triggered through the actual UI: the request correctly reached IntaSend's live API and got a real, structured rejection back — `"Your business is not eligible to transact"` — which the app handled exactly as designed (payment row marked `failed`, clean error surfaced, no crash, no charge). This is IntaSend's own account-verification gate (new live accounts need business/KYC approval before M-Pesa collections work), not a bug in this app; blocked on the user completing that in IntaSend's dashboard.
-- **Phase 7 — Hardening.** ✅ RLS policy test suite done; MGR load test / accessibility pass / PWA parity not yet started. What shipped here turned into the single most consequential finding of the whole rewrite — not a UI bug, but that **RLS had never actually been enforced, for any table, for the entire project up to this point**:
-
-  1. **`neondb_owner` — the only role the app ever connected as through Phase 6 — has `BYPASSRLS`.** Neon grants this to a project's default/owner role. Postgres exempts any role with BYPASSRLS from RLS entirely, regardless of `ENABLE`/`FORCE ROW LEVEL SECURITY` or how carefully the policies are written. Confirmed empirically: querying `members` with `app.current_group_id` set to a value that matched nothing still returned real rows. Every "RLS as defense-in-depth" claim made in this document from Phase 0 onward was true of the *policies*, not of what was actually enforced — the app-level `WHERE group_id = ...` filters were, in practice, the *only* thing preventing cross-tenant access this whole time, with zero fail-safe behind them. This is exactly the class of gap a real hardening pass exists to catch, and it was only findable by actually testing against a role that doesn't bypass RLS — which nothing before this phase did.
-
-     **Fix**: created a second, least-privilege Postgres role, `chama_app` (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS`, granted `SELECT, INSERT, UPDATE, DELETE` on all tables + `USAGE, SELECT` on all sequences, plus `ALTER DEFAULT PRIVILEGES` so future migrations extend the same grants automatically). The running app now connects as `chama_app` via a new `APP_DATABASE_URL` env var (`lib/db/client.ts` throws a clear error if it's unset rather than silently falling back to the bypass-capable owner role); `DATABASE_URL` (the owner role) is now used *only* by `drizzle-kit generate`/`migrate`, since only the owner can run DDL (`CREATE TABLE`, `CREATE POLICY`, etc). `tests/rls.test.ts`'s first assertion checks `pg_roles.rolbypassrls` directly and fails loudly if the connected role ever regresses back to bypass-capable — otherwise every other assertion in the suite would pass vacuously without anyone noticing.
-
-  2. **`groups` had `ENABLE ROW LEVEL SECURITY` but was missing `FORCE ROW LEVEL SECURITY`** — every other RLS-protected table has both (see 0001_rls_policies.sql). FORCE only matters for a table's *owner*, so once `chama_app` (a non-owner role) was in place this specific gap was actually moot for it — but it's a real inconsistency in the original migration, fixed anyway (`0017_phase7_groups_rls_hardening.sql`) for correctness against any future role that might own the tables.
-
-  3. **Every RLS policy in the schema (21 of them, written across Phases 0-5) casts `current_setting('app.current_group_id', true)` straight to `::int`, with no guard against an empty string.** On a *pooled* connection — exactly how `lib/db/client.ts` connects, one `Pool` reused across many requests — once any transaction has set `app.current_group_id` via `withTenant()`/`withPlatformAdmin()`, a **later** transaction on that same connection that never sets it sees `current_setting(..., true)` return `''` (empty string), not `NULL`. Confirmed empirically, not assumed from documentation — this is a known custom-GUC quirk once a parameter has been touched in a session. `''::int` throws a hard Postgres error (`22P02`), so the exact scenario RLS is supposed to fail *safely* against — a query that reaches an RLS-protected table without going through `withTenant`/`withPlatformAdmin`/`withUser` at all — would 500 instead of gracefully returning zero rows, on any connection that had prior tenant traffic. Fixed for all 21 policies with `NULLIF(current_setting(...), '')::int` (`0018_phase7_rls_null_guard.sql`). Like #1, this could never have surfaced before switching off the bypass-capable role, since nothing ever reached real policy evaluation at all.
-
-  4. **Turning RLS on for real immediately broke session loading for private groups** — a genuinely new gap exposed only by fixing #1-#3, not a pre-existing bug: `getSession()` (`lib/auth/session.ts`) reads a user's own `group_memberships` (joined with each membership's `group`) and their own `members` rows, across *every* group they belong to — not scoped to any single tenant, so `withTenant` doesn't fit (the same reasoning that already kept `group_memberships` itself outside RLS entirely, see 0001_rls_policies.sql). Added a new `withUser(userId, fn)` wrapper (`lib/db/rls.ts`) plus two new additive, `FOR SELECT`-only policies: `groups_own_membership_read` (`0017_...sql`) and `members_own_row_read` (`0019_phase7_members_own_row_read.sql`) — "a user can always see groups/member-rows they actually belong to," mirroring the existing "my own data" carve-out for `group_memberships`. `getSession()` now wraps its `group_memberships`/`members` queries in `withUser`. Verified end-to-end via Playwright as a member-role user (Carol): her loan limit, active loan, and financial profile all still resolved correctly through the real (now-enforced) RLS.
-
-  5. `scripts/seed.ts` had the same unwrapped-query problem as #4 in miniature — its "does a group already exist" check and its group-creation transaction both ran with no RLS context, which only ever worked because the demo group happens to be `isPublic: true` (covered by `groups_public_read`) and the codebase never triggered the create-path with the bypass off. Fixed by wrapping both in `withPlatformAdmin` — bootstrapping a brand-new tenant is inherently a platform-level operation, not scoped to an existing tenant, the same reasoning the super-admin console's `createGroupAction` already uses.
-
-  A codebase-wide audit (every `db.*` call site outside the three wrapper functions, checked against every RLS-protected table) found only the `groups`-table call sites above as genuinely reachable without a wrapper; everything else already went through `withTenant`/`withPlatformAdmin` correctly, which is why nothing else broke when the bypass was removed.
-
-  `tests/rls.test.ts` (18 new test cases across 8 `describe` blocks, 62 total tests project-wide) now exercises all of this for real: same-tenant visibility, cross-tenant invisibility on SELECT/UPDATE/DELETE, the "no RLS context set at all" fail-safe, the platform-admin cross-tenant bypass, both new `withUser` policies, and a direct reproduction of the NULLIF empty-string bug against a raw pooled connection. Verified end-to-end via Playwright as both an admin and a member-role user across every major page — zero console/page errors, all real data rendering correctly through the now-actually-enforced policies.
-
-  MGR generation load test, accessibility pass, and PWA parity remain unstarted.
-
-  **Post-Phase-7: MGR fraud prevention.** The app can't stop money moving outside it (MGR payouts are cash/M-Pesa handed directly between members, never through this app), so "prevent fraud" here means: make every claim/reassignment/paid-marking permanently attributable, not silently reversible. Concrete vectors found in the actual `mgr/actions.ts` code before this: `adminUpdateSlotAction` could reassign any slot to any member and mark it paid with zero audit trail (a rogue or compromised admin session could silently redirect a payout to themselves and no one could ever prove it); there was no record of *who* clicked "Mark paid" or *when*; and there was nothing capturing evidence the payout itself actually happened.
-
-  Shipped: `mgr_slot_events`, a genuinely append-only audit table — not just an app convention, but enforced at the database level (`0021_phase7_mgr_slot_events_rls.sql` defines only `SELECT`/`INSERT` policies, no `UPDATE`/`DELETE` at all, so under RLS with FORCE those commands are denied outright for any role without `BYPASSRLS`, which `chama_app` deliberately doesn't have — verified live: both an `UPDATE` and a `DELETE` attempt against an existing event row affected zero rows). `claimSlotAction`, `adminUpdateSlotAction`, and `autoAssignAction` now each log an event (actor, role snapshot, action, before/after status and member, optional note) via a shared `logSlotEvent` helper. Also added `mgr_slots.payout_reference` — an optional field (M-Pesa code or a note) captured when marking a slot paid, the one piece of evidence the app can realistically hold onto that a payout happened; the "Mark paid" button became a dialog that prompts for it and states plainly that the action is permanent. A staff-only "Activity log" panel on the MGR page's Admin tab surfaces the full history.
-
-  Recommended but *not* implemented (real design tradeoffs, not clear-cut): gating slot claims/payouts on the member having actually made their MGR contributions for that cycle (a free-rider check — deferred since some groups run more informally than a strict block would allow); requiring the platform fee to be charged before a slot can be marked paid (closes a revenue-leakage vector but changes the fee-flow's UX); a maker-checker control requiring two staff members to confirm a "paid" marking.
-
-  **Post-Phase-7: role-based in-app guide.** `/guide` — a page that renders exactly the nav sections the viewer's role and this group's type actually unlock (reusing `getVisibleNavItems`, the same function the sidebar itself filters through, so the guide can't drift out of sync with what's really in the menu), each with a 1-2 sentence explanation now carried on `NavItem.guide` in `lib/nav-config.ts`. Includes a role/group-type summary card and a short "applies everywhere" section (group-switching, requesting to join another group, the MGR agreement gate). Verified as both an admin (10 sections, including Settings/Loans/Pending members) and a member (6 sections, correctly excluding all staff-only ones) — the two views render meaningfully different content, not just a role label.
-
-  **Post-Phase-7: governance/KYC foundation.** A compliance audit against a 7-point concept (member identity reuse, group registration requiring filled offices, officials' KYC, member KYC, group documents, ongoing compliance tracking, membership approval) found the join-request workflow genuinely implemented, and almost everything else missing or dead: `group_memberships.role` only ever became `"admin"` (once, at group creation) or the default `"member"` — no code path assigned Treasurer or Secretary at all; `users.idNumber` existed but was never written by any form; `members.idNumber` existed but the Add Member form didn't even render an input for it; no ID images, photos, signatures, or addresses were captured anywhere, and there was no file upload capability in the app at all; `groups.active` defaulted `true` regardless of whether any officials beyond the founding admin existed; a second group's join-approval never carried forward a member's identity fields from their first group.
-
-  Built (the foundational piece — group documents/bank details and compliance-obligation-with-reminders tracking are a deliberately separate follow-up, since reminders need a notification-channel decision this app doesn't have yet):
-  - **Officials & registration-completeness**: `updateMemberRoleAction` (`app/(dashboard)/members/actions.ts`, admin-only, refuses to leave a group with zero active admins) plus a Role column on the Members page. `lib/domain/officials.ts`'s `computeRegistrationComplete` (pure, unit-tested) recomputes `groups.registrationComplete` after every role change — true once a group has at least one active admin, treasurer, *and* secretary. Enforced as a **grace period**, not a hard block at creation: a group can still be created with just its founding admin, but stays invisible to `/discover` and can't approve new join requests (`approveMembershipAction` now checks and rejects with a clear error) until the other two offices are filled — mirrored into `groups_public_read`'s RLS policy (`0023_officials_groups_public_read_gate.sql`) as defense-in-depth, not just an app-level filter. A dashboard banner tells staff what's missing.
-  - **KYC capture + cross-group reuse**: `members` gained `idType`/`idDocumentUrl`/`photoUrl`/`signatureUrl`/`address`/`kycCompletedAt`. Fields live on `members`, not `users` — a members row is the canonical "real person in this group" even before they have a login. `lib/domain/officials.ts`'s `requiredKycFields(role)` drives both the completeness check and which fields the self-service `/profile` page shows (office holders additionally need address + signature). File uploads go through `@vercel/blob` (`app/api/upload/route.ts` — a thin, no-business-logic primitive — plus a reusable `FileUpload` component that renders a hidden input holding the resulting URL, so any plain form picks it up like a text field). Cross-group reuse is real in both directions: `updateMyKycAction` propagates a saved profile to every other group the same user belongs to (`withPlatformAdmin`, scoped strictly to the caller's own `userId` throughout so the cross-tenant reach can't touch anyone else's data); `approveMembershipAction` and the super-admin's `createGroupAction` both look up existing KYC for a user before creating their new group's `members` row, pre-filling it instead of leaving it blank.
-  - **Rules inherently applied**: `groupMemberships.rulesAcceptedAt`, stamped automatically (not a new opt-in step, deliberately unlike the MGR agreement gate) everywhere a membership goes active — `approveMembershipAction`, the founding admin's insert in `createGroupAction`, and `createLoginForMemberAction`. Surfaced read-only on the Rules page ("you accepted these on {date}") and as a compliance-visibility badge on the Members page for staff.
-
-  Verified end-to-end via Playwright against the real demo data: assigned Carol Kamau as Treasurer and Bob Otieno as Secretary on the live Members page, confirmed `registrationComplete` flipped true in the database, the dashboard banner disappeared, and `/discover` started showing "My Chama" again; registered a fresh user, requested to join, approved it as admin, and confirmed `rulesAcceptedAt` was stamped and visible; filled Carol's KYC via `/profile` (confirmed via direct DB read, since `defaultValue`-based inputs don't show up in a `textContent` check) and confirmed the officials-only fields (address/signature) only appear for her Treasurer role. Also directly verified `groups` has no DELETE policy at all (only SELECT/INSERT/UPDATE) — an unrelated pre-existing gap noticed while cleaning up test fixtures, not exploitable today since nothing in the app deletes a group, left as-is rather than expanding scope. Full suite: 73/73 tests (11 new for `lib/domain/officials.ts`), lint, typecheck, and production build all clean.
-
-  Not yet done: `BLOB_READ_WRITE_TOKEN` still needs provisioning (create a Blob store in the Vercel dashboard and link it to the project) before uploads actually work in any environment — the upload route and UI are wired and ready, just unverified against a live store. Group documents (constitution/bylaws, signed registration application, stamp reference, bank/mobile-money details) and compliance-obligation tracking (annual returns, AGM/financial-account due dates, reminders) remain a separate follow-up plan.
-
-This ordering builds the hardest, historically-buggiest surfaces (MGR, payments) *after* the schema/auth/RLS/domain-layer patterns are proven on simpler CRUD.
-
-**Post-Phase-7: Capital Position.** Grew out of a strategic review of the product vision (Laitor as a "community-finance operating system," not just a chama bookkeeping app — see the strategy memo for the full argument) that concluded the fastest way to earn that claim wasn't new CRUD, but turning the existing ledger into an allocation view: how much of the group's pooled capital is currently out on loan versus sitting in reserve, visible to every member (not just staff), plus an optional group-set target with drift alerts.
-
-Scoped deliberately narrow rather than the vision's full multi-bucket allocation model: `lib/domain/capital.ts`'s `computeCapitalPosition` treats only the **capital pool** (`sum(members.capital)`) as deployable — security and personal savings are already separate, non-lendable pools in the existing schema (security is a collateral/insurance deposit, personal savings is individually-owned money the group merely holds), so folding them into a combined "capital" figure would have overstated deployable capital and understated the real loan-deployment percentage. Welfare and projects remain their own special-purpose pools, reported for visibility (reusing the welfare page's existing collected-minus-disbursed pattern, `contributions`/`welfareClaims`, rather than `members.welfareBalance`, which is never decremented on disbursement) but excluded from the capital-allocation math.
-
-One nullable column, `groups.targetLoanDeploymentPct` (migration `0028_capital_allocation_policy.sql`) — unset means no policy configured, and `computeAllocationDrift` returns `null` (no default assumed on the group's behalf) rather than flagging drift against an invented baseline. Drift beyond ±15 points is flagged `over_deployed`/`under_deployed`; within tolerance is `on_target`. Settings gained its own "Capital policy" tab and narrow `updateCapitalPolicyAction` — same reasoning `updateProductAccessAction` already documents for why product toggles got their own action instead of folding into `updateSettingsAction`: a distinct concern with its own validation range, not group configuration.
-
-New `/capital` page and nav entry deliberately carry **no** `roles` restriction (unlike Loans/MGR/Settings) — visible to every member, since the point is letting an ordinary member see the group's money is being used sensibly without having to ask, directly answering the "member-side opacity" pain point the strategy review flagged as more load-bearing than most incumbents' feature lists address. `loanPrincipalOutstanding` (not `amountRemaining`, which includes accrued interest) is what's subtracted from the capital pool for reserve/deployment math, since that's the actual cash that left the pool; `loanReceivableOutstanding` (incl. interest) is shown alongside as the separate "owed back" figure.
-
-12 new Vitest cases (`tests/capital.test.ts`) cover the zero-pool divide-by-zero guard, the overextended-and-floored-at-zero edge case (loans exceeding the capital pool — flagged, not shown as a negative reserve), welfare netting, and all three drift severities including the exact tolerance boundary. Verified end-to-end via Playwright against the real demo data as the seeded admin: capital pool Ksh 20,000 / Ksh 10,000 out on loan rendered as 50% deployment with a matching allocation bar; setting a 60% target in Settings and reloading `/capital` correctly recomputed to "On target — 50.0% deployed against a 60% goal." Full suite: 89/89 tests, lint, typecheck, and production build all clean.
-
-**Post-Capital-Position: Subscription billing.** Follow-on from a monetization strategy review (see the pricing memo) that concluded the app's only live revenue mechanism was a single, still-unverified 5% MGR fee, with no subscription billing at all despite `platform_payment_type` having carried an unused `'subscription'` literal since Phase 5. Built the pricing engine that memo specified and wired it into the app for real, rather than leaving it as a document:
-
-- `lib/domain/billing.ts` — pure, unit-tested (19 Vitest cases) pricing engine: a member-count band, a vehicle band weighted by actual complexity (welfare/investment/table-banking, capped at Ksh 3,500 total — not a flat per-count step, since a welfare fund and a loan book carry very different support and risk load), an activity band keyed to trailing-12-month gross financial flow (never account balance — a group with Ksh 10M sitting idle owes nothing extra here), and a separate itemized transaction-fee layer (`computeTransactionFee`) generalizing the one mechanism already live (`calcPlatformFee`/`groups.mgrFeePct`) to loan disbursement (0.75%) and repayment (0.5%). Rates are directional, sized to leave margin over a plausible M-Pesa pass-through cost — not confirmed against IntaSend's actual merchant rate, which isn't publicly disclosed; flagged as an open item before these go live for real.
-- `subscription_invoices` (migration `0029_subscription_billing.sql` + RLS in `0030_billing_rls.sql`) — one row per billing period, snapshotting the computed inputs and amounts at generation time rather than recomputing live later, so a past invoice stays explainable even after membership/vehicles/activity change. `platform_payments` gained a nullable `loan_id` FK and a `loan_fee` payment type, mirroring the existing `mgr_slot_id`/`mgr_fee` pattern exactly.
-- New `/billing` page (admin/treasurer only, unlike Capital Position's all-roles visibility — this is an administrative obligation, not a member-trust surface) shows the live computed quote, and a manual "Generate invoice for this period" action — deliberately manual, not cron-automated, matching the existing MGR-fee flow's honesty: nothing in this app bills itself yet. Charging an invoice or a loan's disbursement fee reuses the exact dual-path UX MGR fees already established (instant deduction from the prepaid wallet if it covers the amount, or a fresh M-Pesa STK push otherwise) — same component pattern, same `chargeFeeFromWalletAction` shape, now also on Loans (`chargeLoanFeeFromWalletAction`, a "Charge disbursement fee" button per loan) and Billing (`chargeInvoiceFromWalletAction`). The IntaSend webhook (`/api/payments/callback`) now cascades a `subscription`-type payment's resolved status onto its linked `subscription_invoices` row.
-- Caught and fixed the exact date-shift bug class documented in this file's own Phase 5 notes (bug #2: `new Date(y,m,d).toISOString()` round-trips through UTC, silently shifting a locally-constructed calendar date backward by a day in a timezone ahead of UTC — this environment runs Africa/Nairobi, UTC+3) — reintroduced it fresh in `generateInvoiceAction`'s period-boundary calculation and in `computeGroupBillingInputs`'s trailing-12-month cutoff; fixed both with the same local-component formatting already used in `cron/contribution-dues/route.ts`, caught by comparing a generated invoice's dates against ground truth in the database rather than trusting the rendered UI.
-- **A more consequential finding, caught the same way**: `computeGroupBillingInputs` originally ran its six aggregate queries via `Promise.all` inside the `withTenant` transaction — a pattern copied from the Dashboard, Capital Position, Welfare, Fines, Projects, Meetings, and the super-admin Stats page, all of which already did the same thing. That race intermittently starved later queries of the transaction-local `SET LOCAL app.current_group_id` (or `app.is_platform_admin`) context `withTenant`/`withPlatformAdmin` sets up, so RLS correctly (and silently) fail-safed to zero rows — not a security hole, but a real, hard-to-notice correctness bug: the billing page rendered a plausible-looking empty invoice history while a real invoice sat in the database the whole time.
-
-Verified end-to-end via Playwright against the real demo data: enabling Table Banking + Welfare + Investment via Settings correctly recomputed the live quote (member fee Ksh 1,200 + vehicle fee Ksh 3,100 + activity fee Ksh 0 = Ksh 4,300/yr, "Pro" tier); generating an invoice produced a correctly-dated Aug 1–31 row for Ksh 358.33; the loan disbursement fee dialog correctly computed Ksh 37.50 (0.75% of a Ksh 5,000 principal) with the wallet/STK dual-path UI rendering correctly at a zero wallet balance. Full suite: 108/108 tests, lint, typecheck, and production build all clean.
-
-**Post-Subscription-Billing: Scale audit — indexes and the `Promise.all`/RLS race, swept everywhere.** Prompted directly by the billing-page bug above: rather than leave the same latent race in every other page that shared the pattern, and rather than assume performance would be fine "at scale" without measuring it, this pass audited and load-tested the real cost of both issues before fixing them.
-
-*The `Promise.all`-inside-`withTenant` race, swept.* Fixed in the seven remaining pages that had it: `app/(dashboard)/page.tsx` (Dashboard), `capital/page.tsx` (two occurrences), `welfare/page.tsx`, `fines/page.tsx`, `projects/page.tsx`, `meetings/[id]/page.tsx`, and `super-admin/stats/page.tsx`. The fix is mechanical and preserves concurrency rather than trading it away: each query that used to share one transaction now gets its **own** `withTenant`/`withPlatformAdmin` call (its own connection, its own `SET LOCAL` context, nothing to race), and those independent calls are still run concurrently via an **outer** `Promise.all`. Slower-but-safe (fully sequential, one shared transaction) was rejected deliberately — this pattern is both safe and exactly as fast as the original concurrent version. `capital/page.tsx`'s welfare sub-branch (`welfareCollected`/`welfareDisbursed`) needed the same split a second time — it had been nested inside one of the already-fixed branches. Verified via Playwright across all nine affected routes post-fix (Dashboard, Capital Position, Welfare, Fines, Projects, Loans, Billing, Meetings attendance, super-admin Stats) — zero console/page errors, real data rendering correctly on each.
-
-*Missing indexes — measured, not assumed.* `drizzle-kit generate`'s own output had shown "0 indexes" on every one of the 29 tables beyond primary keys and unique constraints, for the entire life of this project. Rather than add indexes speculatively, seeded a disposable, clearly-marked multi-tenant dataset (60 `__LOADTEST__` groups, ~2,100 members, ~42,000 contributions, ~105,000 loans — spread across many tenants, not one, since a single-tenant seed makes `WHERE group_id = X` artificially non-selective and hides exactly the problem being tested for) directly against the dev database, ran `EXPLAIN (ANALYZE, BUFFERS)` on the query shapes every major page and both cron jobs actually use, then deleted all of it (cascade via `DELETE FROM groups WHERE name LIKE '__LOADTEST__%'`) once done — nothing from this seed persists.
-
-Measured, before → after migration `0031_scale_indexes.sql` (26 `CREATE INDEX` statements, pure additive DDL — `group_id` on every RLS-scoped table lacking one already as a unique index's leading column, plus `loans.member_id`, `loans(status, due_date)`, and `contribution_dues(status, due_date)` for the two cron jobs that scan every tenant's rows, not just one):
-
-| Query | Before | After |
-|---|---|---|
-| `loans WHERE member_id = X AND status IN (...)` — runs on every single loan application/approval | Seq Scan, all 105,002 rows read, 6.6ms | Index Scan, 63 rows read, 0.15ms (**~46×**) |
-| `loans WHERE group_id = X ORDER BY created_at` — the Loans page | Seq Scan, 105,002 rows read (103,252 discarded), 5.8ms | Index Scan, 1,750 rows read, 1.0ms (**~6×**) |
-| `contributions WHERE group_id = X AND status='paid' AND created_at >= 1yr ago` — billing's activity-flow query | Seq Scan, 42,002 rows read, 2.9ms | Index Scan, 700 rows read, 0.37ms (**~8×**) |
-| Cron `loan-overdue`'s candidate scan — crosses every tenant, by design | Seq Scan, 105,002 rows, 16.2ms | Bitmap Index Scan, 10.9ms (modest here — ~33% of rows matched in the synthetic data, so a scan was already fairly cheap; the real win is that this no longer degrades linearly with total platform loans regardless of match rate) |
-
-The `loans.member_id` result is the one worth internalizing: it's the query behind the single most frequent write path in the loans feature (every application and every direct approval checks "does this member already have an outstanding loan"), and at 105k platform-wide loan rows it was already costing 6.6ms per check with a full table scan — a number that grows linearly with total platform loans, not any one group's loan count, since the pre-index plan couldn't narrow by `member_id` at all. At current data volumes (single digits to low hundreds of rows per table) none of this is felt yet; the point of measuring now, before it's a fire to put out, is that the index migration is free to apply (identical query behavior at small scale, per the EXPLAIN plans) and removes a scaling cliff that would otherwise show up first as the loan-overdue cron's runtime, then as Loans-page latency, as the group base grows toward the scale the pricing memo's own projections target (thousands to hundreds of thousands of groups).
-
-Not addressed this pass, flagged as follow-ups rather than fixed speculatively: no pagination on `loans`/`contributions`/`members` `findMany` calls (fine at current per-group volumes; worth revisiting if any single group's row counts grow into the thousands); connection-pool sizing under real concurrent production load, which a local dev-database benchmark can't measure.
-
-**Post-Scale-Audit: Rule templates.** A starter library of common, Kenyan-chama/table-banking-standard rules a group can pick from and amend, rather than writing every bylaw from scratch — the natural next step from the "financial vehicles" framing in the strategy review: `rules.category` already maps 1:1 onto four of the toggleable products (`loans`/`mgr`/`welfare`/`projects` — Table Banking/MGR/Welfare/Investment), so templates for those categories are only offered once the group has that vehicle switched on; the operational categories (general/contributions/fines/meetings/other) apply to every group regardless of which vehicles it runs and are never gated.
-
-`lib/domain/rule-templates.ts` — pure data, no DB, 30 templates across all nine categories, unit-tested (`tests/rule-templates.test.ts`) for id uniqueness, non-empty content, full category coverage, and the product-gating filter (`visibleRuleTemplates`, which mirrors `lib/nav-config.ts`'s `getVisibleNavItems` pattern exactly). Templates are written as complete, ready-to-use sentences with reasonable defaults rather than fill-in-the-blank placeholders — the point is a group edits specifics to fit them, not fills out a form from nothing — and reuse this app's own existing business-rule defaults where one exists (e.g. the lateness/absence fine suggestions match `groups.fineLateness`/`fineAbsence`'s own defaults) rather than inventing new numbers.
-
-No new table and no separate write path: templates aren't stored, they only prefill the existing "Add a rule" form (`RulesManager`'s `AddRuleForm`, keyed on the selected template's id so picking one forces a remount with fresh `defaultValue`s — plain uncontrolled inputs otherwise ignore a changed `defaultValue` after first render) — `createRuleAction` persists exactly what the admin has by then edited, same as before. A "Browse templates" dialog on `/rules` groups the currently-visible templates by category with a one-click "Use this" per template.
-
-Verified end-to-end via Playwright: picking "Guarantor requirement" from the Loans category correctly loaded its category/title/description into the form; amending the description and saving persisted the group's amended text verbatim (confirmed via direct DB read), not the unedited template. Full suite: 114/114 tests, lint, typecheck, and production build all clean.
-
-**Post-Rule-Templates: Vehicle-activation wizard, and closing a real settings gap.** Scoping this surfaced a genuine hole: `groups.loanInterestRate`/`loanMaxMultiplier`/`loanRepaymentMonths`/`loanLatePenalty` have driven every loan computation since Phase 2 (`lib/domain/loans.ts`), but no Settings tab ever let a group actually change them — they were permanently stuck at the seeded defaults (20%, 3×, 6 months, Ksh 500) for every group on the platform. Fixed with a standalone **Loans** tab (`updateLoanSettingsAction`/`updateLoanSettingsSchema`) — independently useful, not just wizard scaffolding.
-
-The wizard itself replaces Settings → Products' flat checkbox grid with per-vehicle cards: an inactive vehicle shows an **Activate** button that opens a multi-step dialog (`VehicleActivationWizard`) instead of just flipping a boolean, matching the "configuring how my group works, not buying a module" principle from the pricing strategy review. Steps: intro (reusing the same descriptive copy as the products list) → configure (loans only — its own settings are real and worth setting deliberately before members start borrowing; MGR/welfare/projects have no group-level settings to set, so this step is skipped, and MGR points to its own richer `/mgr` → Config flow afterward instead of duplicating it) → starter rules (this category's `visibleRuleTemplates`, multi-select) → review. An already-active vehicle instead shows a checkbox (to disable, data preserved) plus a **Manage** link to its own page.
-
-Deliberately **one combined server action** (`activateProductAction`) fired only at the wizard's final step, not one action per step — closing the dialog partway through shouldn't be able to leave a group half-configured (product on with no rules, or rules added with the product still off). Rule-template text is looked up server-side from `RULE_TEMPLATES` by id inside the same transaction; the client only ever sends which ids were checked, never free-text content. The bulk-insert reuses `createRuleAction`'s sequential-numbering convention and skips any template whose title already exists as a rule in that category for the group — verified concretely, not just by inspection: re-running the wizard against a group that already had a manually-amended "Guarantor requirement" rule (from the previous phase's template testing) correctly left that customized row untouched rather than inserting a duplicate.
-
-Verified end-to-end via Playwright + direct DB reads against real demo data: disabled Table Banking, then ran the full 4-step wizard to re-activate it with 18% interest / 2.5× multiplier / a selected starter rule — `groups.loans_enabled`, `loan_interest_rate`, and `loan_max_multiplier` all persisted exactly as entered, and the idempotency guard against the pre-existing customized rule held. Full suite: 114/114 tests, lint, typecheck, and production build all clean.
-
-**Other areas that would benefit from the same wizard treatment, not built this pass:**
-- **New-group setup** (`super-admin/groups`) — a platform admin creating a tenant still fills one flat form (name/type/visibility/founding admin) and the founding admin is left to separately discover Settings' now-six tabs afterward. The natural next wizard: basics → pick vehicles → configure them → starter rules, i.e. this exact wizard's steps run once at group birth instead of per-vehicle later.
-- **MGR cycle setup** (`/mgr` → Config) — config, turns, and schedule generation are already split across tabs but not sequenced as a guided flow; a first-time setup (as opposed to ongoing management) would benefit from the same step-by-step treatment, ending in the same 4-field agreement gate that already exists.
-- **Member KYC completion** (`/profile`) — currently one long form with role-conditional fields (address/signature only for officials); a short wizard would make the "why am I being asked for this" reasoning explicit per section rather than presenting every field at once.
-- **Welfare claim submission** — currently a single form; low priority, since it's short enough (type, amount, beneficiary, description) that a wizard would likely be overhead rather than help.
-
-**Post-Wizard: Loan guarantors, and a second, more serious instance of the RLS-race bug.** The single most-repeated gap across every strategic review this project ran — real consent, not a listed name, closing the gap between what's built and the vision's "Core Table Banking model."
-
-- `loan_guarantors` (migrations `0032_loan_guarantors.sql` / `0033_loan_guarantors_rls.sql`): `applicationId`/`loanId` are both nullable, exactly one set at a time. A self-service application creates `pending` rows against the *application*; `reviewApplicationAction` re-points the same rows' `applicationId` → `loanId` on approval rather than creating fresh ones, so the acceptance record (who agreed, when) survives the application→loan transition intact. Staff-direct `createLoanAction` creates rows straight against the loan, pre-`accepted` — staff are already vouching for the loan directly, the same trust level every other staff-direct action in this app carries, so it doesn't gate on a consent round-trip the way self-service does. New `groups.loanMinGuarantors` (default 1, 0 opts out entirely) gates only the self-service path.
-- `lib/domain/guarantors.ts` — pure eligibility rules (can't guarantee your own loan, must be active, no defaulted loan of your own, capped at `MAX_CONCURRENT_GUARANTEES` = 2 concurrent guarantees, matching the rule template's own stated default from the previous phase) plus the accepted-count gate `reviewApplicationAction` checks before letting an application become a loan. 12 Vitest cases. `app/(dashboard)/loans/guarantor-data.ts` composes the DB side (exposure count across both live loans and still-pending applications, since both are real commitments) — shared by application-time validation and by `respondToGuaranteeRequestAction`'s re-check at accept time, since exposure can change between when a request is sent and when it's answered.
-- New member-facing surfaces on `/loans/apply`: a guarantor picker on the application form, a "Guarantee requests" panel (accept/decline what others have asked of you), and a "Loans you're guaranteeing" list. Staff-facing: guarantor status badges on both the Loans and Applications tables, and the Approve dialog now shows accepted-vs-required count and disables the confirm button until the group's minimum is met (the server enforces this regardless; the UI just avoids a round-trip to discover it).
-
-**Found by the exact same bug class this project has now hit twice — the second time in `getSession()` itself.** While testing the guarantor flow against a real second account, that account hit "no member profile linked to your account" despite genuinely having one — `group_memberships`, `members`, and the session's `active_group_id` were all correct in the database. The cause: `getSession()` — the function every single authenticated request goes through — ran its `groupMemberships`/`members` lookups via `Promise.all` inside one `withUser` transaction, the identical race already fixed elsewhere this project (concurrent queries against one transaction can silently drop the transaction-local `SET LOCAL app.current_user_id` context, so RLS fails safe to zero rows on the unlucky query). Fixed the same way — two independent `withUser` calls — and swept the one remaining occurrence found project-wide, in `tests/rls.test.ts`'s own fixture setup (ironic, since that suite exists specifically to catch RLS-context bugs). This one is worth flagging above the others already fixed: it sat in the most-executed function in the entire app, affecting any member depending on connection timing, not a specific page — the kind of bug that's genuinely hard to reproduce on demand, which is exactly why it survived every previous pass and was only caught by hitting it live during unrelated feature testing.
-
-Verified end-to-end with three real accounts against live demo data (not synthetic fixtures): a borrower applied for a Ksh 3,000 loan naming one guarantor; the guarantor logged in separately, saw the request, and accepted it; the admin's approve dialog correctly showed "1 of 1 required guarantor(s) accepted" with the confirm button enabled; approving produced a `loan_guarantors` row with both `application_id` and `loan_id` set, `status: accepted`, `responded_at` populated — and a live, active Ksh 3,000 loan. Full suite: 126/126 tests, lint, typecheck, and production build all clean.
-
-**Post-Guarantors: New-group setup wizard.** The first of the wizard-treatment follow-ups actually built — runs the vehicle-activation wizard's exact steps (basics → pick vehicles → configure → starter rules → review) once, at group birth, instead of leaving the founding admin to separately discover Settings' six tabs afterward.
-
-Extended `createGroupAction` (`app/super-admin/groups/actions.ts`) rather than adding a parallel path: same reasoning as `activateProductAction` — one combined transaction, so a group can't end up half-configured because the dialog was closed partway through. Product flags and loan terms (interest/multiplier/repayment/penalty/min-guarantors) are now set directly at insert time instead of created-then-updated; starter rules are inserted in the same transaction, filtered server-side through `visibleRuleTemplates` against the selected vehicles (defense in depth — a template id that doesn't belong to a selected vehicle's category is silently dropped rather than trusted from the client, same pattern `activateProductAction` already established). The founding-admin membership and cross-group KYC reuse logic are untouched from before.
-
-The rules step differs from the vehicle-activation wizard's version in one way worth noting: that wizard only ever shows one vehicle's templates (it's activating one at a time), so it lists them flat; this one can have multiple vehicles selected at once, so it groups templates by category — reusing the same grouping pattern the Rules page's own template browser already uses, rather than inventing a third layout for the same data.
-
-Verified end-to-end via Playwright + direct DB reads: created "Umoja Wanawake" with Table Banking and Welfare selected, 15% interest and 2 required guarantors, three starter rules across two categories (general, loans, welfare) — the resulting group row, all three rules with correct sequential numbering and categories, and the founding admin's active membership all matched exactly what the wizard showed at its review step. Full suite: 126/126 tests, lint, typecheck, and production build all clean.
-
-**Remaining from the wizard-treatment list**: MGR cycle first-time setup, member KYC completion. Welfare claim submission remains deliberately out — short enough already that a wizard would add friction, not remove it.
-
-**Post-Wizard: Welfare policy & ledger rebuild ("Phase 8").** The original welfare implementation (Phase 3) was a single running balance derived from collected-minus-disbursed contributions/claims — enough to demo, not enough to run a real welfare fund against a written policy. Rebuilt against an external welfare-program spec into a proper multi-reserve ledger system:
-
-- **Three named reserves per group** (`welfare_funds.emergency_balance` / `long_term_balance` / `advance_balance`), each fed by its own funding rule (`lib/domain/welfare-policy.ts`'s `computeContributionAllocation`: fixed amount, % of collections, % of this contribution, or manual) and an allocation split across the three reserves. `lib/domain/welfare-fund.ts`'s `applyReserveMovement` is the one place any reserve balance is computed, in either direction — rejects a movement that would take a reserve negative unless the policy's `allowOverdraft` flag is on, and `isBelowFloor` flags the emergency reserve dropping under its configured minimum.
-- **Tiered approval** (`lib/domain/welfare-approval.ts`): `resolveApprovalTier` maps a request's total amount against the policy's `tier1MaxAmount`/`tier2MaxAmount` to `tier1` (single staff decision), `tier2` (chair + treasurer co-sign), or `tier3` (all three officials) — this app's approximation of "full group approval" for the largest requests, since there's no separate welfare-committee role.
-- **Member eligibility gate** (`lib/domain/welfare-eligibility.ts`): `checkMemberEligibility` checks active status, minimum tenure, a per-year claim cap, and a cooldown since the last request, each with its own plain-language rejection reason.
-- **Welfare advances**: a loan-like short-term draw against the welfare fund (`welfare_advances` table), with its own fee (`lib/domain/welfare-advance.ts`'s `computeAdvanceFee`/`computeAdvanceTotalRepayable`) and an outstanding-exposure check (`computeOutstandingAdvanceExposure`) capped by the policy's `maxOutstandingAdvancePerMember`. Deliberately reuses `lib/domain/loans.ts`'s `defaultDueDate` rather than duplicating due-date math.
-- **`welfare_ledger`**: an append-only record of every movement in or out of any reserve, the actual source of truth the cached `welfare_funds` balances are derived from — same "cache plus append-only ledger, always updated together" pattern `group_wallets`/`wallet_transactions` already established for platform fees.
-- **A generic `notifications` table** (`lib/domain/notifications.ts`) — deliberately not welfare-named even though welfare is its first and only producer so far (`buildWelfareNotification` covers request submitted/approval needed/approved/rejected/disbursed, advance repayment due/overdue, reserve low, policy changed); a future feature gets its own event type rather than overloading this one.
-
-New member-facing surfaces: a welfare request form and an approval queue (`components/feature/welfare-request-form.tsx`, `welfare-approval-queue.tsx`). New Vitest coverage: `welfare-policy`, `welfare-approval`, `welfare-eligibility`, `welfare-advance`, `welfare-fund` — all pure, DB-free per the established `lib/domain/*` convention.
-
-**Post-Phase-8: first real customer — GreatMinds.** `scripts/seed-greatminds.ts` and `scripts/backfill-greatminds-round1.ts` seed and backfill a real table-banking chama's actual round-1 MGR history from their WhatsApp group log, rather than synthetic demo data — the first group on the platform seeded from real operating history instead of fixtures.
-
-**Post-Phase-8: Insights.** `lib/domain/insights.ts` + `/dashboard/insights` — turns the group's existing ledger and MGR schedule into plain-language judgments instead of just a record of what already happened (the same "derive a view, don't just record history" idea `lib/domain/capital.ts`'s allocation drift already used): `computeNextMgrEvent`/`computeMgrPace` (what's next, is the rotation on schedule), `computeMemberRiskFlags` (pending fines, overdue dues, overdue loans, recent absences, combined into a severity per member), and `generateRecommendations` (registration incomplete, missing offices, capital drift, overextended, welfare outlook — each a plain-language nudge, not a raw metric).
-
-**Post-Insights: internal group account management (sales/marketing/onboarding/support).** `groups` gained a CRM layer alongside its operational columns: `contact_person_name`/`role`/`phone`/`email`, `onboarding_stage` (lead → contacted → demo → registration → verification → training → active → at_risk → churned), `account_tier` (standard/key/strategic), `account_owner_user_id` (a platform team member), `next_follow_up_at`, `internal_notes` — plus an append-only `group_account_activities` log (same "cache the current state, but never let the history be edited away" instinct as `mgr_slot_events`). `platform_user_audit_logs` mirrors this for platform-role grants themselves (owner/support), so "who can act as platform admin" has the same accountable trail loan-guarantor consent and MGR payouts already do. Surfaced on `/super-admin/groups` (a wide CRM-style table — name, onboarding stage, tier, owner, next follow-up, subscription/payment status alongside the operational columns) and `/super-admin/users` (platform role management).
-
-**Post-Account-Management: self-service group creation.** `groups_self_service_insert`, a new RLS policy, lets an authenticated active user create their own group directly (`/dashboard/onboarding`, `createOnboardingGroupAction`) instead of every tenant requiring a super-admin to create it — the group is created private with `require_approval` on by default, and the founding user's membership + `members` row are created in the same `withUser`-scoped transaction. Super-admin-created groups (the wizard from the entry above) are unaffected — this is an additional path, not a replacement.
-
-**Post-Self-Service: public marketing site.** `app/page.tsx` — previously the authenticated dashboard's own home page — was rebuilt as a full public marketing site (the `/` route's actual audience is now anonymous visitors, not signed-in members), which is what prompted the `/dashboard` route-prefix migration documented just below.
-
-**Session: `/dashboard` route-prefix migration, mobile-first nav, and the analytics rebuild.** A single work session found and fixed a real, live gap left by the public-site change above, then used the same pass to bring the analytics surfaces up to the standard the rest of the app holds itself to:
-
-- **Routing bug fix.** The dashboard home had moved from `/` to `/dashboard/page.tsx` for the public-site change, but nothing else moved with it: every other authenticated page (`members`, `loans`, `mgr`, `welfare`, …) was still bare-rooted under the `(dashboard)` route group, and `lib/auth/session.ts`'s `requireRole`/`requireActiveGroup`/`requireProduct`/`requirePlatformAdmin` all still `redirect("/")` on failure — bouncing a signed-in user who hit a role/product-gated page onto the marketing site instead of back into the app. Fixed by moving every `(dashboard)` sub-route under a literal `dashboard/` segment inside the same route group (`app/(dashboard)/dashboard/*` — one shared `layout.tsx`, no duplication), so the whole authenticated app now sits under one consistent `/dashboard/*` prefix, and retargeting every session-guard redirect, `revalidatePath`, and internal link accordingly. Also fixed: a byte-identical duplicate `DashboardLayout` left over from the original partial move, and login not lowercasing email against a lookup that already did — the two didn't agree with each other.
-- **Data-viz design system.** `app/globals.css` gained a small set of `--viz-*` tokens — 8 categorical hues, a 6-step sequential ramp, and a fixed good/warning/serious/critical status scale — run through the dataviz skill's six-check validator against this app's own light/dark surfaces (not eyeballed, not the framework default). `components/feature/charts.tsx` is the resulting shared primitive set (`SequentialColumnChart`, `RankedBarList`, `StatusBarList`, `CompositionBar`, `Meter`), plain HTML/CSS with no new dependency, each with hover *and* keyboard-focus tooltips.
-- **Reports merged into Insights.** The standalone Reports page (contributions trend, top balances, loan/fine exposure, CSV export) is gone as a separate nav entry — its content now renders inside `/dashboard/insights`, staff-only, below the MGR "next up" hero and the recommendations. One page answering "what's going on" instead of two.
-- **Mobile bottom tab bar.** `DashboardShell` gained a fixed bottom nav (mobile only) — Home, Insights, plus up to two more depending on which vehicles the group actually runs, capped at 4 tabs + a "More" tab that opens the existing full drawer. Driven by a new `NavItem.primary` flag in `lib/nav-config.ts`, filtered through the same role/product logic the sidebar already uses, so "a few essential tabs" holds regardless of role or group type without hand-authored per-role tab lists.
-- **Super-admin group profile.** `/super-admin/groups/[id]` — a dedicated per-tenant page (contact/account details, officials checklist, capital position, the same Insights-style charts scoped to that one group, recent subscription invoices, and the account-activity timeline) replacing the crowded single edit-dialog as the place to actually understand one group, not just edit its settings row. The groups list table now links each name into it.
-
-Verified: `tsc --noEmit`, `eslint`, and a full `next build` all clean at each step; the Vitest suite sits at 199/200 — the one failure is `tests/capital.test.ts`'s stale fixture for a `@deprecated` fallback path in `computeCapitalPosition` that the Phase-8 welfare rebuild made unreachable in every real caller (confirmed by inspection, not yet fixed — flagged as a follow-up, not a live bug).
-
-**Post-Analytics-Rebuild: brand retheme.** `app/globals.css`'s CSS custom properties (`--background`/`--primary`/`--accent`/`--chart-1..5`/`--sidebar-*`, both light and dark) were rebuilt from the public marketing site's own palette (`app/page.tsx`: cream `#f8f7f2` base, deep forest `#18332b` ink, terracotta `#c75b39` primary, lime `#e3f17b` accent) rather than the generic shadcn grayscale scaffold every dashboard screen had been running on since Phase 0. Because every dashboard surface already reads these tokens through Tailwind's semantic classes (`bg-primary`, `text-muted-foreground`, etc.) rather than hardcoded colors, retheming was a single-file change — confirmed by grepping for `bg-{gray,slate,zinc,...}-NNN` hardcodes outside this file and finding none beyond a handful of deliberate status colors (amber/emerald/sky for warning/success/info in `capital-position.tsx`/`insights-view.tsx`), which were left alone as functional indicators, not brand color. Dark-mode tokens were rebuilt in parallel even though nothing in the app currently toggles `.dark`, so a future dark-mode switch inherits a coherent palette instead of the old grayscale defaults.
-
-**Post-Retheme: subscription-payment reconciliation bug.** Investigating a reported mismatch between the figures super-admin's groups table and a group's own `/dashboard/billing` page show for the same group surfaced a real, if not-yet-triggered, bug: `/api/payments/subscription-invoice` let an admin retrigger an M-Pesa STK push for a still-pending invoice — each retry inserted a fresh `platform_payments` row and simply repointed `subscription_invoices.payment_id` at it, leaving the previous attempt's row permanently `pending` if its own webhook never resolved (a missed prompt, a cancelled dialog). Super-admin's "payment pending" column sums straight from `platform_payments`, so every abandoned retry would silently inflate that figure forever, while a group's own billing page (which only ever reads one row per `subscription_invoices` period, never doubled) would never reflect the inflation — exactly the "two screens disagree" shape reported. Fixed by marking any still-pending payment already linked to the invoice `failed` before inserting the new attempt, so at most one live pending row can exist per invoice at a time. (The live database had zero `subscription`-type `platform_payments` rows at the time this was investigated — the bug was real and reachable, just not yet triggered by any actual retry in production data.)
-
-**Post-Reconciliation-Fix: recommendations surfaced on dashboard home, and a first reader for `notifications`.** Two gaps found by auditing what the app already computes but never shows anyone: `lib/domain/insights.ts`'s `generateRecommendations` — a rule-based, fully-explainable "agent" over the ledger (MGR pace drift, capital over/under-deployment, at-risk members, welfare strain, registration gaps) — rendered only on `/dashboard/insights`, a nav item nobody's prompted to click; and the `notifications` table, already populated by welfare events (`buildWelfareNotification`, wired since Phase 8) but with no page or UI anywhere that ever read a row back out.
-
-- `app/(dashboard)/dashboard/insights/data.ts`'s new `computeGroupInsights(groupId, products)` extracts the query-gathering half of `InsightsPage` (everything but the staff-only historical `report`) into a function both `InsightsPage` and the dashboard home now call — preserving the exact "independent `withTenant` calls, outer `Promise.all`" shape (the RLS race this codebase has hit and fixed twice already), not a rewrite of it. The dashboard home (`app/(dashboard)/dashboard/page.tsx`) now shows the top 1-2 non-"all-clear" recommendations, staff-only (members don't pay for the extra queries on the page they see most), falling back to the previous plain teaser link when there's nothing flagged.
-- A notification bell (`components/feature/dashboard-shell.tsx`, both the desktop sidebar and the mobile header) with an unread-count badge fed from a count query in `(dashboard)/layout.tsx`; `/dashboard/notifications` (`notifications-manager.tsx`) lists a user's own notifications for their active group — per-user filtering stays app-level, matching this table's documented RLS convention (`drizzle/0035_phase8_welfare_policy_ledger_rls.sql`: RLS here enforces only the tenant boundary) — with click-to-read and mark-all-read actions.
-
-Verified: `tsc --noEmit` and a full `next build` both clean.
-
-### Verification
-
-- **Each phase**: manually click through that phase's "demoable" slice listed above, in both a staff role and a member role, across at least two group types (e.g. chama + welfare) to confirm feature gating works. Use the `run` skill (Playwright-driven, headless Chromium) since no browser is available directly.
-- **Domain logic**: Vitest unit tests for every function in `lib/domain/*` (loan limit, platform fee, fine-type mapping, MGR schedule generation) — run via `npm test`, no DB required for pure functions; the seed/membership test does hit the real dev DB.
-- **Phase 5**: exercise the Daraja **sandbox** (not production) for STK push + callback before wiring real credentials.
-- **Phase 7**: RLS test suite — authenticate as tenant A, attempt to read/write tenant B's rows directly via Drizzle, assert every attempt returns zero rows/fails.
-- **Pre-launch**: deploy to a Vercel preview environment, smoke-test each role × group-type combination end-to-end (register, join a group, record a contribution, apply for a loan, claim an MGR slot, submit a welfare claim) before promoting to production.
+`app/(dashboard)/dashboard/*` looks redundant but isn't: `(dashboard)` is a
+route *group* (parentheses — contributes no URL segment, just a shared
+`layout.tsx`), and `dashboard/` inside it is a literal segment, so every
+authenticated page ends up at `/dashboard/*` under one shared layout. `/`
+itself is the public marketing page (`app/page.tsx`), not the dashboard.
+
+**Server Actions vs. Route Handlers** — deliberate split. Server Actions for
+everything triggered from the app's own UI, colocated per feature (one
+`actions.ts` next to each `page.tsx`), no parallel REST contract to
+maintain. Route Handlers reserved for things a *third party* calls: the
+IntaSend webhook, Vercel Cron triggers, and file upload (a plain HTTP POST
+from a form, not a Server Action, so it can carry `FormData` with a File).
+
+## Domain logic convention (`lib/domain/*`)
+
+Pure functions, no Next/DB imports, unit-tested without a database. One
+function per business rule, imported everywhere that rule applies — this is
+the direct structural fix for a whole class of bug this project shipped
+early on (a rule hardcoded in one route, ignored elsewhere, or reading a
+value that no longer matched the schema). Examples: `computeLoanLimit`,
+`calcPlatformFee`, `attendanceStatusToFineType`, `computeCapitalPosition`,
+`generateMgrSchedule`, `checkGuarantorEligibility`.
+
+**The standing rule**: a business-rule constant (a fee percentage, a
+minimum amount, a cap) belongs on the `groups` row, read fresh by the
+domain function, not hardcoded — even as a "sensible default," unless it's
+genuinely platform-wide (see `lib/domain/billing.ts`'s pricing engine,
+which *is* deliberately platform-wide — Laitor's own pricing, not a
+per-tenant setting). A handful of platform constants in
+`lib/domain/constants.ts` are documented as fallbacks only, for callers
+with no group in scope (mainly tests) — every real call site should pass
+the group's own configured value.
+
+## Cron jobs (Vercel Cron)
+
+`app/api/cron/contribution-dues/route.ts` and `app/api/cron/loan-overdue/route.ts`,
+declared in `vercel.json`. Vercel Cron is UTC-only; Nairobi is UTC+3
+year-round (no DST). Both:
+
+- Require `Authorization: Bearer $CRON_SECRET` (Vercel attaches this
+  automatically when `CRON_SECRET` is set).
+- Are idempotent under at-least-once delivery (`lib/cron/helpers.ts`'s
+  `runCronJob` takes a Postgres advisory lock; a concurrent invocation
+  returns `{ skipped: "already running" }` rather than double-processing).
+- Process each candidate row in its own transaction with `SELECT ... FOR
+  UPDATE`, so one bad row can't roll back another's already-committed fine.
+- Write to `cron_runs` (job name, started/finished, rows affected, status)
+  — a queryable answer to "did today's enforcement run," which ephemeral
+  serverless logs don't give you. Surfaced on `/super-admin/stats`.
+
+Full request/response shape: [`api.md`](./api.md).
+
+## Notifications
+
+A generic `notifications` table (`groupId`, `userId`, `category`, `title`,
+`body`, `link`, `sourceType`/`sourceId`), read per-user via app-level
+filtering — RLS on this table only ever enforces the *tenant* boundary, not
+per-user visibility within a tenant (same convention as `contributions`/
+`loans`), so every insert/read also filters by `userId` explicitly.
+
+Each feature keeps its own event union and template builder in
+`lib/domain/notifications.ts` (`WelfareNotificationEvent`,
+`MembershipNotificationEvent`, `LoanNotificationEvent`, ...) rather than one
+union overloaded across domains. All of them funnel through
+`lib/db/notifications.ts`'s `insertNotification`/`listActiveStaffUserIds` —
+the shared insert path (always inside the caller's own `withTenant`, since
+the table is FORCE RLS'd) and a staff fan-out helper for "notify whoever can
+act on this."
+
+## Design system
+
+Tailwind + shadcn/ui on Base UI. `lib/nav-config.ts` is the single source of
+truth for the sidebar: one `NavItem[]` array (`href`, `label`, `icon`,
+`roles?`, `product?`, `guide`, `primary?`) plus a pure `getVisibleNavItems()`
+filter, consumed by the desktop sidebar, the mobile bottom tab bar (capped
+at the first 4 `primary: true` items + a "More" tab, so it stays small
+regardless of role or group type), and `/dashboard/guide`.
+
+`app/globals.css` carries two independent token sets:
+- The brand palette (`--background`/`--primary`/`--accent`/`--chart-1..5`/
+  `--sidebar-*`) — cream/forest/terracotta/lime, both light and dark,
+  consumed everywhere through Tailwind semantic classes (`bg-primary`,
+  `text-muted-foreground`), never hardcoded per-component.
+- A separate `--viz-*` data-viz token set (8 categorical hues, a 6-step
+  sequential ramp, a fixed good/warning/serious/critical status scale) —
+  validated against this app's own light/dark surfaces with a six-check
+  colorblind/contrast validator, independent of the brand palette so the
+  two can evolve separately. `components/feature/charts.tsx` is the
+  resulting shared chart primitive set (`SequentialColumnChart`,
+  `RankedBarList`, `StatusBarList`, `CompositionBar`, `Meter`) — plain
+  HTML/CSS, no charting library, each with hover *and* keyboard-focus
+  tooltips.
+
+## Testing & verification
+
+- **Domain logic**: Vitest, one test file per `lib/domain/*` module, no DB
+  required — the bulk of the suite.
+- **DB-backed**: `tests/seed-membership.test.ts` (the seed script actually
+  produces a loggable-in account) and `tests/rls.test.ts` (authenticate as
+  tenant A, attempt to read/write tenant B's rows directly, assert every
+  attempt returns zero rows/fails) hit the real dev database — slower,
+  run as one sequential file group.
+- **Manual/smoke**: no automated end-to-end suite exists. Verification has
+  been Playwright-driven manual walkthroughs per feature (see
+  [`developer-guide.md`](./developer-guide.md#running--smoke-testing)) —
+  in both a staff and a member role, across at least two group types, to
+  confirm feature gating works.
+- **Pre-launch**: deploy to a Vercel preview environment, smoke-test each
+  role × group-type combination end-to-end (register, join a group, record
+  a contribution, apply for a loan, claim an MGR slot, submit a welfare
+  claim) before promoting to production.
+
+Run everything: `npm run lint && npx tsc --noEmit && npm test && npx next
+build`.
