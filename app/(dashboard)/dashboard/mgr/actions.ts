@@ -25,6 +25,7 @@ import {
 } from "@/lib/validation/mgr";
 import { generateMgrSchedule, buildAutoAssignQueue } from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export type MgrActionState = { error: string } | null;
 
@@ -331,13 +332,13 @@ export async function adminUpdateSlotAction(
   const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const paidEvent = await withTenant(groupId, async (tx) => {
     const [slot] = await tx
       .select()
       .from(mgrSlots)
       .where(and(eq(mgrSlots.id, slotId), eq(mgrSlots.groupId, groupId)))
       .for("update");
-    if (!slot) return;
+    if (!slot) return null;
 
     const set: Record<string, unknown> = {};
     if (data.memberId !== undefined) set.memberId = data.memberId;
@@ -346,7 +347,7 @@ export async function adminUpdateSlotAction(
       if (data.status === "paid") set.paidAt = new Date();
     }
     if (data.payoutReference !== undefined) set.payoutReference = data.payoutReference || null;
-    if (Object.keys(set).length === 0) return;
+    if (Object.keys(set).length === 0) return null;
 
     await tx.update(mgrSlots).set(set).where(eq(mgrSlots.id, slotId));
 
@@ -363,7 +364,21 @@ export async function adminUpdateSlotAction(
         ? `payout reference: ${data.payoutReference}${data.note ? ` — ${data.note}` : ""}`
         : data.note ?? null,
     });
+
+    if (data.status !== "paid") return null;
+    return {
+      memberId: data.memberId !== undefined ? data.memberId : slot.memberId,
+      payoutAmount: slot.payoutAmount,
+      payoutReference: data.payoutReference ?? null,
+    };
   });
+
+  // Fired only after the transaction above has committed — see
+  // lib/webhooks/dispatch.ts's own doc comment on why this must never be
+  // called from inside the transaction it's reporting on.
+  if (paidEvent) {
+    void dispatchWebhookEvent(groupId, "mgr.slot.paid", { slotId, ...paidEvent });
+  }
 
   revalidatePath("/dashboard/mgr");
 }

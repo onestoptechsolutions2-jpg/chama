@@ -28,6 +28,7 @@ import { hasMinimumAcceptedGuarantors } from "@/lib/domain/guarantors";
 import { evaluateGuarantorEligibility } from "./guarantor-data";
 import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
 import { buildLoanNotification } from "@/lib/domain/notifications";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import type { Tx } from "@/lib/db/rls";
 
 /** memberId -> userId, or null if that member has no linked login (e.g. staff-added, no account). */
@@ -327,7 +328,7 @@ export async function reviewApplicationAction(
   const { decision, reviewNotes } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true; memberId: number; amount: number }> => {
     const app = await tx.query.loanApplications.findFirst({
       where: and(eq(loanApplications.id, applicationId), eq(loanApplications.groupId, groupId)),
     });
@@ -410,10 +411,17 @@ export async function reviewApplicationAction(
       });
     }
 
-    return { ok: true } as const;
+    return { ok: true, memberId: app.memberId, amount: Number(app.amountRequested) } as const;
   });
 
   if ("error" in result) return { error: result.error };
+
+  void dispatchWebhookEvent(groupId, decision === "approved" ? "loan.approved" : "loan.rejected", {
+    applicationId,
+    memberId: result.memberId,
+    amount: result.amount,
+  });
+
   revalidatePath("/dashboard/loans");
   return null;
 }

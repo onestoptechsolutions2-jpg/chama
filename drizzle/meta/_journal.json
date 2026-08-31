@@ -288,6 +288,20 @@
       "when": 1787625535821,
       "tag": "0040_sturdy_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1788135333637,
+      "tag": "0041_dusty_hulk",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1788135333638,
+      "tag": "0042_webhooks_api_keys_rls",
+      "breakpoints": true
     }
   ]
 }

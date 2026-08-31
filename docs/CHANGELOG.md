@@ -156,6 +156,12 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, a full `next build`, and the full test suite all clean at each step.
 
+- **Session: documentation restructured, then a genuinely public developer API + outbound webhooks.** [`api.md`](./api.md), [`user-guide.md`](./user-guide.md), [`developer-guide.md`](./developer-guide.md), and this file split out of what had been one unwieldy doc — audience-appropriate references instead of one file trying to serve end users, integrators, and contributors at once. Every internal route documented in `api.md` was then re-verified live (not just read), confirming the session-gated/shared-secret/cron auth model actually matched the code.
+
+  That internal API was explicitly session-gated only — nothing existed for a third-party developer to call from outside a browser session. Built one: `/api/v1/*`, bearer-token-authenticated against a new per-group `api_keys` table (SHA-256 hash stored, plaintext shown once), scoped read + one safe write (`POST /api/v1/contributions` — money in only, never a disbursement/approval) after confirming the intended scope directly rather than guessing on a financial app. Paired with outbound webhooks (`webhook_endpoints` + append-only `webhook_deliveries`, HMAC-SHA256-signed, single-attempt no-retry-queue delivery — this app has no background job runner) firing on `contribution.recorded`, `loan.approved`, `loan.rejected`, `member.joined`, `mgr.slot.paid`. Managed at a new `/dashboard/developer` page (group admin only). Welfare-request submission was deliberately left out of v1 — its tiered-approval/eligibility logic (`lib/domain/welfare-approval.ts`) was judged too easy to get subtly wrong by re-implementing outside the existing Server Action, so it stayed read-only; see `api.md`.
+
+  Verified: `tsc --noEmit`, `eslint`, the full test suite, and a full `next build` all clean.
+
 ## Known gaps
 
 Carried forward from the phases above, still true as of the last update to this file:
@@ -169,3 +175,5 @@ Carried forward from the phases above, still true as of the last update to this 
 - **`groups` has no DELETE policy** — flagged, low priority, nothing in the app deletes a group.
 - **`announcements`** — has a schema + RLS policy, no UI was ever built.
 - **`groups.sharesPerMember`** — fully wired (schema, validation, Settings UI) but never actually consulted anywhere in business logic; a dead setting, not a bug, flagged rather than fixed since wiring it in requires a product decision about what it should enforce.
+- **Outbound webhook delivery has no retry queue** — single attempt, logged regardless of outcome (`lib/webhooks/dispatch.ts`). This app is fully serverless with no background job runner, so retry-with-backoff is out of scope for now; a subscriber should treat the API as its own reconciliation backstop for anything it can't afford to miss. See `api.md`'s Outbound webhooks section.
+- **Public API v1 write scope is intentionally minimal** — one write endpoint (`POST /api/v1/contributions`), chosen after confirming the intended scope directly rather than guessing on a financial app. Loan approval, membership approval, and welfare-request submission are exposed as read + webhook-notify only; extending write scope further needs the same explicit confirmation, not a default assumption.

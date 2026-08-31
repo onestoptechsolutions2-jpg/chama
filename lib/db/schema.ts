@@ -1597,6 +1597,87 @@ export const notifications = pgTable(
   ],
 );
 
+// ── Public developer API — keys, outbound webhook subscriptions, and their
+// delivery log. See docs/api.md for the request/response contract and the
+// webhook signature scheme; docs/developer-guide.md for how to extend the
+// event set. Only `keyHash` is ever stored — the plaintext key is shown to
+// the admin exactly once, at creation, the same convention every real API
+// provider uses (GitHub, Stripe, ...) so a leaked database dump alone can
+// never be used to authenticate as a group.
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** SHA-256 hex digest of the plaintext key — never the plaintext itself. */
+    keyHash: text("key_hash").notNull().unique(),
+    /** First 12 chars of the plaintext (e.g. "chama_live_a3f9") — enough for an admin to recognize which key is which without it being useful for auth. */
+    keyPrefix: text("key_prefix").notNull(),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("api_keys_group_id_idx").on(t.groupId)],
+);
+
+/** The event-type vocabulary a webhook_endpoints row can subscribe to — see docs/api.md for each event's payload shape. Kept as a plain enum (not free text) so a typo in a subscription silently matching nothing is a migration-time decision, not a runtime one. */
+export const webhookEventTypeEnum = pgEnum("webhook_event_type", [
+  "contribution.recorded",
+  "loan.approved",
+  "loan.rejected",
+  "member.joined",
+  "mgr.slot.paid",
+]);
+
+export const webhookEndpoints = pgTable(
+  "webhook_endpoints",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    description: text("description"),
+    /** Shared secret for HMAC-SHA256 signing outbound payloads — shown to the admin once, at creation, same as an api_keys plaintext. */
+    secret: text("secret").notNull(),
+    events: webhookEventTypeEnum("events").array().notNull(),
+    active: boolean("active").notNull().default(true),
+    createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("webhook_endpoints_group_id_idx").on(t.groupId)],
+);
+
+// Append-only, same reasoning as mgr_slot_events/wallet_transactions — a
+// delivery attempt is a permanent fact, not something to edit or delete
+// (see 00XX_webhooks_rls.sql: only SELECT/INSERT policies exist).
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: serial("id").primaryKey(),
+    webhookEndpointId: integer("webhook_endpoint_id")
+      .notNull()
+      .references(() => webhookEndpoints.id, { onDelete: "cascade" }),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    eventType: webhookEventTypeEnum("event_type").notNull(),
+    payload: jsonb("payload").notNull(),
+    success: boolean("success").notNull(),
+    responseStatus: integer("response_status"),
+    errorMessage: text("error_message"),
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("webhook_deliveries_endpoint_id_idx").on(t.webhookEndpointId),
+    index("webhook_deliveries_group_id_idx").on(t.groupId),
+  ],
+);
+
 // ── Relations ────────────────────────────────────────────────────────────
 export const groupsRelations = relations(groups, ({ many }) => ({
   memberships: many(groupMemberships),
@@ -1889,4 +1970,20 @@ export const contributionDuesRelations = relations(contributionDues, ({ one }) =
   group: one(groups, { fields: [contributionDues.groupId], references: [groups.id] }),
   member: one(members, { fields: [contributionDues.memberId], references: [members.id] }),
   fine: one(fines, { fields: [contributionDues.fineId], references: [fines.id] }),
+}));
+
+export const apiKeysRelations = relations(apiKeys, ({ one }) => ({
+  group: one(groups, { fields: [apiKeys.groupId], references: [groups.id] }),
+  createdBy: one(users, { fields: [apiKeys.createdByUserId], references: [users.id] }),
+}));
+
+export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, many }) => ({
+  group: one(groups, { fields: [webhookEndpoints.groupId], references: [groups.id] }),
+  createdBy: one(users, { fields: [webhookEndpoints.createdByUserId], references: [users.id] }),
+  deliveries: many(webhookDeliveries),
+}));
+
+export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
+  endpoint: one(webhookEndpoints, { fields: [webhookDeliveries.webhookEndpointId], references: [webhookEndpoints.id] }),
+  group: one(groups, { fields: [webhookDeliveries.groupId], references: [groups.id] }),
 }));

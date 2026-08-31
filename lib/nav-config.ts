@@ -19,6 +19,7 @@ import {
   HelpCircle,
   UserCircle,
   Lightbulb,
+  Webhook,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/auth/session";
 import type { ProductFlags } from "@/lib/domain/products";
@@ -194,6 +195,14 @@ export const navItems: NavItem[] = [
     roles: ["admin", "treasurer"],
     guide:
       "What this group owes the platform — computed live from your member count, which vehicles (Table Banking, Welfare, Investment) are active, and your real financial activity over the last 12 months, not a flat fee. Admins can generate this period's invoice and charge it, either instantly from the prepaid Wallet or via an M-Pesa STK push.",
+  },
+  {
+    href: "/dashboard/developer",
+    label: "Developer",
+    icon: Webhook,
+    roles: ["admin"],
+    guide:
+      "API keys and webhook endpoints for integrating other systems with this group's data — an accounting sync, a custom dashboard, an SMS gateway. See docs/api.md for the full contract. Not needed unless you're setting up an integration.",
   },
   {
     href: "/dashboard/settings",

@@ -9,6 +9,7 @@ import { requireRole } from "@/lib/auth/session";
 import { isKycComplete } from "@/lib/domain/officials";
 import { insertNotification } from "@/lib/db/notifications";
 import { buildMembershipNotification } from "@/lib/domain/notifications";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export type PendingMemberActionState = { error: string } | null;
 
@@ -104,6 +105,12 @@ export async function approveMembershipAction(
   });
 
   if ("error" in result) return { error: result.error };
+
+  void dispatchWebhookEvent(groupId, "member.joined", {
+    membershipId,
+    userId: membership.userId,
+    name: membership.user.name,
+  });
 
   revalidatePath("/dashboard/pending-members");
   revalidatePath("/dashboard/members");

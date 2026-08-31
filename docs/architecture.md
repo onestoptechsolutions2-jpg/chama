@@ -188,6 +188,13 @@ fees *only*, never member funds), `subscription_invoices`.
 **Notifications** — `notifications` (generic — see
 [Notifications](#notifications) below).
 
+**Developer API & webhooks** — `api_keys` (per-group bearer tokens, SHA-256
+hashed, plaintext shown once at creation), `webhook_endpoints` (a group's
+subscribed URL + HMAC secret + event-type array), `webhook_deliveries`
+(append-only attempt log — insert/select-only RLS policy, same pattern as
+`payment_webhook_events`). See [`api.md`](./api.md)'s Public developer API
+and Outbound webhooks sections.
+
 **Platform / super-admin** — `cron_runs` (audit log), `group_account_activities`
 + CRM-ish columns on `groups` (onboarding stage, account tier/owner,
 follow-up date), `platform_user_audit_logs` (audit trail for platform-role
@@ -208,7 +215,8 @@ app/
       insights/                 # MGR pacing, recommendations, staff-only reports
       members/, loans/, mgr/, welfare/, projects/, fines/, meetings/,
       rules/, settings/, capital/, billing/, wallet/, statement/,
-      profile/, notifications/, pending-members/, onboarding/, guide/
+      profile/, notifications/, pending-members/, onboarding/, guide/,
+      developer/                 # per-group API keys + webhook endpoints UI
   super-admin/                  # literal URL segment (not a route group —
     layout.tsx                  # would collide with (dashboard)'s own routes)
     groups/, groups/[id]/, users/, stats/, integrations/
@@ -216,10 +224,13 @@ app/
     cron/{contribution-dues,loan-overdue}/
     payments/{callback,platform-fee,loan-fee,subscription-invoice,wallet-topup}/
     upload/
+    v1/{group,members,contributions,loans,fines,meetings,mgr/cycles,
+        welfare/requests,capital-position}/   # public developer API — see api.md
 lib/
   db/{schema.ts, client.ts, rls.ts}
   domain/          # pure, DB-free, unit-tested business logic
-  auth/session.ts
+  auth/{session.ts, api-keys.ts, api-session.ts, api-response.ts}
+  webhooks/dispatch.ts  # outbound webhook signing + delivery + logging
   nav-config.ts    # single source of truth for the sidebar + role/product gating
   validation/      # zod schemas
   payments/intasend.ts

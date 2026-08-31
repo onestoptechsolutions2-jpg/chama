@@ -1,29 +1,38 @@
 # API & Webhooks reference
 
-Every HTTP-facing route in the app. This is deliberately small — most
-reads/writes go through Next.js Server Actions (called directly from the
-UI, not over HTTP with a stable contract), not a REST API. The routes below
-exist because something *other* than this app's own UI needs to call them:
-IntaSend's webhook, Vercel Cron, or a plain-`FormData` file upload.
+Every HTTP-facing route in the app. Most of this document covers two very
+different things, so don't confuse them:
+
+- **The internal routes** (cron, payments, inbound IntaSend webhook, file
+  upload) — session- or shared-secret-gated, built for this app's own UI
+  and infrastructure, no stable versioning promise.
+- **The public developer API** (`/api/v1/*`) and **outbound webhooks** —
+  built for a *third-party developer* integrating their own system with a
+  single group's data (an accounting sync, a custom dashboard, an SMS
+  gateway). This is the part covered by [Public developer API](#public-developer-api-v1)
+  and [Outbound webhooks](#outbound-webhooks) below.
 
 For live configuration status and a log of recent inbound webhook events,
 see `/super-admin/integrations` in the app (platform-admin only) — it's
-the operational companion to this document.
+the operational companion to this document. A group's own API keys and
+webhook subscriptions are managed at `/dashboard/developer` (group admin
+only), not `/super-admin`.
 
 ## Auth model
 
 Every route below is one of:
 - **Session-gated** — reads the same httpOnly session cookie every page
-  does, via `requireRole()`/`requireSession()`. No separate API key. If
-  you're calling one of these from outside a browser session, it isn't
-  meant to be called that way.
+  does, via `requireRole()`/`requireSession()`. No API key. If you're
+  calling one of these from outside a browser session, it isn't meant to
+  be called that way.
 - **Public + shared-secret** — the IntaSend webhook. Verified by a
   plain-equality check against a configured challenge string, not HMAC
-  (see [Webhooks](#webhooks-inbound) below).
-- **Public + bearer token** — the two cron routes, verified against
-  `CRON_SECRET`.
-
-There is no general-purpose public API and no per-tenant API keys.
+  (see [Webhooks (inbound)](#webhooks-inbound) below).
+- **Public + bearer token (platform)** — the two cron routes, verified
+  against `CRON_SECRET`.
+- **Public + bearer token (per-group API key)** — every `/api/v1/*` route.
+  Verified against a per-group key a group admin generates themselves at
+  `/dashboard/developer`. See [Public developer API](#public-developer-api-v1).
 
 ## Cron (Vercel Cron only)
 
@@ -176,6 +185,275 @@ subscription payment cascades that status onto its linked
 To configure: set `INTASEND_WEBHOOK_CHALLENGE` to a string you choose, and
 paste the same string into IntaSend's dashboard under the webhook's
 settings — they echo it back on every call.
+
+## Public developer API (v1)
+
+For a third-party developer connecting their own system to **one specific
+group's** data — not for this app's own UI, which uses Server Actions
+throughout. Every route is scoped to exactly the group the API key
+belongs to; there is no cross-group or platform-wide key.
+
+### Authentication
+
+Generate a key at `/dashboard/developer` (group admin only, any plan) —
+click "New API key", give it a name so it's recognizable in the list
+later, and copy the plaintext value shown. **It is shown exactly once**
+and cannot be retrieved again; only a hash is stored server-side, the same
+convention as GitHub/Stripe personal tokens. If it's lost, revoke it and
+generate a new one — revoking takes effect immediately and is permanent.
+
+Send it on every request:
+
+```
+Authorization: Bearer chama_live_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+```json
+// 401 — missing header
+{ "error": "Missing Authorization: Bearer <key> header" }
+// 401 — unknown or revoked key
+{ "error": "Invalid or revoked API key" }
+```
+
+A valid key updates its `last used` timestamp (visible in the
+`/dashboard/developer` table) on every call, best-effort — a failure to
+record that never fails the request itself.
+
+### Scope: read + a few safe writes
+
+v1 is deliberately narrow. Every route below is `GET` except
+`POST /api/v1/contributions` — the one write judged safe to expose:
+recording money *coming into* a member's balance, never a disbursement,
+an approval, or anything that moves money the other direction. Loan
+approval, membership approval, and welfare-request submission all involve
+multi-step domain logic (eligibility checks, tiered approval, notification
+fan-out) that stays Server-Action-only for now; integrate with those flows
+by *subscribing to their webhook events* instead (below), not by trying to
+trigger them over the API.
+
+### `GET /api/v1/group`
+
+```json
+// 200
+{
+  "group": {
+    "id": 12, "name": "Umoja Chama", "type": "chama",
+    "description": "...", "currency": "KES",
+    "loansEnabled": true, "mgrEnabled": true,
+    "welfareEnabled": true, "projectsEnabled": false,
+    "registrationComplete": true
+  }
+}
+```
+
+### `GET /api/v1/members`
+
+Active and inactive members both included; check `active`.
+
+```json
+// 200
+{
+  "members": [
+    {
+      "id": 5, "name": "Jane Wanjiru", "phone": "0712345678",
+      "email": "jane@example.com", "capital": "15000.00",
+      "security": "2000.00", "personalSavings": "500.00",
+      "totalFines": "0.00", "active": true, "joinedDate": "2025-01-10"
+    }
+  ]
+}
+```
+
+### `GET /api/v1/contributions`
+
+Optional `?memberId=5` to filter. Newest first, capped at 200 rows.
+
+```json
+// 200
+{
+  "contributions": [
+    { "id": 88, "groupId": 12, "memberId": 5, "amount": "1000.00",
+      "type": "capital", "status": "paid", "reference": "AUG-2026",
+      "createdAt": "2026-08-15T05:00:00.000Z", "...": "..." }
+  ]
+}
+```
+
+### `POST /api/v1/contributions`
+
+Records a contribution and updates the member's running balance, exactly
+as `recordContributionAction` does from the Contributions page. Fires a
+`contribution.recorded` webhook on success.
+
+```json
+// Request
+{
+  "memberId": 5,
+  "type": "capital",           // capital | security | mgr | welfare | personal_savings | project | other
+  "amount": 1000,
+  "reference": "AUG-2026"       // optional
+}
+// 201
+{ "ok": true, "id": 89 }
+// 400 — validation (bad type/amount, or amount fails this group's rules,
+//        e.g. below its configured minPersonalSavingsIncrement)
+{ "error": "..." }
+// 404
+{ "error": "Member not found" }
+```
+
+`welfare`-type contributions are recorded but don't move a `members`
+balance field — welfare has its own fund, managed separately.
+
+### `GET /api/v1/loans`
+
+Newest first, capped at 200 rows.
+
+```json
+// 200
+{
+  "loans": [
+    { "id": 21, "memberId": 5, "principal": "20000.00",
+      "interestRate": "10.00", "totalRepayable": "22000.00",
+      "amountRemaining": "22000.00", "status": "active",
+      "purpose": "School fees", "dueDate": "2026-11-15",
+      "createdAt": "2026-08-15T09:00:00.000Z" }
+  ]
+}
+```
+
+### `GET /api/v1/fines`
+
+```json
+{ "fines": [ { "id": 3, "memberId": 5, "amount": "200.00", "reason": "...", "status": "unpaid", "...": "..." } ] }
+```
+
+### `GET /api/v1/meetings`
+
+```json
+{ "meetings": [ { "id": 9, "meetingDate": "2026-08-20", "...": "..." } ] }
+```
+
+### `GET /api/v1/mgr/cycles`
+
+Merry-go-round cycles and slots for this group, only present if
+`mgrEnabled`.
+
+```json
+{
+  "cycles": [ { "id": 2, "cycleNumber": 2, "...": "..." } ],
+  "slots": [
+    { "id": 14, "cycleNumber": 2, "slotNumber": 3, "memberId": 5,
+      "status": "paid", "payoutAmount": "18000.00",
+      "paidAt": "2026-08-10T00:00:00.000Z" }
+  ]
+}
+```
+
+### `GET /api/v1/welfare/requests`
+
+Read-only — see [Scope](#scope-read--a-few-safe-writes) above for why
+submission isn't exposed yet.
+
+```json
+{ "welfareRequests": [ { "id": 6, "memberId": 5, "amount": "5000.00", "status": "pending", "...": "..." } ] }
+```
+
+### `GET /api/v1/capital-position`
+
+The same aggregate the Capital dashboard page shows — pooled
+capital/security/personal-savings, welfare fund available (if enabled),
+and outstanding loan principal/receivable.
+
+```json
+{
+  "position": {
+    "capitalPool": 150000, "securityPool": 20000,
+    "personalSavingsPool": 5000, "welfareAvailable": 12000,
+    "projectsCommitted": 0,
+    "loanPrincipalOutstanding": 40000,
+    "loanReceivableOutstanding": 44000
+  }
+}
+```
+
+## Outbound webhooks
+
+A group admin subscribes an HTTPS endpoint to one or more event types at
+`/dashboard/developer`. When a subscribed event happens, this app POSTs
+the event to every active endpoint subscribed to it.
+
+### Setting up an endpoint
+
+"New webhook endpoint" → paste the URL your system exposes, pick which
+event types to receive, save. The signing **secret is shown once**, at
+creation — copy it then; only a hash-equivalent isn't kept, so if it's
+lost, delete the endpoint and create a new one. Endpoints can be paused
+(kept, stops receiving) or deleted from the same page. The last 20
+delivery attempts across all of a group's endpoints are visible there too
+— status, HTTP response code, and error message if any.
+
+### Request shape
+
+```
+POST <your configured URL>
+Content-Type: application/json
+X-Chama-Event: contribution.recorded
+X-Chama-Signature: <hex HMAC-SHA256 of the raw request body, keyed with your endpoint's secret>
+```
+
+```json
+{
+  "event": "contribution.recorded",
+  "groupId": 12,
+  "occurredAt": "2026-08-31T09:00:00.000Z",
+  "data": { "contributionId": 89, "memberId": 5, "type": "capital", "amount": 1000 }
+}
+```
+
+### Verifying the signature
+
+Recompute the HMAC over the **exact raw bytes** of the request body
+(don't re-serialize the parsed JSON — key order/whitespace would differ)
+using your endpoint's secret, and compare to `X-Chama-Signature`:
+
+```js
+import { createHmac, timingSafeEqual } from "crypto";
+
+function isValidChamaWebhook(rawBody, signatureHeader, secret) {
+  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(signatureHeader ?? "", "hex");
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+```
+
+### Event types and payloads
+
+| Event | `data` shape | Fired from |
+|---|---|---|
+| `contribution.recorded` | `{ contributionId, memberId, type, amount }` | `POST /api/v1/contributions`, and the Contributions page's own `recordContributionAction` |
+| `loan.approved` | `{ applicationId, memberId, amount }` | Loan application review, admin approves |
+| `loan.rejected` | `{ applicationId, memberId, amount }` | Loan application review, admin rejects |
+| `member.joined` | `{ membershipId, userId, name }` | A pending join request is approved |
+| `mgr.slot.paid` | `{ slotId, memberId, payoutAmount, payoutReference }` | An MGR slot is marked paid |
+
+### Delivery semantics — read this before relying on it
+
+- **Single attempt, no retry queue.** This app is fully serverless with no
+  background job runner, so a failed delivery (your endpoint down,
+  timeout, non-2xx response) is not retried automatically. Every attempt
+  — success or failure — is logged and visible at `/dashboard/developer`,
+  so build your own reconciliation (e.g. poll `GET /api/v1/contributions`
+  periodically as a backstop) if you can't tolerate a missed event.
+- **8-second timeout.** Your endpoint must respond within 8s or the
+  attempt is recorded as failed.
+- **Fire-and-forget, always after the fact.** A webhook is dispatched only
+  after the triggering action has fully committed — a slow or unreachable
+  subscriber never blocks or fails the action itself (approving a loan
+  still succeeds even if every webhook delivery to it fails).
+- **Respond `2xx` quickly.** Do the real work asynchronously on your side;
+  don't make this app wait on it.
 
 ## File upload
 

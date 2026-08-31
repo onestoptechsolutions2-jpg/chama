@@ -201,6 +201,26 @@ The group's configurable business rules, organized into tabs:
 - **Capital policy** — an optional target loan-deployment percentage, for
   the drift alerts on Capital Position.
 
+## Developer (admin)
+
+Only needed if you're connecting an outside system — an accounting tool, a
+custom dashboard, an SMS gateway — to this group's data. Skip this section
+otherwise.
+
+- **API keys** — generate a bearer token your integration sends as
+  `Authorization: Bearer <key>` on every request. Shown once at creation;
+  copy it immediately, since it can't be viewed again (revoke and generate
+  a new one if it's lost). Revoking is immediate and permanent.
+- **Webhook endpoints** — subscribe a URL your system controls to specific
+  events (a contribution being recorded, a loan being approved, a new
+  member joining, and more). A signing secret is shown once at creation so
+  your endpoint can verify each delivery really came from here. Pause or
+  delete an endpoint any time; the last 20 delivery attempts (success/fail,
+  response code) are visible on the same page.
+
+Full request/response shapes, all available events, and the signature
+verification recipe are in `docs/api.md`.
+
 ## My Profile
 
 Your own KYC details — ID type/number, ID document, photo, phone, and (for
