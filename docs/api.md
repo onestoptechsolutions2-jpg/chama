@@ -353,10 +353,35 @@ Merry-go-round cycles and slots for this group, only present if
 ### `GET /api/v1/welfare/requests`
 
 Read-only — see [Scope](#scope-read--a-few-safe-writes) above for why
-submission isn't exposed yet.
+submission isn't exposed yet. Integrate with the welfare lifecycle by
+*subscribing to the `welfare.request.*` [webhook events](#outbound-webhooks)
+below instead.
 
 ```json
 { "welfareRequests": [ { "id": 6, "memberId": 5, "amount": "5000.00", "status": "pending", "...": "..." } ] }
+```
+
+### `GET /api/v1/welfare/policy`
+
+A group's welfare policy — funding method, reserve-allocation split,
+per-request caps, approval-tier thresholds, and cooldown/tenure rules —
+so an integrator can validate against real limits instead of guessing.
+
+```json
+{
+  "policy": {
+    "fundingMethod": "pct_contribution", "fundingPct": "10.00",
+    "emergencyAllocationPct": "50.00", "longTermAllocationPct": "30.00",
+    "advanceAllocationPct": "20.00",
+    "maxEmergencyGrant": "20000.00", "maxLongTermGrant": "50000.00",
+    "maxAdvance": "30000.00", "maxOutstandingAdvancePerMember": "30000.00",
+    "minEmergencyReserveFloor": "0.00",
+    "maxClaimsPerMemberPerYear": 2, "cooldownDays": 30, "minTenureMonths": 0,
+    "advanceFeePct": "0.00", "advanceMaxRepaymentMonths": 6,
+    "tier1MaxAmount": "10000.00", "tier2MaxAmount": "30000.00",
+    "allowOverdraft": false
+  }
+}
 ```
 
 ### `GET /api/v1/capital-position`
@@ -437,6 +462,14 @@ function isValidChamaWebhook(rawBody, signatureHeader, secret) {
 | `loan.rejected` | `{ applicationId, memberId, amount }` | Loan application review, admin rejects |
 | `member.joined` | `{ membershipId, userId, name }` | A pending join request is approved |
 | `mgr.slot.paid` | `{ slotId, memberId, payoutAmount, payoutReference }` | An MGR slot is marked paid |
+| `welfare.request.submitted` | `{ requestId, memberId, amount }` | A member submits a "Request help" form |
+| `welfare.request.approved` | `{ requestId, memberId, amount }` | A tier1 staff decision or a tier2/tier3 quorum approves a request — fires alongside `.disbursed`, since approval and disbursement happen atomically in this domain (there's no separate "approved but not yet paid" moment) |
+| `welfare.request.rejected` | `{ requestId, memberId, amount }` | A tier1 staff decision, or any single tier2/tier3 co-signer declining |
+| `welfare.request.disbursed` | `{ requestId, memberId, amount }` | Money actually leaves the welfare fund's reserves for a request |
+
+`welfare.request.*` `amount` is the combined emergency + long-term + advance
+total (requested for `.submitted`/`.rejected`, approved for
+`.approved`/`.disbursed`).
 
 ### Delivery semantics — read this before relying on it
 

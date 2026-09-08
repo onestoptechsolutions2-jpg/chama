@@ -16,11 +16,17 @@ export function FileUpload({
   label,
   defaultUrl,
   accept = "image/*",
+  folder,
+  onUploaded,
 }: {
   name: string;
   label: string;
   defaultUrl?: string | null;
   accept?: string;
+  /** Blob path prefix — defaults to "kyc" server-side if omitted. */
+  folder?: string;
+  /** Called with the resulting URL on a successful upload — for a parent that needs the value in its own state (e.g. to gate a submit button), not just via the hidden input's FormData value. */
+  onUploaded?: (url: string) => void;
 }) {
   const [url, setUrl] = useState<string | null>(defaultUrl ?? null);
   const [pending, setPending] = useState(false);
@@ -35,6 +41,7 @@ export function FileUpload({
     try {
       const form = new FormData();
       form.set("file", file);
+      if (folder) form.set("folder", folder);
       const res = await fetch("/api/upload", { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
@@ -42,6 +49,7 @@ export function FileUpload({
         return;
       }
       setUrl(data.url);
+      onUploaded?.(data.url);
     } catch {
       setError("Network error — upload failed");
     } finally {

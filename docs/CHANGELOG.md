@@ -162,13 +162,23 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, the full test suite, and a full `next build` all clean.
 
+- **Session: welfare suite expansion — standard taxonomy, a policy wizard, API/webhook coverage, and a new governance module.** Requested as "the whole welfare suite" and narrowed to four concrete work streams:
+
+  1. **Taxonomy.** `welfare_claim_type` grew from 7 to 10 categories — added `benevolence`, `wedding`, `calamity` (via `ALTER TYPE ... ADD VALUE`; `education` already covered academics, not duplicated).
+  2. **Wizard-guided policy setup.** `lib/validation/welfare-policy.ts`'s `updateWelfarePolicySchema` had existed since Phase 8 with no action or UI ever calling it — groups were permanently stuck on hardcoded defaults. Fixed with a new `WelfarePolicyWizard` (mirrors `VehicleActivationWizard`'s dialog + step-index + single-combined-submit pattern) at a new Settings → Welfare tab.
+  3. **API + webhook coverage.** 4 new webhook event types — `welfare.request.submitted/approved/rejected/disbursed` — fired from `submitWelfareRequestAction`, `reviewWelfareRequestAction`, and `respondToWelfareApprovalAction`, always after their transaction commits, matching the established pattern. `.approved` and `.disbursed` fire together for a disbursing decision, since this domain has no separate "approved but not yet paid" moment. The public API's welfare route stayed read-only, consistent with its existing documented rationale (see the Known Gap below) — a new `GET /api/v1/welfare/policy` endpoint was added instead, so integrators can read real limits without guessing.
+  4. **Governance module (new).** Closes the "Governance/KYC follow-up" gap below: `group_documents` (constitution, bank details, registration certificate, minutes — reusing `/api/upload`, generalized with an optional `folder` field so it isn't hardcoded to `kyc/`) and `compliance_obligations` (AGM/annual-returns/custom deadlines, `upcoming`/`due`/`overdue`/`completed`, optional recurrence). A new daily `compliance-reminders` cron flips status and notifies admin+secretary via the existing generic `notifications` table — the "notification-channel decision" the old gap was blocked on, resolved by reusing what already existed rather than building a new channel. New `/dashboard/governance` page, admin/secretary-gated, not tied to any financial product.
+
+  Same session: the public marketing landing page (`app/page.tsx`) was rewritten around a clear problem/solution structure — four concrete pain points of running a chama by hand, mapped to four solution dimensions (See it / Automate it / Trust it / Extend it) — replacing three looser, overlapping sections.
+
+  Verified: `tsc --noEmit`, `eslint`, the full test suite (239 tests, including all 40 live-DB RLS tests), and a full `next build` all clean.
+
 ## Known gaps
 
 Carried forward from the phases above, still true as of the last update to this file:
 
 - **MGR fraud controls** — free-rider gating (claiming a slot without having made that cycle's contributions), requiring the platform fee before a slot can be marked paid, and a maker-checker control for "mark paid" are all deliberately deferred design tradeoffs, not built.
-- **Governance/KYC follow-up** — group documents (constitution, bank details) and compliance-obligation/reminder tracking (annual returns, AGM dates) were never started; needs a notification-channel decision first.
-- **Wizard rollout incomplete** — MGR cycle first-time setup and member KYC completion (`/dashboard/profile`) still lack the guided-wizard treatment given to vehicle activation and new-group setup. Welfare claim submission is deliberately skipped (short enough already).
+- **Wizard rollout incomplete** — MGR cycle first-time setup and member KYC completion (`/dashboard/profile`) still lack the guided-wizard treatment given to vehicle activation, new-group setup, and (as of this update) welfare policy setup. Welfare claim submission itself is deliberately skipped (short enough already).
 - **Scale follow-ups** — no pagination on large `findMany` calls; connection-pool sizing under real concurrent load never measured.
 - **Billing rates unconfirmed** — `lib/domain/billing.ts`'s transaction-fee percentages are directional, not checked against IntaSend's actual merchant rate.
 - **IntaSend live payments** — blocked externally on IntaSend completing the account's business/KYC verification in their own dashboard, not on this codebase.
@@ -177,3 +187,4 @@ Carried forward from the phases above, still true as of the last update to this 
 - **`groups.sharesPerMember`** — fully wired (schema, validation, Settings UI) but never actually consulted anywhere in business logic; a dead setting, not a bug, flagged rather than fixed since wiring it in requires a product decision about what it should enforce.
 - **Outbound webhook delivery has no retry queue** — single attempt, logged regardless of outcome (`lib/webhooks/dispatch.ts`). This app is fully serverless with no background job runner, so retry-with-backoff is out of scope for now; a subscriber should treat the API as its own reconciliation backstop for anything it can't afford to miss. See `api.md`'s Outbound webhooks section.
 - **Public API v1 write scope is intentionally minimal** — one write endpoint (`POST /api/v1/contributions`), chosen after confirming the intended scope directly rather than guessing on a financial app. Loan approval, membership approval, and welfare-request submission are exposed as read + webhook-notify only; extending write scope further needs the same explicit confirmation, not a default assumption.
+- **Governance has no public API or webhook coverage** — a deliberate exclusion when the module was built (no third-party integration need was named for it, and folding a 4th area into that session's API/webhook work would have blurred an already large change), not an oversight.

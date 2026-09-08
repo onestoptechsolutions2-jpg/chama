@@ -302,6 +302,20 @@
       "when": 1788135333638,
       "tag": "0042_webhooks_api_keys_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1788801106138,
+      "tag": "0043_fluffy_gabe_jones",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1788801106139,
+      "tag": "0044_governance_rls",
+      "breakpoints": true
     }
   ]
 }

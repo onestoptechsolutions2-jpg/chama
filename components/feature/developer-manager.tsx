@@ -35,6 +35,10 @@ const EVENT_OPTIONS = [
   { value: "loan.rejected", label: "Loan rejected" },
   { value: "member.joined", label: "Member joined" },
   { value: "mgr.slot.paid", label: "MGR slot paid" },
+  { value: "welfare.request.submitted", label: "Welfare request submitted" },
+  { value: "welfare.request.approved", label: "Welfare request approved" },
+  { value: "welfare.request.rejected", label: "Welfare request rejected" },
+  { value: "welfare.request.disbursed", label: "Welfare request disbursed" },
 ] as const;
 
 function CreateApiKeyDialog() {

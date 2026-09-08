@@ -121,15 +121,17 @@ money itself moves outside the app's view.
 
 ## Welfare
 
-Submit and review welfare requests (medical, bereavement, emergency, and
-similar categories your group's policy defines) against the group's
-welfare fund. The fund is split into three reserves — **emergency**,
-**long-term**, and **advance** — each fed by contributions according to the
-group's configured funding rule. Larger requests need more staff to sign
-off: small ones are a single staff decision, mid-size ones need two
-officials, and the largest need all three — the exact thresholds are set
-per group. You can also request a **welfare advance** — a short-term draw
-against the fund with its own fee, similar in shape to a loan.
+Submit and review welfare requests — medical, bereavement, emergency,
+education, maternity, disability, benevolence, wedding, calamity, or other
+— against the group's welfare fund. The fund is split into three reserves
+— **emergency**, **long-term**, and **advance** — each fed by
+contributions according to the group's configured funding rule. Larger
+requests need more staff to sign off: small ones are a single staff
+decision, mid-size ones need two officials, and the largest need all three
+— the exact thresholds, reserve split, and per-request caps are all set
+per group at Settings → Welfare. You can also request a **welfare
+advance** — a short-term draw against the fund with its own fee, similar
+in shape to a loan.
 
 ## Projects
 
@@ -198,8 +200,25 @@ The group's configurable business rules, organized into tabs:
   restores full history. Activating a vehicle for the first time walks
   through a short setup wizard (configure its terms if relevant, pick
   starter rules) instead of just flipping a switch.
+- **Welfare** — only shown once Welfare is active. Funding method, how the
+  fund splits across its three reserves, per-request caps, and the
+  approval-tier thresholds — a guided "Edit policy" wizard walks through
+  all of it. Changing these doesn't alter requests already submitted.
 - **Capital policy** — an optional target loan-deployment percentage, for
   the drift alerts on Capital Position.
+
+## Governance (admin/secretary)
+
+Basic administrative housekeeping, not tied to any financial product —
+available to every group regardless of which vehicles are active.
+
+- **Documents** — upload the group's constitution, bank details,
+  registration certificate, meeting minutes, or anything else worth
+  keeping on record, each tagged with a category.
+- **Compliance obligations** — track dates like an AGM or annual returns
+  filing. Optionally set a recurrence (e.g. every 12 months) — marking one
+  complete automatically creates the next occurrence. Officials get a
+  notification as a due date approaches and again if it's missed.
 
 ## Developer (admin)
 
@@ -234,7 +253,8 @@ A bell icon (sidebar on desktop, header on mobile) with an unread count.
 You're notified when: someone requests to join your group (staff), your
 own join request is approved or declined, a new loan application comes in
 (staff), your loan application is approved or rejected, someone asks you
-to guarantee their loan, and a guarantor you asked responds. Click a
+to guarantee their loan, a guarantor you asked responds, and (admin/
+secretary) a compliance obligation is coming up or overdue. Click a
 notification to jump to the relevant page and mark it read, or **Mark all
 read** to clear the list.
 

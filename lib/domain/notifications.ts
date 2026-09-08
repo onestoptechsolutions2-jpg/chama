@@ -4,7 +4,8 @@
 // union and builder (WelfareNotificationEvent, MembershipNotificationEvent,
 // LoanNotificationEvent, ...) rather than one union overloaded across
 // domains — see lib/db/notifications.ts for the shared insert helper every
-// builder's output feeds into.
+// builder's output feeds into. GovernanceNotificationEvent is the same
+// pattern for compliance-obligation reminders.
 
 export type NotificationCategory = "info" | "success" | "warning" | "action_required";
 
@@ -108,6 +109,27 @@ export function buildMembershipNotification(event: MembershipNotificationEvent):
         category: "warning",
         title: "Join request declined",
         body: `Your request to join ${event.groupName} wasn't approved.`,
+      };
+  }
+}
+
+export type GovernanceNotificationEvent =
+  | { type: "obligation_due"; title: string; dueDate: string }
+  | { type: "obligation_overdue"; title: string; dueDate: string };
+
+export function buildGovernanceNotification(event: GovernanceNotificationEvent): NotificationTemplate {
+  switch (event.type) {
+    case "obligation_due":
+      return {
+        category: "action_required",
+        title: "Compliance obligation coming up",
+        body: `"${event.title}" is due ${event.dueDate}.`,
+      };
+    case "obligation_overdue":
+      return {
+        category: "warning",
+        title: "Compliance obligation overdue",
+        body: `"${event.title}" was due ${event.dueDate} and hasn't been marked complete.`,
       };
   }
 }

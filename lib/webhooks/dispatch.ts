@@ -8,7 +8,11 @@ export type WebhookEventType =
   | "loan.approved"
   | "loan.rejected"
   | "member.joined"
-  | "mgr.slot.paid";
+  | "mgr.slot.paid"
+  | "welfare.request.submitted"
+  | "welfare.request.approved"
+  | "welfare.request.rejected"
+  | "welfare.request.disbursed";
 
 const DELIVERY_TIMEOUT_MS = 8000;
 

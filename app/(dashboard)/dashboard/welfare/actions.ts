@@ -36,6 +36,7 @@ import {
   notifyApprovalNeeded,
   notifyMember,
 } from "./welfare-data";
+import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export type WelfareActionState = { error: string } | null;
 
@@ -68,7 +69,7 @@ export async function submitWelfareRequestAction(
   } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true; requestId: number; total: number }> => {
     // Belt-and-suspenders alongside welfare_requests_member_open_emergency_unique
     // (the DB-level fail-safe against a race between two concurrent
     // submissions) — this is the friendly, pre-emptive version of the same check.
@@ -170,10 +171,15 @@ export async function submitWelfareRequestAction(
       }
     }
 
-    return { ok: true } as const;
+    return { ok: true, requestId: request.id, total } as const;
   });
 
   if ("error" in result) return { error: result.error };
+  void dispatchWebhookEvent(groupId, "welfare.request.submitted", {
+    requestId: result.requestId,
+    memberId,
+    amount: result.total,
+  });
   revalidatePath("/dashboard/welfare");
   return null;
 }
@@ -192,59 +198,96 @@ export async function reviewWelfareRequestAction(
     parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
-    const request = await tx.query.welfareRequests.findFirst({
-      where: and(eq(welfareRequests.id, requestId), eq(welfareRequests.groupId, groupId)),
-    });
-    if (!request) return { error: "Request not found" };
-    if (request.approvalTier !== "tier1") {
-      return { error: "This request requires officials to co-sign, not a single-staff decision" };
-    }
-    if (request.status !== "pending") return { error: "This request has already been reviewed" };
+  const result = await withTenant(
+    groupId,
+    async (
+      tx,
+    ): Promise<
+      { error: string } | { ok: true; outcome: "rejected" | "disbursed"; memberId: number; amount: number }
+    > => {
+      const request = await tx.query.welfareRequests.findFirst({
+        where: and(eq(welfareRequests.id, requestId), eq(welfareRequests.groupId, groupId)),
+      });
+      if (!request) return { error: "Request not found" };
+      if (request.approvalTier !== "tier1") {
+        return { error: "This request requires officials to co-sign, not a single-staff decision" };
+      }
+      if (request.status !== "pending") return { error: "This request has already been reviewed" };
 
-    if (decision === "rejected") {
+      if (decision === "rejected") {
+        await tx
+          .update(welfareRequests)
+          .set({
+            status: "rejected",
+            reviewedBy: session.user.id,
+            reviewedAt: new Date(),
+            rejectionReason: rejectionReason || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(welfareRequests.id, requestId));
+        await notifyMember(
+          tx,
+          groupId,
+          request.memberId,
+          { type: "request_rejected", reason: rejectionReason || null },
+          requestId,
+        );
+        return {
+          ok: true,
+          outcome: "rejected",
+          memberId: request.memberId,
+          amount: computeRequestTotal({
+            requestedEmergencyAmount: Number(request.requestedEmergencyAmount),
+            requestedLongTermAmount: Number(request.requestedLongTermAmount),
+            requestedAdvanceAmount: Number(request.requestedAdvanceAmount),
+          }),
+        } as const;
+      }
+
       await tx
         .update(welfareRequests)
-        .set({
-          status: "rejected",
-          reviewedBy: session.user.id,
-          reviewedAt: new Date(),
-          rejectionReason: rejectionReason || null,
-          updatedAt: new Date(),
-        })
+        .set({ reviewedBy: session.user.id, reviewedAt: new Date(), updatedAt: new Date() })
         .where(eq(welfareRequests.id, requestId));
-      await notifyMember(
-        tx,
-        groupId,
-        request.memberId,
-        { type: "request_rejected", reason: rejectionReason || null },
-        requestId,
-      );
-      return { ok: true } as const;
-    }
 
-    await tx
-      .update(welfareRequests)
-      .set({ reviewedBy: session.user.id, reviewedAt: new Date(), updatedAt: new Date() })
-      .where(eq(welfareRequests.id, requestId));
-
-    const disbursed = await disburseWelfareRequest(
-      tx,
-      requestId,
-      groupId,
-      {
+      const approvedAmounts = {
         emergency: approvedEmergencyAmount ?? Number(request.requestedEmergencyAmount),
         longTerm: approvedLongTermAmount ?? Number(request.requestedLongTermAmount),
         advance: approvedAdvanceAmount ?? Number(request.requestedAdvanceAmount),
-      },
-      session.user.id,
-    );
-    if ("error" in disbursed) return { error: disbursed.error };
+      };
+      const disbursed = await disburseWelfareRequest(tx, requestId, groupId, approvedAmounts, session.user.id);
+      if ("error" in disbursed) return { error: disbursed.error };
 
-    return { ok: true } as const;
-  });
+      return {
+        ok: true,
+        outcome: "disbursed",
+        memberId: request.memberId,
+        amount: approvedAmounts.emergency + approvedAmounts.longTerm + approvedAmounts.advance,
+      } as const;
+    },
+  );
 
   if ("error" in result) return { error: result.error };
+  if (result.outcome === "rejected") {
+    void dispatchWebhookEvent(groupId, "welfare.request.rejected", {
+      requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+  } else {
+    // Approval and disbursement happen atomically for a tier1 decision —
+    // both events fire together since there's no separate "approved but
+    // not yet disbursed" moment in this domain.
+    void dispatchWebhookEvent(groupId, "welfare.request.approved", {
+      requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+    void dispatchWebhookEvent(groupId, "welfare.request.disbursed", {
+      requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+  }
   revalidatePath("/dashboard/welfare");
   return null;
 }
@@ -265,7 +308,14 @@ export async function respondToWelfareApprovalAction(
   const { decision, comment } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
+  const result = await withTenant(
+    groupId,
+    async (
+      tx,
+    ): Promise<
+      | { error: string }
+      | { ok: true; outcome: "rejected" | "disbursed" | "waiting"; requestId: number; memberId: number; amount: number }
+    > => {
     const approval = await tx.query.welfareApprovals.findFirst({
       where: and(eq(welfareApprovals.id, approvalRowId), eq(welfareApprovals.groupId, groupId)),
     });
@@ -311,7 +361,17 @@ export async function respondToWelfareApprovalAction(
         { type: "request_rejected", reason: comment || null },
         request.id,
       );
-      return { ok: true } as const;
+      return {
+        ok: true,
+        outcome: "rejected",
+        requestId: request.id,
+        memberId: request.memberId,
+        amount: computeRequestTotal({
+          requestedEmergencyAmount: Number(request.requestedEmergencyAmount),
+          requestedLongTermAmount: Number(request.requestedLongTermAmount),
+          requestedAdvanceAmount: Number(request.requestedAdvanceAmount),
+        }),
+      } as const;
     }
 
     const allApprovals = await tx.query.welfareApprovals.findMany({
@@ -319,10 +379,10 @@ export async function respondToWelfareApprovalAction(
     });
     if (hasAnyDecline(allApprovals)) {
       // Shouldn't happen (a decline already rejects above), kept as a guard.
-      return { ok: true } as const;
+      return { ok: true, outcome: "waiting", requestId: request.id, memberId: request.memberId, amount: 0 } as const;
     }
     if (!isApprovalQuorumMet(request.approvalTier as "tier2" | "tier3", allApprovals)) {
-      return { ok: true } as const;
+      return { ok: true, outcome: "waiting", requestId: request.id, memberId: request.memberId, amount: 0 } as const;
     }
 
     await tx
@@ -330,23 +390,45 @@ export async function respondToWelfareApprovalAction(
       .set({ reviewedBy: session.user.id, reviewedAt: new Date(), updatedAt: new Date() })
       .where(eq(welfareRequests.id, request.id));
 
-    const disbursed = await disburseWelfareRequest(
-      tx,
-      request.id,
-      groupId,
-      {
-        emergency: Number(request.requestedEmergencyAmount),
-        longTerm: Number(request.requestedLongTermAmount),
-        advance: Number(request.requestedAdvanceAmount),
-      },
-      session.user.id,
-    );
+    const approvedAmounts = {
+      emergency: Number(request.requestedEmergencyAmount),
+      longTerm: Number(request.requestedLongTermAmount),
+      advance: Number(request.requestedAdvanceAmount),
+    };
+    const disbursed = await disburseWelfareRequest(tx, request.id, groupId, approvedAmounts, session.user.id);
     if ("error" in disbursed) return { error: disbursed.error };
 
-    return { ok: true } as const;
-  });
+    return {
+      ok: true,
+      outcome: "disbursed",
+      requestId: request.id,
+      memberId: request.memberId,
+      amount: approvedAmounts.emergency + approvedAmounts.longTerm + approvedAmounts.advance,
+    } as const;
+    },
+  );
 
   if ("error" in result) return { error: result.error };
+  if (result.outcome === "rejected") {
+    void dispatchWebhookEvent(groupId, "welfare.request.rejected", {
+      requestId: result.requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+  } else if (result.outcome === "disbursed") {
+    // Quorum was just reached — approval and disbursement happen
+    // atomically here too, same reasoning as the tier1 path above.
+    void dispatchWebhookEvent(groupId, "welfare.request.approved", {
+      requestId: result.requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+    void dispatchWebhookEvent(groupId, "welfare.request.disbursed", {
+      requestId: result.requestId,
+      memberId: result.memberId,
+      amount: result.amount,
+    });
+  }
   revalidatePath("/dashboard/welfare");
   return null;
 }

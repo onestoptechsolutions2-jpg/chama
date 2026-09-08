@@ -6,6 +6,10 @@ const WEBHOOK_EVENT_TYPES = [
   "loan.rejected",
   "member.joined",
   "mgr.slot.paid",
+  "welfare.request.submitted",
+  "welfare.request.approved",
+  "welfare.request.rejected",
+  "welfare.request.disbursed",
 ] as const;
 
 export const createWebhookEndpointSchema = z.object({

@@ -170,12 +170,15 @@ scoped per (user, cycle) since terms can differ between cycles),
 
 **Welfare** — `welfare_policies` (per-group config: funding method,
 reserve-allocation split, grant/advance caps, approval tiers, tenure/cooldown
-rules), `welfare_funds` (cached balances — emergency/long-term/advance
-reserves), `welfare_requests` + `welfare_approvals` (tiered co-sign),
-`welfare_grants`, `welfare_advances` + `welfare_advance_repayments`,
+rules — editable via a `WelfarePolicyWizard` at Settings → Welfare, the
+first UI this schema ever had), `welfare_funds` (cached balances —
+emergency/long-term/advance reserves), `welfare_requests` + `welfare_approvals`
+(tiered co-sign), `welfare_grants`, `welfare_advances` + `welfare_advance_repayments`,
 `welfare_ledger` (append-only source of truth the cached balances derive
 from). The legacy `welfare_claims` table predates this and is unused by any
-current code path.
+current code path. `welfare_claim_type` (the request `reason` field) covers
+10 categories: medical, bereavement, emergency, education, maternity,
+disability, benevolence, wedding, calamity, other.
 
 **Projects** — `projects`, `project_contributions`.
 
@@ -194,6 +197,14 @@ subscribed URL + HMAC secret + event-type array), `webhook_deliveries`
 (append-only attempt log — insert/select-only RLS policy, same pattern as
 `payment_webhook_events`). See [`api.md`](./api.md)'s Public developer API
 and Outbound webhooks sections.
+
+**Governance** — `group_documents` (constitution, bank details, registration
+certificate, minutes — a title/category/file-URL row, reusing the same
+`/api/upload` primitive as KYC documents), `compliance_obligations` (AGM
+dates, annual returns, or custom deadlines — `upcoming`/`due`/`overdue`/
+`completed`, optionally recurring). Closes the "Governance/KYC follow-up"
+Known Gap; see [`api.md`](./api.md) and the [Cron jobs](#cron-jobs-vercel-cron)
+section below for the daily reminder job.
 
 **Platform / super-admin** — `cron_runs` (audit log), `group_account_activities`
 + CRM-ish columns on `groups` (onboarding stage, account tier/owner,
@@ -217,18 +228,19 @@ app/
       rules/, settings/, capital/, billing/, wallet/, statement/,
       profile/, notifications/, pending-members/, onboarding/, guide/,
       developer/                 # per-group API keys + webhook endpoints UI
+      governance/                # group documents + compliance obligations UI
   super-admin/                  # literal URL segment (not a route group —
     layout.tsx                  # would collide with (dashboard)'s own routes)
     groups/, groups/[id]/, users/, stats/, integrations/
   api/
-    cron/{contribution-dues,loan-overdue}/
+    cron/{contribution-dues,loan-overdue,compliance-reminders}/
     payments/{callback,platform-fee,loan-fee,subscription-invoice,wallet-topup}/
     upload/
     v1/{group,members,contributions,loans,fines,meetings,mgr/cycles,
-        welfare/requests,capital-position}/   # public developer API — see api.md
+        welfare/requests,welfare/policy,capital-position}/  # public developer API — see api.md
 lib/
   db/{schema.ts, client.ts, rls.ts}
-  domain/          # pure, DB-free, unit-tested business logic
+  domain/{..., governance.ts}  # pure, DB-free, unit-tested business logic
   auth/{session.ts, api-keys.ts, api-session.ts, api-response.ts}
   webhooks/dispatch.ts  # outbound webhook signing + delivery + logging
   nav-config.ts    # single source of truth for the sidebar + role/product gating
@@ -278,17 +290,18 @@ the group's own configured value.
 
 ## Cron jobs (Vercel Cron)
 
-`app/api/cron/contribution-dues/route.ts` and `app/api/cron/loan-overdue/route.ts`,
-declared in `vercel.json`. Vercel Cron is UTC-only; Nairobi is UTC+3
-year-round (no DST). Both:
+`app/api/cron/contribution-dues/route.ts`, `app/api/cron/loan-overdue/route.ts`,
+and `app/api/cron/compliance-reminders/route.ts`, declared in `vercel.json`.
+Vercel Cron is UTC-only; Nairobi is UTC+3 year-round (no DST). All three:
 
 - Require `Authorization: Bearer $CRON_SECRET` (Vercel attaches this
   automatically when `CRON_SECRET` is set).
 - Are idempotent under at-least-once delivery (`lib/cron/helpers.ts`'s
   `runCronJob` takes a Postgres advisory lock; a concurrent invocation
   returns `{ skipped: "already running" }` rather than double-processing).
-- Process each candidate row in its own transaction with `SELECT ... FOR
-  UPDATE`, so one bad row can't roll back another's already-committed fine.
+- Process independently per group (or per row, for the two that touch
+  money — `SELECT ... FOR UPDATE` — so one bad row can't roll back
+  another's already-committed fine).
 - Write to `cron_runs` (job name, started/finished, rows affected, status)
   — a queryable answer to "did today's enforcement run," which ephemeral
   serverless logs don't give you. Surfaced on `/super-admin/stats`.

@@ -4,13 +4,15 @@ import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { groups, rules } from "@/lib/db/schema";
+import { groups, rules, welfarePolicies } from "@/lib/db/schema";
 import {
   updateSettingsSchema,
   updateCapitalPolicySchema,
   updateLoanSettingsSchema,
 } from "@/lib/validation/settings";
+import { updateWelfarePolicySchema } from "@/lib/validation/welfare-policy";
 import { RULE_TEMPLATES, type RuleCategory } from "@/lib/domain/rule-templates";
+import { getOrCreateWelfarePolicy } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 
 export type SettingsActionState = { error: string } | { ok: true } | null;
 
@@ -282,5 +284,65 @@ export async function updateCapitalPolicyAction(
 
   revalidatePath("/dashboard/settings");
   revalidatePath("/dashboard/capital");
+  return { ok: true };
+}
+
+/**
+ * The welfare-policy wizard's single finishing action — every field is
+ * optional on the schema (see updateWelfarePolicySchema), but the wizard
+ * always sends the full set it collected across its steps, same "one
+ * combined submit" reasoning as activateProductAction above. allowOverdraft
+ * is a checkbox read directly from formData, matching every other boolean
+ * flag in this codebase.
+ */
+export async function updateWelfarePolicyAction(
+  _prev: SettingsActionState,
+  formData: FormData,
+): Promise<SettingsActionState> {
+  const session = await requireRole("admin");
+
+  const parsed = updateWelfarePolicySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+  const v = parsed.data;
+  const groupId = session.activeMembership.groupId;
+
+  await withTenant(groupId, async (tx) => {
+    await getOrCreateWelfarePolicy(tx, groupId);
+    await tx
+      .update(welfarePolicies)
+      .set({
+        fundingMethod: v.fundingMethod,
+        fundingFixedAmount: v.fundingFixedAmount !== undefined ? String(v.fundingFixedAmount) : undefined,
+        fundingPct: v.fundingPct !== undefined ? String(v.fundingPct) : undefined,
+        emergencyAllocationPct:
+          v.emergencyAllocationPct !== undefined ? String(v.emergencyAllocationPct) : undefined,
+        longTermAllocationPct:
+          v.longTermAllocationPct !== undefined ? String(v.longTermAllocationPct) : undefined,
+        advanceAllocationPct:
+          v.advanceAllocationPct !== undefined ? String(v.advanceAllocationPct) : undefined,
+        maxEmergencyGrant: v.maxEmergencyGrant !== undefined ? String(v.maxEmergencyGrant) : undefined,
+        maxLongTermGrant: v.maxLongTermGrant !== undefined ? String(v.maxLongTermGrant) : undefined,
+        maxAdvance: v.maxAdvance !== undefined ? String(v.maxAdvance) : undefined,
+        maxOutstandingAdvancePerMember:
+          v.maxOutstandingAdvancePerMember !== undefined ? String(v.maxOutstandingAdvancePerMember) : undefined,
+        minEmergencyReserveFloor:
+          v.minEmergencyReserveFloor !== undefined ? String(v.minEmergencyReserveFloor) : undefined,
+        maxClaimsPerMemberPerYear: v.maxClaimsPerMemberPerYear,
+        cooldownDays: v.cooldownDays,
+        minTenureMonths: v.minTenureMonths,
+        advanceFeePct: v.advanceFeePct !== undefined ? String(v.advanceFeePct) : undefined,
+        advanceMaxRepaymentMonths: v.advanceMaxRepaymentMonths,
+        tier1MaxAmount: v.tier1MaxAmount !== undefined ? String(v.tier1MaxAmount) : undefined,
+        tier2MaxAmount: v.tier2MaxAmount !== undefined ? String(v.tier2MaxAmount) : undefined,
+        allowOverdraft: formData.get("allowOverdraft") === "on",
+        updatedAt: new Date(),
+      })
+      .where(eq(welfarePolicies.groupId, groupId));
+  });
+
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard/welfare");
   return { ok: true };
 }

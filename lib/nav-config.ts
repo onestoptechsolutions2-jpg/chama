@@ -20,6 +20,7 @@ import {
   UserCircle,
   Lightbulb,
   Webhook,
+  ShieldCheck,
 } from "lucide-react";
 import type { MembershipRole } from "@/lib/auth/session";
 import type { ProductFlags } from "@/lib/domain/products";
@@ -203,6 +204,14 @@ export const navItems: NavItem[] = [
     roles: ["admin"],
     guide:
       "API keys and webhook endpoints for integrating other systems with this group's data — an accounting sync, a custom dashboard, an SMS gateway. See docs/api.md for the full contract. Not needed unless you're setting up an integration.",
+  },
+  {
+    href: "/dashboard/governance",
+    label: "Governance",
+    icon: ShieldCheck,
+    roles: ["admin", "secretary"],
+    guide:
+      "Group documents (constitution, bank details, registration certificate) and compliance obligations like AGM dates and annual returns — with reminders as they come due. Basic administrative housekeeping, not tied to any financial product.",
   },
   {
     href: "/dashboard/settings",

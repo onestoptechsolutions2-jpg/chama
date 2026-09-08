@@ -3,42 +3,65 @@ import {
   ArrowRight,
   ArrowUpRight,
   BarChart3,
-  CalendarCheck2,
-  CircleDollarSign,
   Check,
-  HeartHandshake,
+  Eye,
   Landmark,
-  ShieldCheck,
+  MessageSquareWarning,
+  Scale,
+  Smartphone,
   Sparkles,
-  UsersRound,
-  WalletCards,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 
-const features = [
+const problems = [
   {
-    icon: UsersRound,
-    eyebrow: "One shared record",
-    title: "Bring the whole group into focus.",
-    copy: "Keep members, meetings, rules, and decisions in one calm, reliable place.",
+    icon: Smartphone,
+    title: "The books live in one notebook, or one phone.",
+    copy: "One person holds the record — a phone note, an exercise book — and everyone else takes their word for it.",
   },
   {
-    icon: WalletCards,
-    eyebrow: "Clear money trails",
-    title: "Know where every shilling stands.",
-    copy: "Track contributions, fines, loans, welfare, and capital without spreadsheet archaeology.",
+    icon: Scale,
+    title: "Trust breaks down when no one can check the math.",
+    copy: "When savings, loans, and payouts can't be verified independently, a disagreement turns into a group falling apart.",
   },
   {
-    icon: HeartHandshake,
-    eyebrow: "Built for real life",
-    title: "Make room for the moments that matter.",
-    copy: "Support welfare claims, rotating payouts, and group projects with less admin overhead.",
+    icon: MessageSquareWarning,
+    title: "Reminders get buried in WhatsApp.",
+    copy: "Dues, meeting dates, and fines are scattered across chat threads nobody can search once a dispute comes up.",
+  },
+  {
+    icon: BarChart3,
+    title: "Big decisions run on guesswork.",
+    copy: "Loan limits, welfare caps, and payout schedules get set from memory, not from what the group can actually afford.",
   },
 ];
 
-const steps = [
-  { number: "01", icon: UsersRound, title: "Create your circle", copy: "Set up your group, invite members, and make your shared rules visible to everyone." },
-  { number: "02", icon: CalendarCheck2, title: "Keep the rhythm", copy: "Record contributions and meetings in minutes, with a clear view of what is due next." },
-  { number: "03", icon: BarChart3, title: "Grow with confidence", copy: "Use your group’s real numbers to plan loans, projects, welfare, and the next big step." },
+const solutions = [
+  {
+    icon: Eye,
+    dimension: "See it",
+    title: "One shared record, visible to everyone.",
+    copy: "Contributions, fines, loans, and welfare — updated the moment something happens, not at month-end.",
+  },
+  {
+    icon: Zap,
+    dimension: "Automate it",
+    title: "Dues and penalties enforce themselves.",
+    copy: "Contribution reminders and late fines happen on their own — nobody has to chase anybody.",
+  },
+  {
+    icon: ShieldCheck,
+    dimension: "Trust it",
+    title: "Every action is accountable.",
+    copy: "Who approved what, and when, is always on record — no single person's word is the final say.",
+  },
+  {
+    icon: Sparkles,
+    dimension: "Grow with it",
+    title: "Room to grow with your group.",
+    copy: "Loans, a welfare fund, merry-go-round payouts, group projects — turn on what you need, when you're ready.",
+  },
 ];
 
 export default function HomePage() {
@@ -53,8 +76,8 @@ export default function HomePage() {
             </Link>
             <div className="flex items-center gap-3 text-sm font-semibold">
               <div className="hidden items-center gap-1 md:flex">
-                <a href="#why-chama" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">Why Chama</a>
-                <a href="#how-it-works" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">How it works</a>
+                <a href="#problem" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">The problem</a>
+                <a href="#solution" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">The solution</a>
                 <Link href="/discover" className="px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">Find a group</Link>
               </div>
               <Link href="/login" className="rounded-full px-3 py-2 text-[#18332b]/70 transition-colors hover:text-[#18332b]">
@@ -76,7 +99,7 @@ export default function HomePage() {
                 Grow together. <span className="text-[#c75b39]">Keep it clear.</span>
               </h1>
               <p className="mt-7 max-w-md text-lg leading-8 text-[#18332b]/68">
-                Chama gives your savings group one trusted home for contributions, loans, welfare, and the decisions that move you forward.
+                Your chama&apos;s money shouldn&apos;t live in one person&apos;s notebook. Chama gives it one trusted, shared home instead.
               </p>
               <div className="mt-9 flex flex-wrap items-center gap-4">
                 <Link href="/register" className="group inline-flex items-center gap-3 rounded-full bg-[#c75b39] px-6 py-3.5 font-semibold text-white shadow-[0_12px_24px_-12px_#c75b39] transition-transform hover:-translate-y-1">
@@ -142,18 +165,18 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="why-chama" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
+      <section id="problem" className="mx-auto max-w-7xl px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="grid gap-10 lg:grid-cols-[0.75fr_1.25fr] lg:gap-24">
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">Less admin. More progress.</p>
-            <h2 className="mt-4 max-w-sm font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">The group stays in the room.</h2>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">The problem</p>
+            <h2 className="mt-4 max-w-sm font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">Running a chama by hand doesn&apos;t scale.</h2>
+            <p className="mt-6 max-w-sm text-sm leading-6 text-[#18332b]/60">Every group hits the same wall eventually — usually right when the money starts to matter most.</p>
           </div>
-          <div className="grid gap-10 sm:grid-cols-3">
-            {features.map(({ icon: Icon, eyebrow, title, copy }) => (
+          <div className="grid gap-10 sm:grid-cols-2">
+            {problems.map(({ icon: Icon, title, copy }) => (
               <article key={title} className="group border-t border-[#18332b]/15 pt-5">
                 <Icon className="size-6 text-[#c75b39] transition-transform group-hover:-translate-y-1" strokeWidth={1.7} />
-                <p className="mt-6 text-xs font-bold uppercase tracking-[0.12em] text-[#18332b]/45">{eyebrow}</p>
-                <h3 className="mt-3 text-xl font-bold leading-tight tracking-[-0.03em]">{title}</h3>
+                <h3 className="mt-6 text-xl font-bold leading-tight tracking-[-0.03em]">{title}</h3>
                 <p className="mt-3 text-sm leading-6 text-[#18332b]/60">{copy}</p>
               </article>
             ))}
@@ -161,39 +184,27 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="how-it-works" className="border-y border-[#18332b]/10 bg-[#e9f0e9] px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
+      <section id="solution" className="border-y border-[#18332b]/10 bg-[#e9f0e9] px-5 py-20 sm:px-8 lg:px-12 lg:py-28">
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">Simple by design</p>
-              <h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">A better group meeting starts before the meeting.</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]">The solution</p>
+              <h2 className="mt-4 max-w-lg font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">Four things a chama actually needs.</h2>
             </div>
-            <p className="max-w-sm text-sm leading-6 text-[#18332b]/60">Everything your group needs to build a steady habit around money, together.</p>
+            <p className="max-w-sm text-sm leading-6 text-[#18332b]/60">Not a spreadsheet with extra steps — a system built around how savings groups really run.</p>
           </div>
-          <div className="mt-14 grid gap-8 md:grid-cols-3">
-            {steps.map(({ number, icon: Icon, title, copy }) => (
-              <article key={number} className="relative border-t border-[#18332b]/20 pt-5">
+          <div className="mt-14 grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+            {solutions.map(({ icon: Icon, dimension, title, copy }) => (
+              <article key={dimension} className="relative border-t border-[#18332b]/20 pt-5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-bold text-[#c75b39]">{number}</span>
+                  <span className="text-sm font-bold text-[#c75b39]">{dimension}</span>
                   <Icon className="size-6 text-[#18332b]/60" strokeWidth={1.6} />
                 </div>
-                <h3 className="mt-12 text-2xl font-bold tracking-[-0.035em]">{title}</h3>
-                <p className="mt-3 max-w-xs text-sm leading-6 text-[#18332b]/60">{copy}</p>
+                <h3 className="mt-10 text-xl font-bold leading-tight tracking-[-0.035em]">{title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[#18332b]/60">{copy}</p>
               </article>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="mx-auto grid max-w-7xl gap-12 px-5 py-20 sm:px-8 lg:grid-cols-[1fr_0.85fr] lg:items-center lg:gap-24 lg:px-12 lg:py-28">
-        <div>
-          <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#c75b39]"><ShieldCheck className="size-4" /> Trust is a feature</p>
-          <h2 className="mt-5 max-w-xl font-serif text-4xl leading-tight tracking-[-0.04em] sm:text-5xl">Clarity is how a group stays strong.</h2>
-          <p className="mt-6 max-w-lg text-lg leading-8 text-[#18332b]/65">Your group’s money should never live in one person’s notebook. Chama keeps the record shared, actions accountable, and the next decision easier to make.</p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl bg-[#18332b] p-6 text-[#f8f7f2]"><CircleDollarSign className="size-6 text-[#e3f17b]" /><p className="mt-8 text-lg font-bold">Every shilling has a place.</p><p className="mt-2 text-sm leading-6 text-white/60">Separate views for savings, welfare, loans, and projects.</p></div>
-          <div className="rounded-2xl bg-[#e3f17b] p-6"><Sparkles className="size-6" /><p className="mt-8 text-lg font-bold">Less chasing, more doing.</p><p className="mt-2 text-sm leading-6 text-[#18332b]/60">Clear dues and activity help everyone stay in step.</p></div>
         </div>
       </section>
 

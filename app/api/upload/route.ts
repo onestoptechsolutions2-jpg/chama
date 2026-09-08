@@ -5,10 +5,12 @@ import { requireSession } from "@/lib/auth/session";
 /**
  * Thin upload primitive — no business logic. Any authenticated user can
  * upload (KYC self-service via /profile, staff adding a member's documents
- * via the Members page); the caller decides what the returned URL is used
- * for. Requires BLOB_READ_WRITE_TOKEN, provisioned by creating a Blob
- * store in the Vercel dashboard and linking it to the project — see
- * .env.example.
+ * via the Members page, group documents via /dashboard/governance); the
+ * caller decides what the returned URL is used for. An optional `folder`
+ * field in the form data sets the Blob path prefix (default "kyc", so
+ * every existing caller keeps working unchanged without passing it).
+ * Requires BLOB_READ_WRITE_TOKEN, provisioned by creating a Blob store in
+ * the Vercel dashboard and linking it to the project — see .env.example.
  */
 export async function POST(req: Request) {
   const session = await requireSession();
@@ -30,8 +32,13 @@ export async function POST(req: Request) {
     );
   }
 
+  const requestedFolder = form?.get("folder");
+  const safeFolder =
+    typeof requestedFolder === "string" && requestedFolder.trim()
+      ? requestedFolder.trim().replace(/[^a-zA-Z0-9_-]/g, "_")
+      : "kyc";
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const pathname = `kyc/${session.user.id}/${Date.now()}-${safeName}`;
+  const pathname = `${safeFolder}/${session.user.id}/${Date.now()}-${safeName}`;
 
   try {
     const blob = await put(pathname, file, { access: "public", addRandomSuffix: true });

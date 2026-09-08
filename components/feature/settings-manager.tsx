@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect } from "react";
 import { toast } from "sonner";
-import type { groups as groupsTable } from "@/lib/db/schema";
+import type { groups as groupsTable, welfarePolicies as welfarePoliciesTable } from "@/lib/db/schema";
 import type { ProductFlags } from "@/lib/domain/products";
 import {
   updateSettingsAction,
@@ -12,6 +12,7 @@ import {
   type SettingsActionState,
 } from "@/app/(dashboard)/dashboard/settings/actions";
 import { VehicleActivationWizard } from "@/components/feature/vehicle-activation-wizard";
+import { WelfarePolicyWizard } from "@/components/feature/welfare-policy-wizard";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
 
 type Group = typeof groupsTable.$inferSelect;
+type WelfarePolicy = typeof welfarePoliciesTable.$inferSelect;
 
 const PRODUCT_INFO: {
   key: keyof ProductFlags;
@@ -289,14 +291,64 @@ function CapitalPolicyForm({ group, isAdmin }: { group: Group; isAdmin: boolean 
   );
 }
 
+function WelfarePolicySection({ policy, isAdmin }: { policy: WelfarePolicy; isAdmin: boolean }) {
+  const splitSummary = `Emergency ${policy.emergencyAllocationPct}% / long-term ${policy.longTermAllocationPct}% / advance ${policy.advanceAllocationPct}%`;
+
+  return (
+    <TabsContent value="welfare" className="space-y-4">
+      <Card>
+        <CardContent className="space-y-4 pt-6">
+          <div className="flex items-start justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              Funding, reserve splits, per-request caps, and approval tiers for the collective
+              welfare fund. Changing these doesn&apos;t alter requests already submitted.
+            </p>
+            {isAdmin && <WelfarePolicyWizard policy={policy} />}
+          </div>
+          <div className="grid gap-3 text-sm sm:grid-cols-2">
+            <div className="rounded-md border p-3">
+              <p className="font-medium">Reserve split</p>
+              <p className="text-muted-foreground">{splitSummary}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="font-medium">Approval tiers</p>
+              <p className="text-muted-foreground">
+                Tier 1 up to Ksh {Number(policy.tier1MaxAmount).toLocaleString()}, tier 2 up to Ksh{" "}
+                {Number(policy.tier2MaxAmount).toLocaleString()}, tier 3 above that.
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="font-medium">Caps</p>
+              <p className="text-muted-foreground">
+                Emergency Ksh {Number(policy.maxEmergencyGrant).toLocaleString()}, long-term Ksh{" "}
+                {Number(policy.maxLongTermGrant).toLocaleString()}, advance Ksh{" "}
+                {Number(policy.maxAdvance).toLocaleString()}.
+              </p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="font-medium">Eligibility</p>
+              <p className="text-muted-foreground">
+                {policy.minTenureMonths > 0 ? `${policy.minTenureMonths}mo tenure, ` : ""}
+                max {policy.maxClaimsPerMemberPerYear}/yr, {policy.cooldownDays}-day cooldown.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </TabsContent>
+  );
+}
+
 export function SettingsManager({
   group,
   isAdmin,
   products,
+  welfarePolicy,
 }: {
   group: Group;
   isAdmin: boolean;
   products: ProductFlags;
+  welfarePolicy: WelfarePolicy | null;
 }) {
   const [state, formAction, pending] = useActionState<SettingsActionState, FormData>(
     updateSettingsAction,
@@ -315,6 +367,7 @@ export function SettingsManager({
         <TabsTrigger value="contributions">Contributions</TabsTrigger>
         <TabsTrigger value="fines">Fines</TabsTrigger>
         <TabsTrigger value="loans">Loans</TabsTrigger>
+        {welfarePolicy && <TabsTrigger value="welfare">Welfare</TabsTrigger>}
         <TabsTrigger value="products">Products</TabsTrigger>
         <TabsTrigger value="capital">Capital policy</TabsTrigger>
       </TabsList>
@@ -471,6 +524,7 @@ export function SettingsManager({
       </form>
 
       <LoanSettingsForm group={group} isAdmin={isAdmin} />
+      {welfarePolicy && <WelfarePolicySection policy={welfarePolicy} isAdmin={isAdmin} />}
       <ProductsForm products={products} isAdmin={isAdmin} />
       <CapitalPolicyForm group={group} isAdmin={isAdmin} />
     </Tabs>

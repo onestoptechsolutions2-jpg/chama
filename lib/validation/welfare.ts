@@ -7,6 +7,9 @@ export const welfareClaimTypes = [
   "education",
   "maternity",
   "disability",
+  "benevolence",
+  "wedding",
+  "calamity",
   "other",
 ] as const;
 

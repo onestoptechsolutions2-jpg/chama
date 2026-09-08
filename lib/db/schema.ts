@@ -150,6 +150,12 @@ export const welfareClaimTypeEnum = pgEnum("welfare_claim_type", [
   "education",
   "maternity",
   "disability",
+  // Added later (see drizzle/0043) to round out a standard chama welfare
+  // taxonomy — "education" already covers academics, so it's not
+  // duplicated.
+  "benevolence",
+  "wedding",
+  "calamity",
   "other",
 ]);
 
@@ -1631,6 +1637,12 @@ export const webhookEventTypeEnum = pgEnum("webhook_event_type", [
   "loan.rejected",
   "member.joined",
   "mgr.slot.paid",
+  // Added later (see drizzle/0043) once welfare-request lifecycle events
+  // were wired into the outbound-webhook system.
+  "welfare.request.submitted",
+  "welfare.request.approved",
+  "welfare.request.rejected",
+  "welfare.request.disbursed",
 ]);
 
 export const webhookEndpoints = pgTable(
@@ -1675,6 +1687,73 @@ export const webhookDeliveries = pgTable(
   (t) => [
     index("webhook_deliveries_endpoint_id_idx").on(t.webhookEndpointId),
     index("webhook_deliveries_group_id_idx").on(t.groupId),
+  ],
+);
+
+// ── Governance — group documents and compliance obligations. See
+// docs/CHANGELOG.md's now-closed "Governance/KYC follow-up" Known Gap: the
+// notification-channel decision made here is to reuse the existing generic
+// `notifications` table rather than build a new channel.
+export const groupDocumentCategoryEnum = pgEnum("group_document_category", [
+  "constitution",
+  "bank_details",
+  "registration_certificate",
+  "minutes",
+  "other",
+]);
+
+export const groupDocuments = pgTable(
+  "group_documents",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    category: groupDocumentCategoryEnum("category").notNull().default("other"),
+    fileUrl: text("file_url").notNull(),
+    uploadedByUserId: integer("uploaded_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("group_documents_group_id_idx").on(t.groupId)],
+);
+
+export const complianceObligationTypeEnum = pgEnum("compliance_obligation_type", [
+  "agm",
+  "annual_returns",
+  "custom",
+]);
+
+export const complianceObligationStatusEnum = pgEnum("compliance_obligation_status", [
+  "upcoming",
+  "due",
+  "overdue",
+  "completed",
+]);
+
+export const complianceObligations = pgTable(
+  "compliance_obligations",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    type: complianceObligationTypeEnum("type").notNull().default("custom"),
+    title: text("title").notNull(),
+    dueDate: date("due_date").notNull(),
+    status: complianceObligationStatusEnum("status").notNull().default("upcoming"),
+    /** e.g. 12 for an annual AGM — completing a recurring obligation auto-creates the next occurrence this many months out. Null = one-off. */
+    recurrenceMonths: integer("recurrence_months"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("compliance_obligations_group_id_idx").on(t.groupId),
+    // Cross-tenant scan target for the daily reminder cron — mirrors
+    // contribution_dues_status_due_date_idx's reasoning exactly.
+    index("compliance_obligations_status_due_date_idx").on(t.status, t.dueDate),
   ],
 );
 
@@ -1986,4 +2065,13 @@ export const webhookEndpointsRelations = relations(webhookEndpoints, ({ one, man
 export const webhookDeliveriesRelations = relations(webhookDeliveries, ({ one }) => ({
   endpoint: one(webhookEndpoints, { fields: [webhookDeliveries.webhookEndpointId], references: [webhookEndpoints.id] }),
   group: one(groups, { fields: [webhookDeliveries.groupId], references: [groups.id] }),
+}));
+
+export const groupDocumentsRelations = relations(groupDocuments, ({ one }) => ({
+  group: one(groups, { fields: [groupDocuments.groupId], references: [groups.id] }),
+  uploadedBy: one(users, { fields: [groupDocuments.uploadedByUserId], references: [users.id] }),
+}));
+
+export const complianceObligationsRelations = relations(complianceObligations, ({ one }) => ({
+  group: one(groups, { fields: [complianceObligations.groupId], references: [groups.id] }),
 }));
