@@ -221,6 +221,14 @@ export default function HomePage() {
           <span>Built for the way groups grow.</span>
           <div className="flex gap-5 font-semibold"><Link href="/discover" className="hover:text-[#18332b]">Discover</Link><Link href="/login" className="hover:text-[#18332b]">Sign in</Link></div>
         </div>
+        <div className="mx-auto mt-6 max-w-7xl border-t border-[#18332b]/10 pt-6 text-center text-xs text-[#18332b]/45 sm:text-left">
+          <p>
+            Designed &amp; developed by Leitor Investment Company Ltd · 2017–2027 ·{" "}
+            <a href="https://laitor.co.ke" target="_blank" rel="noreferrer" className="underline decoration-[#18332b]/25 underline-offset-4 hover:text-[#18332b]">laitor.co.ke</a>{" "}
+            · 0113352048 ·{" "}
+            <a href="mailto:partnerships@laitor.co.ke" className="underline decoration-[#18332b]/25 underline-offset-4 hover:text-[#18332b]">partnerships@laitor.co.ke</a>
+          </p>
+        </div>
       </footer>
     </main>
   );

@@ -3,8 +3,7 @@ import { and, eq, gte, sql } from "drizzle-orm";
 import { Users, Landmark, ShieldCheck, Wallet, HeartHandshake, TriangleAlert, OctagonAlert, type LucideIcon } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
-import { members, fines, meetings, groups } from "@/lib/db/schema";
-import { getOrCreateWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
+import { members, fines, meetings, groups, welfareFunds } from "@/lib/db/schema";
 import { computeGroupInsights } from "@/app/(dashboard)/dashboard/insights/data";
 import type { Recommendation } from "@/lib/domain/insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,7 +103,16 @@ export default async function DashboardPage() {
     withTenant(groupId, (tx) => tx.query.fines.findMany({ where: and(eq(fines.groupId, groupId), eq(fines.status, "pending")), with: { member: true }, orderBy: (f, { desc }) => [desc(f.createdAt)], limit: 5 })),
     withTenant(groupId, (tx) => tx.query.meetings.findFirst({ where: and(eq(meetings.groupId, groupId), gte(meetings.meetingDate, new Date().toISOString().split("T")[0])), orderBy: (m, { asc }) => [asc(m.meetingDate)] })),
     withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) })),
-    products.welfare ? withTenant(groupId, (tx) => getOrCreateWelfareFund(tx, groupId)) : Promise.resolve(null),
+    // A plain read, never an insert — this page is hit on every request, far
+    // too concurrent a spot to run the lazy-create upsert (see
+    // getOrCreateWelfareFund's own doc comment: it exists only as a
+    // fail-safe for a group that "somehow slipped through" activation-time
+    // creation, not as this page's primary path). A group whose row hasn't
+    // been created yet just doesn't show the metric card below, rather than
+    // racing 5 sibling withTenant transactions to create one.
+    products.welfare
+      ? withTenant(groupId, (tx) => tx.query.welfareFunds.findFirst({ where: eq(welfareFunds.groupId, groupId) }))
+      : Promise.resolve(null),
     // Staff-only — the underlying recommendations are almost entirely
     // staff-facing (registration, capital drift, member risk), so members
     // don't pay for these extra queries on the page they see most.

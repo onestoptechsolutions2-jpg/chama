@@ -173,6 +173,12 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, the full test suite (239 tests, including all 40 live-DB RLS tests), and a full `next build` all clean.
 
+- **Session: a real `/dashboard` bug, found by smoke-testing the session above and fixed immediately after.** The dashboard home page reliably threw an unhandled RLS-violation error — `new row violates row-level security policy for table "welfare_funds"` — for any welfare-enabled group whose `welfare_funds` row had never been created. Root cause: `activateProductAction`'s own doc comment claimed activation-time creation was "written explicitly" elsewhere, but for welfare specifically it never actually was — every group activated via the Settings wizard (not group-creation) was silently depending on `getOrCreateWelfareFund`'s lazy get-or-create fail-safe. That fail-safe was being raced by `/dashboard`'s own `Promise.all` of 6 concurrent `withTenant` transactions (one of them this exact insert) on every single page load — reliably reproducible, confirmed via a standalone repro script that the identical insert succeeds cleanly outside that concurrent context.
+
+  Fixed two ways: (1) `activateProductAction` now actually calls `getOrCreateWelfarePolicy`/`getOrCreateWelfareFund` when activating welfare, inside its own single transaction, closing the real gap — no group activated this way again will ever depend on the lazy fallback; (2) `/dashboard/page.tsx` no longer calls the insert-capable `getOrCreateWelfareFund` at all — it does a plain `SELECT`, and a group with no row yet just doesn't show the welfare-fund metric card, rather than racing 5 sibling transactions to create one on a page hit by every request. A new migration (`0045_welfare_fund_backfill.sql`) re-runs Phase 8's original backfill for any group that slipped through since.
+
+  Verified: `tsc --noEmit`, `eslint`, the full test suite, and a full `next build` all clean; live-reproduced the bug, applied the fix, then reloaded `/dashboard` repeatedly against a real welfare-enabled group with no prior fund row — confirmed clean with the metric now rendering.
+
 ## Known gaps
 
 Carried forward from the phases above, still true as of the last update to this file:

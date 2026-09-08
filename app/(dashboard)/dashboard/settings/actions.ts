@@ -12,7 +12,7 @@ import {
 } from "@/lib/validation/settings";
 import { updateWelfarePolicySchema } from "@/lib/validation/welfare-policy";
 import { RULE_TEMPLATES, type RuleCategory } from "@/lib/domain/rule-templates";
-import { getOrCreateWelfarePolicy } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
+import { getOrCreateWelfarePolicy, getOrCreateWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 
 export type SettingsActionState = { error: string } | { ok: true } | null;
 
@@ -218,6 +218,20 @@ export async function activateProductAction(
         updatedAt: new Date(),
       })
       .where(eq(groups.id, groupId));
+
+    // Real root-cause fix, not just the dashboard-side symptom: welfare's
+    // policy/fund rows were never actually created at activation time
+    // despite getOrCreateWelfareFund's own doc comment claiming they were
+    // — leaving every welfare-enabled-via-this-wizard group permanently
+    // dependent on lazy get-or-create fallbacks (a real, reproduced bug:
+    // /dashboard's Promise.all of 6 concurrent withTenant transactions
+    // racing that fallback threw an RLS violation). Create both here,
+    // inside this single transaction, so no page ever needs to fall back
+    // to a racy lazy insert for a group activated this way again.
+    if (productKey === "welfare") {
+      await getOrCreateWelfarePolicy(tx, groupId);
+      await getOrCreateWelfareFund(tx, groupId);
+    }
 
     if (templatesToAdd.length === 0) return;
 
