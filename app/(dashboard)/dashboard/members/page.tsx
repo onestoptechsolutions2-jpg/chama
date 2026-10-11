@@ -12,11 +12,18 @@ export default async function MembersPage() {
   const isAdmin = session.activeMembership.role === "admin";
   const showWelfare = session.activeMembership.products.welfare;
 
-  const { groupMembers, membershipByUserId } = await withTenant(groupId, async (tx) => {
+  const { groupMembers, removedMembers, membershipByUserId } = await withTenant(groupId, async (tx) => {
     const groupMembers = await tx.query.members.findMany({
       where: eq(members.active, true),
       orderBy: (m, { asc }) => [asc(m.name)],
     });
+    // Only admins can bring someone back, so only they need this list.
+    const removedMembers = isAdmin
+      ? await tx.query.members.findMany({
+          where: and(eq(members.groupId, groupId), eq(members.active, false)),
+          orderBy: (m, { asc }) => [asc(m.name)],
+        })
+      : [];
 
     // Role lives on group_memberships, not members — only members with a
     // linked login (userId) have one to assign. Only isAdmin needs this,
@@ -26,7 +33,7 @@ export default async function MembersPage() {
     });
     const membershipByUserId = new Map(activeMemberships.map((m) => [m.userId, m]));
 
-    return { groupMembers, membershipByUserId };
+    return { groupMembers, removedMembers, membershipByUserId };
   });
 
   const membersWithRole = groupMembers.map((m) => ({
@@ -42,6 +49,7 @@ export default async function MembersPage() {
       />
       <MembersManager
         members={membersWithRole}
+        removed={removedMembers.map((m) => ({ id: m.id, name: m.name }))}
         canEdit={canEdit}
         isAdmin={isAdmin}
         showWelfare={showWelfare}

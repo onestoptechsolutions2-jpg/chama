@@ -5,7 +5,7 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser, type Tx } from "@/lib/db/rls";
-import { members, contributions, users, groupMemberships, groups, sessions, loans } from "@/lib/db/schema";
+import { members, contributions, users, groupMemberships, groups, sessions, loans, mgrMemberTurns } from "@/lib/db/schema";
 import {
   createMemberSchema,
   recordContributionSchema,
@@ -389,6 +389,49 @@ export async function deactivateMemberAction(memberId: number): Promise<MemberAc
       userId: session.user.id,
       role: session.activeMembership.role,
     });
+    return null;
+  });
+
+  revalidatePath("/dashboard/members");
+  return result;
+}
+
+/**
+ * Undoes "Remove from group": the member is active again, their login works
+ * again, and they rejoin the Mzunguko queue. Turns that were handed back to
+ * the group when they left stay open — the admin re-assigns one if wanted.
+ */
+export async function reinstateMemberAction(memberId: number): Promise<MemberActionState> {
+  const session = await requireRole("admin");
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx): Promise<MemberActionState> => {
+    const member = await tx.query.members.findFirst({
+      where: and(eq(members.id, memberId), eq(members.groupId, groupId), eq(members.active, false)),
+    });
+    if (!member) return { error: "Member not found" };
+
+    await tx
+      .update(members)
+      .set({ active: true, updatedAt: new Date() })
+      .where(eq(members.id, memberId));
+    await tx
+      .update(mgrMemberTurns)
+      .set({ active: true })
+      .where(and(eq(mgrMemberTurns.groupId, groupId), eq(mgrMemberTurns.memberId, memberId)));
+    if (member.userId) {
+      await tx
+        .update(groupMemberships)
+        .set({ status: "active" })
+        .where(
+          and(
+            eq(groupMemberships.groupId, groupId),
+            eq(groupMemberships.userId, member.userId),
+            eq(groupMemberships.status, "suspended"),
+          ),
+        );
+      await refreshRegistrationStatus(tx, groupId);
+    }
     return null;
   });
 

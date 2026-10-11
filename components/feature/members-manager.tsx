@@ -13,6 +13,7 @@ import {
   createLoginForMemberAction,
   resetMemberPasswordAction,
   deactivateMemberAction,
+  reinstateMemberAction,
   updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/dashboard/members/actions";
@@ -369,13 +370,45 @@ function RoleCell({ member, editable }: { member: Member; editable: boolean }) {
   );
 }
 
+function RemovedMembers({ removed }: { removed: { id: number; name: string }[] }) {
+  const [pending, startTransition] = useTransition();
+
+  function bringBack(id: number, name: string) {
+    startTransition(async () => {
+      const result = await reinstateMemberAction(id);
+      if (result?.error) toast.error(result.error);
+      else toast.success(`${name} is back in the group`);
+    });
+  }
+
+  return (
+    <details className="rounded-xl border p-4">
+      <summary className="cursor-pointer text-base font-medium">
+        Removed members ({removed.length})
+      </summary>
+      <div className="mt-4 space-y-2">
+        {removed.map((m) => (
+          <div key={m.id} className="flex items-center justify-between gap-3">
+            <span>{m.name}</span>
+            <Button variant="outline" size="sm" disabled={pending} onClick={() => bringBack(m.id, m.name)}>
+              Bring back
+            </Button>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function MembersManager({
   members,
+  removed = [],
   canEdit,
   isAdmin,
   showWelfare,
 }: {
   members: Member[];
+  removed?: { id: number; name: string }[];
   canEdit: boolean;
   isAdmin: boolean;
   showWelfare: boolean;
@@ -469,6 +502,8 @@ export function MembersManager({
           );
         })}
       </div>
+
+      {isAdmin && removed.length > 0 && <RemovedMembers removed={removed} />}
 
       {canEdit && (
         <details className="rounded-xl border p-4">
