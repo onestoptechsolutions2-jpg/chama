@@ -66,7 +66,16 @@ overdue for months isn't re-penalized daily.
 
 Response shape identical to `contribution-dues` above.
 
-Both crons write one `cron_runs` row per invocation (job name, started/
+### `GET /api/cron/mgr-reminders`
+
+Daily, 05:45 UTC (08:45 Africa/Nairobi). For every `active` MGR cycle dated
+tomorrow (Nairobi), notifies each member who has a login that contributions
+are due, and notifies whoever holds a claimed/assigned slot in it that their
+turn is tomorrow. Skips anyone already reminded for that cycle, so a
+double-fired cron sends nothing twice. Response shape identical to
+`contribution-dues` above.
+
+All the crons write one `cron_runs` row per invocation (job name, started/
 finished timestamps, rows affected, status) — visible on
 `/super-admin/stats`, the queryable answer to "did today's enforcement
 actually run" that serverless logs alone don't give you.
@@ -488,6 +497,18 @@ total (requested for `.submitted`/`.rejected`, approved for
 - **Respond `2xx` quickly.** Do the real work asynchronously on your side;
   don't make this app wait on it.
 
+## Sign-in with Google
+
+Optional; both routes are public and do nothing unless `GOOGLE_CLIENT_ID`
+and `GOOGLE_CLIENT_SECRET` are set.
+
+- `GET /api/auth/google?next=/path` — stores a one-time `g_state` cookie (and
+  `g_next`, same-origin relative paths only) and redirects to Google.
+- `GET /api/auth/google/callback` — verifies `state`, exchanges the code,
+  requires a verified email, finds or creates the user, opens a session and
+  redirects to `next` (default `/dashboard`). Any failure redirects to
+  `/login?error=google`.
+
 ## File upload
 
 ### `POST /api/upload`
@@ -497,7 +518,7 @@ logic of its own. Used for KYC self-service (`/dashboard/profile`) and
 staff adding a member's documents. The caller decides what the returned
 URL is used for; this route just stores the file.
 
-`multipart/form-data`, field name `file`. Max 8MB, images or PDF only.
+`multipart/form-data`, field name `file`. Max 8MB. JPG, PNG, WebP or PDF only (SVG is refused).
 Stored via Vercel Blob at `kyc/{userId}/{timestamp}-{sanitized filename}`,
 public access, a random suffix appended to the path.
 
@@ -506,7 +527,7 @@ public access, a random suffix appended to the path.
 { "url": "https://....public.blob.vercel-storage.com/kyc/12/..." }
 // 400
 { "error": "File is too large (max 8MB)" }
-{ "error": "Only images or PDFs are accepted" }
+{ "error": "Please upload a photo (JPG, PNG) or a PDF" }
 // 502 — BLOB_READ_WRITE_TOKEN missing/invalid, or the upload itself failed
 { "error": "..." }
 ```

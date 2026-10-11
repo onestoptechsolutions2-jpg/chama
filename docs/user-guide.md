@@ -25,6 +25,18 @@ Treasurer and a Secretary assigned in addition to you, its founding admin.
 Add members (Members page → Add member) and assign roles there to clear
 that requirement.
 
+**Signing in**: use your email or phone and password — or, if your group's
+platform has it switched on, **Continue with Google**. After 5 wrong
+passwords sign-in pauses for 15 minutes. If you forget your password, ask
+your group admin: on the Members page they can set you a new one (Members →
+your name → More details → *Forgot password*) and tell you in person. You
+are signed out on every phone when they do.
+
+**On a phone**: a bar at the bottom of the screen always shows your main
+places (Home and the three most useful for your role) plus **Menu**, which
+opens the full list. The menu is grouped under Main, Money, Group and
+Account.
+
 **Belonging to more than one group**: your **Profile** page (`/dashboard/profile`)
 lists every group you're an active member of, which one is currently
 active, and lets you switch with one click — the same switcher is always
@@ -33,11 +45,12 @@ filled in once and reused automatically everywhere else you're a member.
 
 ## Home (Dashboard)
 
-Your group's current numbers at a glance: member count, capital, security,
-personal savings, and (if welfare is on) the welfare fund total. Staff also
-see a registration-incomplete banner if officials are still missing, and
-the group's top 1-2 open recommendations (see **Insights** below) so
-anything that needs attention shows up here without a separate trip.
+A few big buttons for the everyday jobs (staff: Add Money, Meetings, Loans,
+Fines; members: My Money, Ask for Loan, Get Help, Mzunguko), one line with
+the member count and the total saved together, the oldest unpaid fines, and
+the next meeting. Staff also see a banner if the group still needs a
+Treasurer and a Secretary. Recommendations and charts live under
+**Advice & Reports** (see **Insights** below).
 
 ## Insights
 
@@ -68,6 +81,20 @@ contributions, and change a member's role (subject to always keeping at
 least one active admin in the group). A member's role here is what
 `registrationComplete` and every permission check actually reads — not
 anything on their personal account.
+
+Admins also have, under **More details** on each member:
+
+- **Forgot password** — set a new password and tell the member in person.
+  It cannot be used on admins, on yourself, or on someone who belongs to
+  another group too (they must reset their own).
+- **Remove from group** — they can no longer open this group; their savings
+  history stays; any Mzunguko turn they hadn't been paid for becomes open
+  again. Refused while they still have a loan to repay, and for admins
+  (change their role first) or yourself.
+
+Removed people appear under **Removed members** at the bottom of the page,
+each with a **Bring back** button that restores their login and their place
+in the Mzunguko queue (turns that were freed stay open).
 
 ## Pending members (admin/treasurer)
 
@@ -106,18 +133,53 @@ is enforced automatically on both paths — staff can't approve past it
 either. The approve dialog shows accepted-vs-required guarantor count and
 won't let you confirm until the group's minimum is met.
 
-## Merry-Go-Round (MGR)
+## Merry-Go-Round (MGR) — Mzunguko
 
 The rotating-payout schedule — everyone contributes each cycle, one member
 (or several, depending on config) receives the pooled amount. You'll be
-asked to sign a one-time legal agreement before you can claim a slot in
-the active cycle. Members claim open slots themselves, or staff can
-auto-assign/reassign. Staff mark a slot **paid** once the actual payout has
-happened outside the app (MGR payouts are cash/M-Pesa handed directly
-between members, never routed through the platform) — that action is
-permanently logged against the staff member's account and can't be edited
-or deleted later, specifically so payouts stay accountable even though the
-money itself moves outside the app's view.
+asked to sign a one-time agreement before you can claim a turn in the
+active cycle. Staff mark a turn **paid** once the money has actually moved
+outside the app (MGR payouts are cash/M-Pesa between members, never routed
+through the platform) — that is permanently logged and a paid turn can no
+longer be reassigned or un-paid, so payouts stay accountable.
+
+**Every member**
+
+- The top of the Schedule tab shows progress: *Cycle 3 of 12 · 7 of 10
+  turns paid*.
+- On the **Turns** tab, *Which turn would you like?* lets you pick up to
+  three cycles, best first. Choices are honoured fairly when turns are
+  given out, and you can change them until the group's deadline (if one is
+  set). You can also claim an open turn yourself.
+- You get a notification the day before a cycle (contribution due) and the
+  day before your own turn.
+
+**Admin and treasurer** (Admin tab)
+
+1. **Cycle configuration** — frequency, recipients per cycle, start date,
+   *Members can choose turns until*, contribution per cycle. Dates are
+   counted from the start date and a 31st-of-the-month start lands on the
+   last day of shorter months.
+2. **Generate / rebuild schedule** — builds cycles from each member's turn
+   count. Turns already claimed or paid are kept; only open ones are
+   redrawn. Run it again after members join.
+3. **Fill open slots** — three ways: *by members' choices* (everyone's
+   first choice before anyone's second; clashes settled by random order;
+   nobody gets more turns than they have; the rest drawn at random),
+   *by random draw*, or *in order*. Every assignment is written to the
+   activity log with how it was decided.
+4. **Reshuffle turns not yet paid** — redraws only the turns the system
+   handed out. Turns members chose, and anything paid, never move.
+5. **Cycles close themselves** once every turn in the active cycle is paid
+   or skipped, and the next cycle opens (officials are notified). A cycle
+   can't be closed by hand while any turn is still owed.
+6. **When the whole rotation is done** — *Archive finished rotation* moves
+   it under **Past rotations**, or *Start new rotation (random order /
+   same order)* archives it, builds a fresh schedule and fills it in one
+   step. Archived turns no longer count against anyone's allowance.
+
+A member who is removed from the group drops out of the draw and their
+unpaid turns become open again.
 
 ## Welfare
 

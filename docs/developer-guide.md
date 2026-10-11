@@ -175,6 +175,18 @@ more than once. Worth internalizing rather than rediscovering.
   don't rename; keep the old name with a comment explaining what it really
   means now.
 
+### Two more that bit during the dashboard/MGR work
+
+- **`Date.now()` in render fails `react-hooks/purity`** — including in
+  Server Components. Compute "today in Nairobi" with `nairobiToday()` from
+  `lib/domain/mgr.ts` (or any helper that calls `new Date()` itself).
+- **The test suite and the app share one database.** `tests/` reads
+  `.env.local`, so a schema change makes DB-backed tests fail with
+  `42703 column ... does not exist` until `npm run db:migrate` has been
+  applied. Migrations in this repo are additive; generate with
+  `npx drizzle-kit generate --name <what>`, review the SQL, migrate, then
+  run the tests.
+
 ## Running & smoke-testing
 
 `npm run dev` starts on port 3000 (falls back to the next free port if
@@ -205,6 +217,11 @@ upgraded, rather than shipping code against a stale schema. Cron schedules
 live in `vercel.json` (UTC times — see [`architecture.md`'s cron
 section](./architecture.md#cron-jobs-vercel-cron) for the Nairobi
 conversion).
+
+Optional env vars: `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (enable
+Continue with Google; redirect URL `https://<domain>/api/auth/google/callback`),
+`NOVU_API_KEY` (+ `NOVU_WORKFLOW_ID`, `NOVU_API_URL`) for external
+notification delivery.
 
 Required env vars beyond the two DB URLs: `CRON_SECRET`,
 `INTASEND_SECRET_KEY` + `INTASEND_ENV` + `INTASEND_WEBHOOK_CHALLENGE`,

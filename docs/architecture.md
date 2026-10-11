@@ -130,6 +130,19 @@ carefully the policies are written. The app never connects as that role:
   Handler uses this instead of trusting anything client-supplied.
 - `switchGroup(groupId)` validates the target membership is `active`,
   updates `sessions.active_group_id`.
+- **Sign-in methods**: email/phone + bcrypt password (`loginAction`), and
+  optional Google (`app/api/auth/google/*`, `lib/auth/google.ts`) — a state
+  cookie guards the redirect, the profile is read from Google's userinfo
+  endpoint over TLS and must carry a verified email, and the user is matched
+  by `users.google_id`, then by email, else created (with a random unusable
+  password hash, since the column is required). Both paths finish with
+  `startSessionForUser`.
+- **Brute-force guard**: `users.failed_logins` / `users.locked_until` — 5
+  wrong passwords lock that account's sign-in for 15 minutes; a success
+  resets the counter. Per-account only (see the CHANGELOG known gaps).
+- **Browser headers** (`next.config.ts`): HSTS, `X-Frame-Options: DENY`,
+  `nosniff`, `Referrer-Policy`, and a `Permissions-Policy` that blocks
+  camera/microphone/geolocation. There is no CSP yet.
 - Real enforcement is `requireSession()` / `requireRole(...roles)` /
   `requireActiveGroup()` / `requireProduct(product, ...roles)` /
   `requirePlatformAdmin()` at the top of every protected surface — same
@@ -233,7 +246,8 @@ app/
     layout.tsx                  # would collide with (dashboard)'s own routes)
     groups/, groups/[id]/, users/, stats/, integrations/
   api/
-    cron/{contribution-dues,loan-overdue,compliance-reminders}/
+    cron/{contribution-dues,loan-overdue,compliance-reminders,mgr-reminders}/
+    auth/google/ + callback/    # optional Google sign-in
     payments/{callback,platform-fee,loan-fee,subscription-invoice,wallet-topup}/
     upload/
     v1/{group,members,contributions,loans,fines,meetings,mgr/cycles,
@@ -241,7 +255,7 @@ app/
 lib/
   db/{schema.ts, client.ts, rls.ts}
   domain/{..., governance.ts}  # pure, DB-free, unit-tested business logic
-  auth/{session.ts, api-keys.ts, api-session.ts, api-response.ts}
+  auth/{session.ts, google.ts, api-keys.ts, api-session.ts, api-response.ts}
   webhooks/dispatch.ts  # outbound webhook signing + delivery + logging
   nav-config.ts    # single source of truth for the sidebar + role/product gating
   validation/      # zod schemas
@@ -291,8 +305,9 @@ the group's own configured value.
 ## Cron jobs (Vercel Cron)
 
 `app/api/cron/contribution-dues/route.ts`, `app/api/cron/loan-overdue/route.ts`,
-and `app/api/cron/compliance-reminders/route.ts`, declared in `vercel.json`.
-Vercel Cron is UTC-only; Nairobi is UTC+3 year-round (no DST). All three:
+`app/api/cron/compliance-reminders/route.ts` and
+`app/api/cron/mgr-reminders/route.ts`, declared in `vercel.json`.
+Vercel Cron is UTC-only; Nairobi is UTC+3 year-round (no DST). All four:
 
 - Require `Authorization: Bearer $CRON_SECRET` (Vercel attaches this
   automatically when `CRON_SECRET` is set).
@@ -307,6 +322,20 @@ Vercel Cron is UTC-only; Nairobi is UTC+3 year-round (no DST). All three:
   serverless logs don't give you. Surfaced on `/super-admin/stats`.
 
 Full request/response shape: [`api.md`](./api.md).
+
+### MGR rotations (how cycles are numbered and counted)
+
+`mgr_cycles.status` is `planned → active → completed → closed`; **`closed`
+means archived**. A new rotation continues numbering after the archived ones
+(`rotationBase` in `mgr/actions.ts` = the highest closed `cycle_number`), and
+every query that counts a member's turns (claim limit, auto-assign, the Turns
+tab) only looks at cycles above that base. Closing is guarded
+(`cycleCloseBlocker`): only the active cycle, only when every slot is paid or
+skipped — and it happens automatically when the last slot is settled. A paid
+slot can't be reassigned or un-paid. Fair-fill logic
+(`assignByPreferences`, `buildAutoAssignQueue`, `shuffled`) lives in
+`lib/domain/mgr.ts` as pure, unit-tested functions; dates are anchored to
+the start date (`cycleDate`) so they never drift.
 
 ## Notifications
 
