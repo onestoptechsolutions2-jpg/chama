@@ -189,10 +189,14 @@ function MarkPaidDialog({ slot }: { slot: Slot }) {
 
   function confirm() {
     startTransition(async () => {
-      await adminUpdateSlotAction(slot.id, {
+      const result = await adminUpdateSlotAction(slot.id, {
         status: "paid",
         payoutReference: payoutReference || undefined,
       });
+      if (result?.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success("Marked paid");
       setOpen(false);
     });
@@ -256,16 +260,20 @@ function SlotRow({
   }
 
   function assign(memberId: string | null) {
-    startTransition(() =>
-      adminUpdateSlotAction(slot.id, {
+    startTransition(async () => {
+      const result = await adminUpdateSlotAction(slot.id, {
         memberId: memberId ? Number(memberId) : null,
         status: memberId ? "auto_assigned" : "open",
-      }),
-    );
+      });
+      if (result?.error) toast.error(result.error);
+    });
   }
 
   function skip() {
-    startTransition(() => adminUpdateSlotAction(slot.id, { status: "skipped" }));
+    startTransition(async () => {
+      const result = await adminUpdateSlotAction(slot.id, { status: "skipped" });
+      if (result?.error) toast.error(result.error);
+    });
   }
 
   return (
@@ -286,6 +294,7 @@ function SlotRow({
         )}
         {isStaff && (
           <>
+            {slot.status !== "paid" && (
             <Select
               value={slot.memberId ? String(slot.memberId) : ""}
               onValueChange={(v) => assign(v || null)}
@@ -306,6 +315,7 @@ function SlotRow({
                 ))}
               </SelectContent>
             </Select>
+            )}
             {slot.status !== "paid" && slot.member && <MarkPaidDialog slot={slot} />}
             {slot.status === "open" && (
               <Button size="sm" variant="ghost" disabled={isPending} onClick={skip}>

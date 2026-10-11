@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser, type Tx } from "@/lib/db/rls";
-import { members, contributions, users, groupMemberships, groups, sessions } from "@/lib/db/schema";
+import { members, contributions, users, groupMemberships, groups, sessions, loans } from "@/lib/db/schema";
 import {
   createMemberSchema,
   recordContributionSchema,
@@ -335,22 +335,65 @@ export async function resetMemberPasswordAction(
   return null;
 }
 
-export async function deactivateMemberAction(memberId: number): Promise<void> {
+/**
+ * Takes a member out of the group. Their history stays; they can no longer
+ * sign in to this group, drop out of the Mzunguko queue, and any turn they
+ * hadn't been paid for is freed up. Refused while they still owe a loan, and
+ * for admins (demote first) or yourself, so a group can't lock itself out.
+ */
+export async function deactivateMemberAction(memberId: number): Promise<MemberActionState> {
   const session = await requireRole("admin");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const result = await withTenant(groupId, async (tx): Promise<MemberActionState> => {
+    const member = await tx.query.members.findFirst({
+      where: and(eq(members.id, memberId), eq(members.groupId, groupId), eq(members.active, true)),
+    });
+    if (!member) return { error: "Member not found" };
+
+    if (member.userId) {
+      if (member.userId === session.user.id) return { error: "You cannot remove yourself" };
+      const membership = await tx.query.groupMemberships.findFirst({
+        where: and(
+          eq(groupMemberships.groupId, groupId),
+          eq(groupMemberships.userId, member.userId),
+          eq(groupMemberships.status, "active"),
+        ),
+      });
+      if (membership?.role === "admin") {
+        return { error: "Change this person's role from Admin first, then remove them." };
+      }
+    }
+
+    const owing = await tx.query.loans.findFirst({
+      where: and(
+        eq(loans.memberId, memberId),
+        eq(loans.groupId, groupId),
+        inArray(loans.status, ["active", "extended", "overdue"]),
+      ),
+    });
+    if (owing) return { error: "This member still has a loan to repay. Clear it first." };
+
     await tx
       .update(members)
       .set({ active: false, updatedAt: new Date() })
-      .where(and(eq(members.id, memberId), eq(members.groupId, groupId)));
+      .where(eq(members.id, memberId));
+    if (member.userId) {
+      await tx
+        .update(groupMemberships)
+        .set({ status: "suspended" })
+        .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.userId, member.userId)));
+      await refreshRegistrationStatus(tx, groupId);
+    }
     await releaseMemberFromRotation(tx, groupId, memberId, {
       userId: session.user.id,
       role: session.activeMembership.role,
     });
+    return null;
   });
 
   revalidatePath("/dashboard/members");
+  return result;
 }
 
 const ASSIGNABLE_ROLES: MembershipRole[] = ["admin", "treasurer", "secretary", "member"];

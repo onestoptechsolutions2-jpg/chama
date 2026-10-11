@@ -12,6 +12,7 @@ import {
   recordContributionAction,
   createLoginForMemberAction,
   resetMemberPasswordAction,
+  deactivateMemberAction,
   updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/dashboard/members/actions";
@@ -285,6 +286,45 @@ function ResetPasswordDialog({ member }: { member: Member }) {
   );
 }
 
+function RemoveMemberDialog({ member }: { member: Member }) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function remove() {
+    startTransition(async () => {
+      const result = await deactivateMemberAction(member.id);
+      if (result?.error) {
+        setError(result.error);
+        return;
+      }
+      setOpen(false);
+      toast.success(`${member.name} was removed`);
+    });
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="sm" className="text-destructive" />}>
+        Remove from group
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remove {member.name}?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-muted-foreground">
+          They will no longer be able to open this group. Their savings history stays on record, and any
+          Mzunguko turn they have not been paid for becomes open again.
+        </p>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        <Button variant="destructive" disabled={pending} onClick={remove} className="w-full">
+          {pending ? "Removing…" : "Yes, remove"}
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RoleCell({ member, editable }: { member: Member; editable: boolean }) {
   const [isPending, startTransition] = useTransition();
 
@@ -420,6 +460,7 @@ export function MembersManager({
                       {m.membership?.rulesAcceptedAt && <Badge variant="secondary">Accepted rules</Badge>}
                       {canEdit && isAdmin && !m.userId && <CreateLoginDialog member={m} />}
                       {isAdmin && m.userId && m.membership?.role !== "admin" && <ResetPasswordDialog member={m} />}
+                      {isAdmin && m.membership?.role !== "admin" && <RemoveMemberDialog member={m} />}
                     </div>
                   </div>
                 </details>

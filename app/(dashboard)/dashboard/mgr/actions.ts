@@ -330,10 +330,11 @@ export async function adminUpdateSlotAction(
     payoutReference?: string | null;
     note?: string | null;
   },
-): Promise<void> {
+): Promise<MgrActionState> {
   const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
+  let blocked: string | null = null;
   const paidEvent = await withTenant(groupId, async (tx) => {
     const [slot] = await tx
       .select()
@@ -341,6 +342,16 @@ export async function adminUpdateSlotAction(
       .where(and(eq(mgrSlots.id, slotId), eq(mgrSlots.groupId, groupId)))
       .for("update");
     if (!slot) return null;
+
+    // A paid turn is a record of money that moved — it can't be handed to
+    // someone else or un-paid. (Only the payout reference may be corrected.)
+    const changesHistory =
+      (data.memberId !== undefined && data.memberId !== slot.memberId) ||
+      (data.status !== undefined && data.status !== slot.status);
+    if (slot.status === "paid" && changesHistory) {
+      blocked = "This turn is already paid and can't be changed.";
+      return null;
+    }
 
     const set: Record<string, unknown> = {};
     if (data.memberId !== undefined) set.memberId = data.memberId;
@@ -387,6 +398,7 @@ export async function adminUpdateSlotAction(
   }
 
   revalidatePath("/dashboard/mgr");
+  return blocked ? { error: blocked } : null;
 }
 
 /**
