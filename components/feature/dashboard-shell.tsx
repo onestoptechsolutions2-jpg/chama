@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, ChevronsUpDown, LogOut, ShieldCheck, Bell } from "lucide-react";
-import { getVisibleNavItems, type NavItem } from "@/lib/nav-config";
+import { getVisibleNavItems, navSections, type NavItem } from "@/lib/nav-config";
 import type { Session } from "@/lib/auth/session";
 import { switchGroupAction } from "@/app/(dashboard)/actions";
 import { logoutAction } from "@/app/(auth)/actions";
@@ -88,10 +88,6 @@ function Sidebar({
   unread: number;
   onNavigate?: () => void;
 }) {
-  const pathname = usePathname();
-  const main = items.filter((i) => !i.advanced);
-  const more = items.filter((i) => i.advanced);
-
   return (
     <div className="flex h-full flex-col gap-4 p-4">
       <div className="flex items-center justify-between">
@@ -101,22 +97,20 @@ function Sidebar({
       <GroupSwitcher session={session} />
 
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-        {main.map((i) => (
-          <NavLink key={i.href} item={i} onNavigate={onNavigate} />
-        ))}
-        {more.length > 0 && (
-          <details className="mt-2 border-t pt-2" open={more.some((i) => i.href === pathname)}>
-            <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between rounded-xl px-3 text-base font-medium text-muted-foreground hover:bg-muted">
-              More
-              <ChevronsUpDown className="size-4" />
-            </summary>
-            <div className="mt-1 flex flex-col gap-1">
-              {more.map((i) => (
+        {navSections.map((section) => {
+          const group = items.filter((i) => i.section === section.id);
+          if (group.length === 0) return null;
+          return (
+            <div key={section.id} className="mb-3">
+              <p className="px-3 pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
+                {section.label}
+              </p>
+              {group.map((i) => (
                 <NavLink key={i.href} item={i} onNavigate={onNavigate} />
               ))}
             </div>
-          </details>
-        )}
+          );
+        })}
         {session.user.platformRole && (
           <Link
             href="/super-admin/groups"
