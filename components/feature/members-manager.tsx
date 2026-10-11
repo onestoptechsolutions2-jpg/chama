@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
+import Link from "next/link";
+import { Plus, Search, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import type { members as membersTable, groupMemberships as groupMembershipsTable } from "@/lib/db/schema";
 import { contributionTypes } from "@/lib/validation/members";
@@ -12,19 +14,11 @@ import {
   updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/dashboard/members/actions";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -60,45 +54,54 @@ function totalSavings(m: Member) {
 }
 
 function AddMemberForm() {
+  const [open, setOpen] = useState(false);
   const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
-    createMemberAction,
+    async (prev, formData) => {
+      const result = await createMemberAction(prev, formData);
+      if (!result) setOpen(false);
+      return result;
+    },
     null,
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Add a member</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form action={formAction} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button />}>
+        <UserPlus className="size-5" /> Add Member
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add a new member</DialogTitle>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+            <Label htmlFor="name">Full name</Label>
             <Input id="name" name="name" required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone</Label>
-            <Input id="phone" name="phone" placeholder="0712345678" />
+            <Label htmlFor="phone">Phone number</Label>
+            <Input id="phone" name="phone" type="tel" placeholder="0712345678" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="capital">Initial capital (Ksh)</Label>
-            <Input id="capital" name="capital" type="number" min="0" step="1" defaultValue={0} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="security">Initial security (Ksh)</Label>
-            <Input id="security" name="security" type="number" min="0" step="1" defaultValue={0} />
-          </div>
-          {state?.error && (
-            <p className="sm:col-span-2 lg:col-span-4 text-sm text-destructive">
-              {state.error}
-            </p>
-          )}
-          <Button type="submit" disabled={pending} className="lg:col-span-4 lg:w-fit">
+          <details className="rounded-lg border p-3">
+            <summary className="cursor-pointer text-sm font-medium">Already saved something? (optional)</summary>
+            <div className="mt-3 grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="capital">Capital (Ksh)</Label>
+                <Input id="capital" name="capital" type="number" min="0" step="1" defaultValue={0} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="security">Security (Ksh)</Label>
+                <Input id="security" name="security" type="number" min="0" step="1" defaultValue={0} />
+              </div>
+            </div>
+          </details>
+          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Adding…" : "Add member"}
           </Button>
         </form>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -108,17 +111,16 @@ function ImportMembersForm() {
     null,
   );
   return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Import members and opening balances</CardTitle></CardHeader>
-      <CardContent>
+    <div>
+      <div>
         <form action={formAction} className="flex flex-wrap items-end gap-4">
           <div className="min-w-64 flex-1 space-y-2"><Label htmlFor="member-import">CSV file</Label><Input id="member-import" name="file" type="file" accept=".csv,text/csv" required /></div>
           <Button type="submit" variant="outline" disabled={pending}>{pending ? "Importing..." : "Import CSV"}</Button>
           {state?.error && <p className="basis-full text-sm text-destructive">{state.error}</p>}
         </form>
         <p className="mt-3 text-xs text-muted-foreground">Headers: name, phone, email, capital, security, personal_savings, welfare_balance</p>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -144,17 +146,17 @@ function RecordContributionDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="outline" size="sm" />}>
-        Record contribution
+      <DialogTrigger render={<Button />}>
+        <Plus className="size-5" /> Add Money
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record contribution — {member.name}</DialogTitle>
+          <DialogTitle>Add money — {member.name}</DialogTitle>
         </DialogHeader>
         <form action={formAction} className="space-y-4">
           <input type="hidden" name="memberId" value={member.id} />
           <div className="space-y-2">
-            <Label htmlFor={`type-${member.id}`}>Type</Label>
+            <Label htmlFor={`type-${member.id}`}>What is it for?</Label>
             <Select
               name="type"
               defaultValue="capital"
@@ -184,12 +186,12 @@ function RecordContributionDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor={`reference-${member.id}`}>Reference (optional)</Label>
+            <Label htmlFor={`reference-${member.id}`}>M-Pesa code (optional)</Label>
             <Input id={`reference-${member.id}`} name="reference" placeholder="M-Pesa code" />
           </div>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
           <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Recording…" : "Record"}
+            {pending ? "Saving…" : "Save"}
           </Button>
         </form>
       </DialogContent>
@@ -298,73 +300,102 @@ export function MembersManager({
   isAdmin: boolean;
   showWelfare: boolean;
 }) {
-  return (
-    <div className="space-y-6">
-      {canEdit && <AddMemberForm />}
-      {canEdit && <ImportMembersForm />}
+  const [query, setQuery] = useState("");
+  const q = query.trim().toLowerCase();
+  const shown = q
+    ? members.filter((m) => m.name.toLowerCase().includes(q) || (m.phone ?? "").includes(q))
+    : members;
+  const groupTotal = members.reduce((sum, m) => sum + totalSavings(m), 0);
 
-      <Card>
-        <CardContent className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Rules</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead className="text-right">Capital</TableHead>
-                <TableHead className="text-right">Security</TableHead>
-                <TableHead className="text-right">Savings</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead className="text-right">Fines</TableHead>
-                {canEdit && <TableHead />}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {members.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={canEdit ? 10 : 9} className="text-center text-muted-foreground">
-                    No members yet.
-                  </TableCell>
-                </TableRow>
-              )}
-              {members.map((m) => (
-                <TableRow key={m.id}>
-                  <TableCell className="font-medium">{m.name}</TableCell>
-                  <TableCell>
-                    <RoleCell member={m} editable={isAdmin} />
-                  </TableCell>
-                  <TableCell>
-                    {m.membership?.rulesAcceptedAt ? (
-                      <Badge variant="secondary" title={new Date(m.membership.rulesAcceptedAt).toLocaleString()}>
-                        Accepted
-                      </Badge>
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-base text-muted-foreground">
+          {members.length} members · {ksh(groupTotal)} saved together
+        </p>
+        {canEdit && <AddMemberForm />}
+      </div>
+
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 size-5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search by name or phone"
+          className="pl-10"
+          aria-label="Search members"
+        />
+      </div>
+
+      {shown.length === 0 && (
+        <Card>
+          <CardContent className="pt-6 text-center text-muted-foreground">
+            {members.length === 0 ? "No members yet. Tap Add Member to start." : "Nobody matches that search."}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="space-y-3">
+        {shown.map((m) => {
+          const fines = Number(m.totalFines);
+          return (
+            <Card key={m.id}>
+              <CardContent className="space-y-3 pt-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-lg font-semibold">{m.name}</p>
+                    <p className="text-sm text-muted-foreground">{m.phone ?? "No phone"}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xl font-bold tabular-nums">{ksh(totalSavings(m))}</p>
+                    {fines > 0 ? (
+                      <Badge variant="destructive">Owes {ksh(fines)} fines</Badge>
                     ) : (
-                      <span className="text-sm text-muted-foreground">—</span>
+                      <span className="text-sm text-muted-foreground">No fines</span>
                     )}
-                  </TableCell>
-                  <TableCell>{m.phone ?? "—"}</TableCell>
-                  <TableCell className="text-right">{ksh(m.capital)}</TableCell>
-                  <TableCell className="text-right">{ksh(m.security)}</TableCell>
-                  <TableCell className="text-right">{ksh(m.personalSavings)}</TableCell>
-                  <TableCell className="text-right font-medium">
-                    {ksh(totalSavings(m))}
-                  </TableCell>
-                  <TableCell className="text-right">{ksh(m.totalFines)}</TableCell>
-                  {canEdit && (
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <RecordContributionDialog member={m} showWelfare={showWelfare} />
-                        {isAdmin && !m.userId && <CreateLoginDialog member={m} />}
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {canEdit && <RecordContributionDialog member={m} showWelfare={showWelfare} />}
+                  <Link
+                    href={`/dashboard/statement?member_id=${m.id}`}
+                    className={buttonVariants({ variant: "outline" })}
+                  >
+                    View history
+                  </Link>
+                </div>
+
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-muted-foreground">More details</summary>
+                  <div className="mt-3 space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded-lg bg-muted p-2"><p className="text-xs text-muted-foreground">Capital</p><p className="font-medium">{ksh(m.capital)}</p></div>
+                      <div className="rounded-lg bg-muted p-2"><p className="text-xs text-muted-foreground">Security</p><p className="font-medium">{ksh(m.security)}</p></div>
+                      <div className="rounded-lg bg-muted p-2"><p className="text-xs text-muted-foreground">Savings</p><p className="font-medium">{ksh(m.personalSavings)}</p></div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span>Role:</span>
+                      <RoleCell member={m} editable={isAdmin} />
+                      {m.membership?.rulesAcceptedAt && <Badge variant="secondary">Accepted rules</Badge>}
+                      {canEdit && isAdmin && !m.userId && <CreateLoginDialog member={m} />}
+                    </div>
+                  </div>
+                </details>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {canEdit && (
+        <details className="rounded-xl border p-4">
+          <summary className="cursor-pointer text-base font-medium">Add many members from a file</summary>
+          <div className="mt-4">
+            <ImportMembersForm />
+          </div>
+        </details>
+      )}
     </div>
   );
 }

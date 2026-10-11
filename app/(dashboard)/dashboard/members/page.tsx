@@ -38,7 +38,7 @@ export default async function MembersPage() {
     <div className="space-y-6">
       <PageHeader
         title="Members"
-        description="Group members and their savings balances."
+        description="Find a member, add money, or see their history."
       />
       <MembersManager
         members={membersWithRole}

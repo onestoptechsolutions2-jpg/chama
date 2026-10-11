@@ -1,6 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { Tx } from "@/lib/db/rls";
-import { notifications, groupMemberships } from "@/lib/db/schema";
+import { notifications, groupMemberships, users } from "@/lib/db/schema";
+import { sendViaNovu } from "@/lib/notify/novu";
 import type { NotificationTemplate } from "@/lib/domain/notifications";
 import type { MembershipRole } from "@/lib/auth/session";
 
@@ -35,6 +36,21 @@ export async function insertNotification(
     sourceType: input.sourceType,
     sourceId: input.sourceId,
   });
+
+  if (process.env.NOVU_API_KEY) {
+    const user = await tx.query.users.findFirst({ where: eq(users.id, input.userId) });
+    if (user) {
+      void sendViaNovu({
+        userId: user.id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        title: input.template.title,
+        body: input.template.body,
+        link: input.link,
+      });
+    }
+  }
 }
 
 /**

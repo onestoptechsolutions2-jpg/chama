@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { and, eq, gte, sql } from "drizzle-orm";
-import { Users, Landmark, ShieldCheck, Wallet, HeartHandshake, TriangleAlert, OctagonAlert, type LucideIcon } from "lucide-react";
+import { Users, Landmark, ShieldCheck, Wallet, HeartHandshake, TriangleAlert, OctagonAlert, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, meetings, groups, welfareFunds } from "@/lib/db/schema";
@@ -62,6 +62,29 @@ function ksh(n: string | number) {
   return `Ksh ${Number(n).toLocaleString()}`;
 }
 
+type Tile = { href: string; label: string; hint: string; icon: LucideIcon };
+
+/** Few, big, plain-language buttons — the whole day-to-day job in one screen. */
+function ActionTiles({ tiles }: { tiles: Tile[] }) {
+  return (
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {tiles.map(({ href, label, hint, icon: Icon }) => (
+        <Link
+          key={href}
+          href={href}
+          className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-4 text-center shadow-sm transition-colors hover:bg-accent"
+        >
+          <span className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Icon className="size-7" />
+          </span>
+          <span className="text-lg font-bold leading-tight">{label}</span>
+          <span className="text-sm text-muted-foreground">{hint}</span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function Metric({ label, value, icon: Icon }: { label: string; value: string; icon: LucideIcon }) {
   return (
     <Card>
@@ -120,14 +143,29 @@ export default async function DashboardPage() {
   ]);
   const showWelfare = products.welfare;
 
+  const tiles: Tile[] = isStaff
+    ? [
+        { href: "/dashboard/members", label: "Add Money", hint: "Record a payment", icon: Wallet },
+        { href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays },
+        ...(products.loans ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
+        { href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel },
+      ]
+    : [
+        { href: "/dashboard/statement", label: "My Money", hint: "What I have saved", icon: Wallet },
+        ...(products.loans ? [{ href: "/dashboard/loans/apply", label: "Ask for Loan", hint: "Borrow from the group", icon: Landmark }] : []),
+        ...(products.welfare ? [{ href: "/dashboard/welfare", label: "Get Help", hint: "Welfare support", icon: HeartHandshake }] : []),
+        ...(products.mgr ? [{ href: "/dashboard/mgr", label: "Mzunguko", hint: "When I receive", icon: RefreshCw }] : []),
+      ];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Welcome back, {session.user.name.split(" ")[0]}</h1>
-        <p className="text-sm text-muted-foreground">{groupName} · <span className="capitalize">{groupType}</span> · <span className="capitalize">{role}</span></p>
+        <h1 className="text-3xl font-bold tracking-tight">Hello, {session.user.name.split(" ")[0]}</h1>
+        <p className="text-base text-muted-foreground">{groupName}</p>
       </div>
+      <ActionTiles tiles={tiles} />
       {isStaff && group && !group.registrationComplete && <Card className="border-amber-500/50 bg-amber-500/5"><CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6"><p className="text-sm">This group&apos;s registration isn&apos;t complete — it needs a Treasurer and Secretary assigned before it&apos;s publicly discoverable or can approve new members.</p><Link href="/dashboard/members" className={buttonVariants({ size: "sm", variant: "outline" })}>Assign officials</Link></CardContent></Card>}
-      <div className={`grid grid-cols-2 gap-3 ${showWelfare ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+      {isStaff && <div className={`grid grid-cols-2 gap-3 ${showWelfare ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
         <Metric label="Members" value={String(totals.memberCount)} icon={Users} />
         <Metric label="Capital" value={ksh(totals.capital)} icon={Landmark} />
         <Metric label="Security" value={ksh(totals.security)} icon={ShieldCheck} />
@@ -139,7 +177,7 @@ export default async function DashboardPage() {
             icon={HeartHandshake}
           />
         )}
-      </div>
+      </div>}
       <RecommendationsTeaser recommendations={insights?.recommendations ?? null} />
       <div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-base">Pending fines</CardTitle></CardHeader><CardContent className="space-y-2">{pendingFines.length === 0 && <p className="text-sm text-muted-foreground">No pending fines.</p>}{pendingFines.map((f) => <div key={f.id} className="flex items-center justify-between text-sm"><span>{f.member.name}</span><span className="flex items-center gap-2"><Badge variant="secondary" className="capitalize">{f.type.replace("_", " ")}</Badge>{ksh(f.amount)}</span></div>)}</CardContent></Card><Card><CardHeader><CardTitle className="text-base">Next meeting</CardTitle></CardHeader><CardContent>{nextMeeting ? <div className="text-sm"><p className="font-medium">{nextMeeting.meetingDate}</p><p className="capitalize text-muted-foreground">{nextMeeting.meetingType}{nextMeeting.venue ? ` · ${nextMeeting.venue}` : ""}</p></div> : <p className="text-sm text-muted-foreground">No upcoming meetings scheduled.</p>}</CardContent></Card></div>
     </div>

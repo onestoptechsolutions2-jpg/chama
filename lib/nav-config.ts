@@ -54,6 +54,8 @@ export type NavItem = {
    * has, and "a few essential tabs" holds regardless of role or group type.
    */
   primary?: boolean;
+  /** Rarely-needed tools: tucked under "More tools" so the main menu stays short. */
+  advanced?: boolean;
 };
 
 /**
@@ -76,8 +78,9 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/insights",
-    label: "Insights",
+    label: "Advice & Reports",
     icon: Lightbulb,
+    advanced: true,
     guide:
       "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in. Admins/treasurers/secretaries also get graphical group-performance reports here (contributions, balances, loan and fine exposure) with CSV export.",
     primary: true,
@@ -92,7 +95,7 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/pending-members",
-    label: "Pending members",
+    label: "New Requests",
     icon: UserCheck,
     roles: ["admin", "treasurer"],
     guide:
@@ -136,7 +139,7 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/mgr",
-    label: "Merry-Go-Round",
+    label: "Mzunguko",
     icon: RefreshCw,
     product: "mgr",
     guide:
@@ -163,14 +166,15 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/capital",
-    label: "Capital Position",
+    label: "Group Money",
     icon: PieChart,
+    advanced: true,
     guide:
       "How the group's pooled capital is currently allocated — how much of the capital pool is out on loan versus held in reserve, plus the security, personal savings, welfare, and projects funds tracked alongside it. Visible to every member, not just staff — the point is to make it possible to see the group's money is being used sensibly without asking. Admins can set a target loan-deployment percentage in Settings to get drift alerts here.",
   },
   {
     href: "/dashboard/statement",
-    label: "Statement",
+    label: "My Money",
     icon: FileText,
     guide:
       "One merged timeline of your own contributions, fines, and loan activity — the closest thing to a bank statement for your standing in this group.",
@@ -179,20 +183,23 @@ export const navItems: NavItem[] = [
     href: "/dashboard/rules",
     label: "Rules",
     icon: ScrollText,
+    advanced: true,
     guide: "The group's bylaws, each optionally tied to a penalty amount if referenced when issuing a fine.",
   },
   {
     href: "/dashboard/wallet",
-    label: "Wallet",
+    label: "Prepaid Wallet",
     icon: WalletCards,
+    advanced: true,
     roles: ["admin", "treasurer"],
     guide:
       "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
   },
   {
     href: "/dashboard/billing",
-    label: "Billing",
+    label: "Platform Bill",
     icon: Receipt,
+    advanced: true,
     roles: ["admin", "treasurer"],
     guide:
       "What this group owes the platform — computed live from your member count, which vehicles (Table Banking, Welfare, Investment) are active, and your real financial activity over the last 12 months, not a flat fee. Admins can generate this period's invoice and charge it, either instantly from the prepaid Wallet or via an M-Pesa STK push.",
@@ -201,14 +208,16 @@ export const navItems: NavItem[] = [
     href: "/dashboard/developer",
     label: "Developer",
     icon: Webhook,
+    advanced: true,
     roles: ["admin"],
     guide:
       "API keys and webhook endpoints for integrating other systems with this group's data — an accounting sync, a custom dashboard, an SMS gateway. See docs/api.md for the full contract. Not needed unless you're setting up an integration.",
   },
   {
     href: "/dashboard/governance",
-    label: "Governance",
+    label: "Group Papers",
     icon: ShieldCheck,
+    advanced: true,
     roles: ["admin", "secretary"],
     guide:
       "Group documents (constitution, bank details, registration certificate) and compliance obligations like AGM dates and annual returns — with reminders as they come due. Basic administrative housekeeping, not tied to any financial product.",
@@ -217,6 +226,7 @@ export const navItems: NavItem[] = [
     href: "/dashboard/settings",
     label: "Settings",
     icon: Settings,
+    advanced: true,
     roles: ["admin", "treasurer", "secretary"],
     guide:
       "The group's configurable business rules — share price, contribution day, loan interest/limit multiplier, fine amounts, meeting defaults. Changing these here is what actually takes effect; nothing else overrides them.",
@@ -230,7 +240,7 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/guide",
-    label: "Guide",
+    label: "Help",
     icon: HelpCircle,
     guide: "This page — a role-aware explanation of what everything in the sidebar does.",
   },

@@ -54,27 +54,41 @@ function initials(name: string) {
 
 function NavLinks({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const main = items.filter((i) => !i.advanced);
+  const more = items.filter((i) => i.advanced);
+
+  const renderLink = (item: NavItem) => {
+    const Icon = item.icon;
+    const active = pathname === item.href;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={onNavigate}
+        className={`flex min-h-12 items-center gap-3 rounded-xl px-3 py-3 text-base font-medium transition-colors ${
+          active
+            ? "bg-primary text-primary-foreground"
+            : "text-foreground/80 hover:bg-muted hover:text-foreground"
+        }`}
+      >
+        <Icon className="h-5 w-5" />
+        {item.label}
+      </Link>
+    );
+  };
+
   return (
     <nav className="flex flex-col gap-1">
-      {items.map((item) => {
-        const Icon = item.icon;
-        const active = pathname === item.href;
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              active
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            }`}
-          >
-            <Icon className="h-4 w-4" />
-            {item.label}
-          </Link>
-        );
-      })}
+      {main.map(renderLink)}
+      {more.length > 0 && (
+        <details className="group mt-2 border-t pt-2" open={more.some((i) => i.href === pathname)}>
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between rounded-xl px-3 py-3 text-base font-medium text-muted-foreground hover:bg-muted">
+            More tools
+            <ChevronsUpDown className="h-4 w-4" />
+          </summary>
+          <div className="mt-1 flex flex-col gap-1">{more.map(renderLink)}</div>
+        </details>
+      )}
     </nav>
   );
 }
@@ -196,10 +210,10 @@ function BottomTabBar({
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[11px] font-medium"
+              className="flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-semibold"
             >
               <span
-                className={`flex size-9 items-center justify-center rounded-full transition-colors ${
+                className={`flex size-10 items-center justify-center rounded-full transition-colors ${
                   active ? "bg-primary text-primary-foreground" : "text-muted-foreground"
                 }`}
               >
