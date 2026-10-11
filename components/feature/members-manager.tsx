@@ -11,6 +11,7 @@ import {
   importMembersAction,
   recordContributionAction,
   createLoginForMemberAction,
+  resetMemberPasswordAction,
   updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/dashboard/members/actions";
@@ -245,6 +246,45 @@ function CreateLoginDialog({ member }: { member: Member }) {
   );
 }
 
+function ResetPasswordDialog({ member }: { member: Member }) {
+  const [open, setOpen] = useState(false);
+  const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
+    async (prev, formData) => {
+      const result = await resetMemberPasswordAction(member.id, prev, formData);
+      if (!result) {
+        setOpen(false);
+        toast.success(`New password saved. Tell ${member.name} in person.`);
+      }
+      return result;
+    },
+    null,
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger render={<Button variant="ghost" size="sm" />}>Forgot password</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New password — {member.name}</DialogTitle>
+        </DialogHeader>
+        <form action={formAction} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`reset-password-${member.id}`}>New password (8 or more characters)</Label>
+            <Input id={`reset-password-${member.id}`} name="password" type="text" autoComplete="off" required />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Tell {member.name} the new password. They are signed out on every phone.
+          </p>
+          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          <Button type="submit" disabled={pending} className="w-full">
+            {pending ? "Saving…" : "Save new password"}
+          </Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RoleCell({ member, editable }: { member: Member; editable: boolean }) {
   const [isPending, startTransition] = useTransition();
 
@@ -379,6 +419,7 @@ export function MembersManager({
                       <RoleCell member={m} editable={isAdmin} />
                       {m.membership?.rulesAcceptedAt && <Badge variant="secondary">Accepted rules</Badge>}
                       {canEdit && isAdmin && !m.userId && <CreateLoginDialog member={m} />}
+                      {isAdmin && m.userId && m.membership?.role !== "admin" && <ResetPasswordDialog member={m} />}
                     </div>
                   </div>
                 </details>

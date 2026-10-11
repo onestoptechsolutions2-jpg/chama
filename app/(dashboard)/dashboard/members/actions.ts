@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { requireRole } from "@/lib/auth/session";
-import { withTenant, type Tx } from "@/lib/db/rls";
-import { members, contributions, users, groupMemberships, groups } from "@/lib/db/schema";
+import { db } from "@/lib/db/client";
+import { withTenant, withUser, type Tx } from "@/lib/db/rls";
+import { members, contributions, users, groupMemberships, groups, sessions } from "@/lib/db/schema";
 import {
   createMemberSchema,
   recordContributionSchema,
@@ -274,6 +275,61 @@ export async function createLoginForMemberAction(
   });
 
   if ("error" in result) return { error: result.error };
+  revalidatePath("/dashboard/members");
+  return null;
+}
+
+/**
+ * "Forgot password" for a member, done by their group admin: sets a new
+ * password the admin then tells the member in person. Deliberately narrow so
+ * a group admin can never take over an account that has power elsewhere:
+ * the member must belong to this group only, hold no platform role, and not
+ * be an admin themselves. Signs them out everywhere and clears any lockout.
+ */
+export async function resetMemberPasswordAction(
+  memberId: number,
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const session = await requireRole("admin");
+  const groupId = session.activeMembership.groupId;
+
+  const password = String(formData.get("password") ?? "");
+  if (password.length < 8) return { error: "Password must be at least 8 characters" };
+
+  const member = await withTenant(groupId, (tx) =>
+    tx.query.members.findFirst({
+      where: and(eq(members.id, memberId), eq(members.groupId, groupId)),
+    }),
+  );
+  if (!member?.userId) return { error: "This member has no login to reset" };
+  const userId = member.userId;
+  if (userId === session.user.id) return { error: "Use your profile to change your own password" };
+
+  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!user || user.platformRole) return { error: "This account cannot be reset here" };
+
+  const memberships = await withUser(userId, (tx) =>
+    tx.query.groupMemberships.findMany({ where: eq(groupMemberships.userId, userId) }),
+  );
+  const inOtherGroups = memberships.some((m) => m.groupId !== groupId);
+  const isAdminHere = memberships.some((m) => m.groupId === groupId && m.role === "admin");
+  if (inOtherGroups) {
+    return { error: "This person is in other groups too. They must reset their own password." };
+  }
+  if (isAdminHere) return { error: "Admins cannot be reset by another admin" };
+
+  await db
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(password),
+      failedLogins: 0,
+      lockedUntil: null,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, userId));
+  await db.delete(sessions).where(eq(sessions.userId, userId));
+
   revalidatePath("/dashboard/members");
   return null;
 }

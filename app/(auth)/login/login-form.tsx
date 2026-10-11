@@ -70,6 +70,9 @@ function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
             </Button>
           </form>
           <p className="mt-4 text-center text-sm text-muted-foreground">
+            Forgot your password? Ask your group admin to set a new one.
+          </p>
+          <p className="mt-4 text-center text-sm text-muted-foreground">
             No account?{" "}
             <Link
               href={next ? `/register?next=${encodeURIComponent(next)}` : "/register"}
