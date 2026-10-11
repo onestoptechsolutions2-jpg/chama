@@ -26,6 +26,8 @@ import {
 import { generateMgrSchedule, buildAutoAssignQueue, cycleCloseBlocker } from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
+import { buildMgrNotification } from "@/lib/domain/notifications";
 
 export type MgrActionState = { error: string } | null;
 
@@ -365,6 +367,10 @@ export async function adminUpdateSlotAction(
         : data.note ?? null,
     });
 
+    if (data.status === "paid" || data.status === "skipped") {
+      await autoCloseCycleIfSettled(tx, groupId, slot.cycleId);
+    }
+
     if (data.status !== "paid") return null;
     return {
       memberId: data.memberId !== undefined ? data.memberId : slot.memberId,
@@ -543,6 +549,70 @@ export async function createCycleAction(scheduledDate?: string): Promise<void> {
  * one, which would have made the MGR agreement gate permanently stuck on
  * cycle 1. This keeps the rotation self-progressing.
  */
+/** Marks the cycle completed and opens the next planned one (lowest number above it). */
+async function completeCycleAndOpenNext(
+  tx: Tx,
+  groupId: number,
+  cycle: { id: number; cycleNumber: number },
+): Promise<{ id: number; cycleNumber: number } | null> {
+  await tx
+    .update(mgrCycles)
+    .set({ status: "completed", updatedAt: new Date() })
+    .where(eq(mgrCycles.id, cycle.id));
+
+  const next = await tx.query.mgrCycles.findFirst({
+    where: and(
+      eq(mgrCycles.groupId, groupId),
+      eq(mgrCycles.status, "planned"),
+      gt(mgrCycles.cycleNumber, cycle.cycleNumber),
+    ),
+    orderBy: (c, { asc }) => [asc(c.cycleNumber)],
+  });
+  if (!next) return null;
+
+  await tx
+    .update(mgrCycles)
+    .set({ status: "active", updatedAt: new Date() })
+    .where(eq(mgrCycles.id, next.id));
+  return next;
+}
+
+/**
+ * Called after a slot is marked paid or skipped: once every slot in the
+ * active cycle is settled, close it and open the next one automatically, and
+ * tell the officials — nobody has to remember to press "Close cycle".
+ */
+async function autoCloseCycleIfSettled(tx: Tx, groupId: number, cycleId: number | null) {
+  if (!cycleId) return;
+  const cycle = await tx.query.mgrCycles.findFirst({
+    where: and(eq(mgrCycles.id, cycleId), eq(mgrCycles.groupId, groupId)),
+  });
+  if (!cycle || cycle.status !== "active") return;
+
+  const slots = await tx.query.mgrSlots.findMany({
+    where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.cycleId, cycleId)),
+  });
+  if (slots.length === 0 || cycleCloseBlocker(slots.map((s) => s.status))) return;
+
+  const next = await completeCycleAndOpenNext(tx, groupId, cycle);
+
+  const template = buildMgrNotification({
+    type: "cycle_closed",
+    cycleNumber: cycle.cycleNumber,
+    nextCycleNumber: next?.cycleNumber ?? null,
+  });
+  for (const userId of await listActiveStaffUserIds(tx, groupId, ["admin", "treasurer"])) {
+    await insertNotification(tx, {
+      groupId,
+      userId,
+      template,
+      link: "/dashboard/mgr",
+      sourceType: "mgr_cycle",
+      sourceId: cycle.id,
+    });
+  }
+}
+
 export async function closeCycleAction(cycleId: number): Promise<MgrActionState> {
   const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
@@ -560,25 +630,7 @@ export async function closeCycleAction(cycleId: number): Promise<MgrActionState>
     const blocker = cycleCloseBlocker(slots.map((s) => s.status));
     if (blocker) return { error: blocker };
 
-    await tx
-      .update(mgrCycles)
-      .set({ status: "completed", updatedAt: new Date() })
-      .where(eq(mgrCycles.id, cycleId));
-
-    const next = await tx.query.mgrCycles.findFirst({
-      where: and(
-        eq(mgrCycles.groupId, groupId),
-        eq(mgrCycles.status, "planned"),
-        gt(mgrCycles.cycleNumber, cycle.cycleNumber),
-      ),
-      orderBy: (c, { asc }) => [asc(c.cycleNumber)],
-    });
-    if (next) {
-      await tx
-        .update(mgrCycles)
-        .set({ status: "active", updatedAt: new Date() })
-        .where(eq(mgrCycles.id, next.id));
-    }
+    await completeCycleAndOpenNext(tx, groupId, cycle);
     return null;
   });
 

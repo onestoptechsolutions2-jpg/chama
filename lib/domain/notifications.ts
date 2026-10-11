@@ -182,3 +182,35 @@ export function buildLoanNotification(event: LoanNotificationEvent): Notificatio
       };
   }
 }
+
+export type MgrNotificationEvent =
+  | { type: "contribution_due_tomorrow"; cycleNumber: number; date: string }
+  | { type: "payout_tomorrow"; cycleNumber: number; amount: number | null }
+  | { type: "cycle_closed"; cycleNumber: number; nextCycleNumber: number | null };
+
+export function buildMgrNotification(event: MgrNotificationEvent): NotificationTemplate {
+  switch (event.type) {
+    case "contribution_due_tomorrow":
+      return {
+        category: "action_required",
+        title: "Mzunguko contribution due tomorrow",
+        body: `Cycle ${event.cycleNumber} is on ${event.date}. Please have your contribution ready.`,
+      };
+    case "payout_tomorrow":
+      return {
+        category: "success",
+        title: "Your Mzunguko turn is tomorrow",
+        body: event.amount
+          ? `You receive Ksh ${event.amount.toLocaleString()} in cycle ${event.cycleNumber}.`
+          : `You receive the payout for cycle ${event.cycleNumber}.`,
+      };
+    case "cycle_closed":
+      return {
+        category: "info",
+        title: `Cycle ${event.cycleNumber} is complete`,
+        body: event.nextCycleNumber
+          ? `Everyone is paid. Cycle ${event.nextCycleNumber} is now open.`
+          : "Everyone is paid. That was the last cycle in the schedule.",
+      };
+  }
+}
