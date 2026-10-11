@@ -140,6 +140,52 @@ function Sidebar({
   );
 }
 
+/** Hrefs offered in the phone's bottom bar, in priority order; the first four
+ * this user can actually see are shown, then a Menu button for everything else. */
+const BOTTOM_BAR = [
+  "/dashboard",
+  "/dashboard/members",
+  "/dashboard/loans",
+  "/dashboard/loans/apply",
+  "/dashboard/statement",
+  "/dashboard/welfare",
+  "/dashboard/mgr",
+];
+
+function BottomBar({ items, onMenu }: { items: NavItem[]; onMenu: () => void }) {
+  const pathname = usePathname();
+  const tabs = BOTTOM_BAR.map((href) => items.find((i) => i.href === href))
+    .filter((i): i is NavItem => !!i)
+    .slice(0, 4);
+  const base = "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium";
+
+  return (
+    <nav
+      className="fixed inset-x-0 bottom-0 z-40 flex border-t bg-card md:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
+      {tabs.map((item) => {
+        const Icon = item.icon;
+        const active = pathname === item.href;
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`${base} ${active ? "text-primary" : "text-muted-foreground"}`}
+          >
+            <Icon className="size-6" />
+            {item.label}
+          </Link>
+        );
+      })}
+      <button type="button" onClick={onMenu} className={`${base} text-muted-foreground`}>
+        <Menu className="size-6" />
+        Menu
+      </button>
+    </nav>
+  );
+}
+
 export function DashboardShell({
   session,
   unreadNotifications = 0,
@@ -186,7 +232,9 @@ export function DashboardShell({
           </span>
         </header>
 
-        <main className="flex-1 p-4 md:p-6">{children}</main>
+        <main className="flex-1 p-4 pb-24 md:p-6 md:pb-6">{children}</main>
+
+        <BottomBar items={items} onMenu={() => setOpen(true)} />
       </div>
     </div>
   );
