@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { generateMgrSchedule, buildAutoAssignQueue } from "../lib/domain/mgr";
+import {
+  generateMgrSchedule,
+  buildAutoAssignQueue,
+  shuffled,
+  cycleCloseBlocker,
+} from "../lib/domain/mgr";
 
 describe("generateMgrSchedule", () => {
   const members = [
@@ -172,5 +177,60 @@ describe("buildAutoAssignQueue", () => {
     ]);
     // member 1 already has round 1; queue should give member 1 rounds 2-3, member 2 rounds 1-3
     expect(queue).toEqual([2, 1, 2, 1, 2]);
+  });
+});
+
+describe("cycle dates", () => {
+  const people = [1, 2, 3, 4].map((memberId) => ({ memberId, turnsTotal: 1, multiplier: 1 }));
+  const dates = (frequency: "weekly" | "biweekly" | "monthly", start: string) =>
+    generateMgrSchedule({
+      frequency,
+      recipientsPerCycle: 1,
+      baseContribution: 1000,
+      startDate: new Date(start),
+      members: people,
+    }).cycles.map((c) => c.scheduledDate);
+
+  it("keeps month-end starts on the last day of each month instead of drifting", () => {
+    expect(dates("monthly", "2026-01-31")).toEqual([
+      "2026-01-31",
+      "2026-02-28",
+      "2026-03-31",
+      "2026-04-30",
+    ]);
+  });
+
+  it("steps weekly and biweekly rotations by exact days", () => {
+    expect(dates("weekly", "2026-01-01")).toEqual(["2026-01-01", "2026-01-08", "2026-01-15", "2026-01-22"]);
+    expect(dates("biweekly", "2026-01-01")[3]).toBe("2026-02-12");
+  });
+});
+
+describe("random draw", () => {
+  const turns = [
+    { memberId: 1, turnsTotal: 2, taken: 0 },
+    { memberId: 2, turnsTotal: 2, taken: 0 },
+    { memberId: 3, turnsTotal: 1, taken: 0 },
+  ];
+
+  it("keeps everyone to their first turn before any second turn", () => {
+    const queue = buildAutoAssignQueue(turns, { shuffle: true, rng: () => 0.1 });
+    expect([...queue.slice(0, 3)].sort()).toEqual([1, 2, 3]);
+    expect([...queue.slice(3)].sort()).toEqual([1, 2]);
+  });
+
+  it("shuffles without losing or duplicating anyone", () => {
+    const out = shuffled([1, 2, 3, 4, 5], () => 0.5);
+    expect([...out].sort()).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe("cycleCloseBlocker", () => {
+  it("allows closing when every slot is paid or skipped", () => {
+    expect(cycleCloseBlocker(["paid", "skipped", "paid"])).toBeNull();
+  });
+  it("blocks while any slot is open or still owed", () => {
+    expect(cycleCloseBlocker(["paid", "claimed"])).toMatch(/1 slot is not paid/);
+    expect(cycleCloseBlocker(["open", "auto_assigned"])).toMatch(/2 slots are not paid/);
   });
 });

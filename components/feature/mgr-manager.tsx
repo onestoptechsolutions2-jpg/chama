@@ -360,7 +360,11 @@ function CycleCard({
                 disabled={isPending}
                 onClick={(e) => {
                   e.stopPropagation();
-                  startTransition(() => closeCycleAction(cycle.id));
+                  startTransition(async () => {
+                    const result = await closeCycleAction(cycle.id);
+                    if (result?.error) toast.error(result.error);
+                    else toast.success(`Cycle ${cycle.cycleNumber} closed`);
+                  });
                 }}
               >
                 Close cycle
@@ -594,9 +598,9 @@ function AdminActions() {
     });
   }
 
-  function autoAssign() {
+  function autoAssign(draw: boolean) {
     startTransition(async () => {
-      const result = await autoAssignAction();
+      const result = await autoAssignAction(draw);
       toast.success(`Assigned ${result.assigned} slot(s)`);
     });
   }
@@ -614,8 +618,11 @@ function AdminActions() {
         <Button disabled={isPending} onClick={generate}>
           {isPending ? "Working…" : "Generate / rebuild schedule"}
         </Button>
-        <Button variant="outline" disabled={isPending} onClick={autoAssign}>
-          Auto-assign open slots
+        <Button variant="outline" disabled={isPending} onClick={() => autoAssign(false)}>
+          Fill open slots in order
+        </Button>
+        <Button variant="outline" disabled={isPending} onClick={() => autoAssign(true)}>
+          Fill open slots by random draw
         </Button>
         <Button variant="outline" disabled={isPending} onClick={addCycle}>
           Add cycle manually

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, isNotNull, ne, notInArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { requireProduct } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import {
@@ -23,7 +23,7 @@ import {
   setTurnsSchema,
   signAgreementSchema,
 } from "@/lib/validation/mgr";
-import { generateMgrSchedule, buildAutoAssignQueue } from "@/lib/domain/mgr";
+import { generateMgrSchedule, buildAutoAssignQueue, cycleCloseBlocker } from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
@@ -455,7 +455,8 @@ export async function chargeFeeFromWalletAction(
   return result;
 }
 
-export async function autoAssignAction(): Promise<{ assigned: number }> {
+/** `draw: true` shuffles who goes first within each round (a fair random draw); otherwise join order. */
+export async function autoAssignAction(draw = false): Promise<{ assigned: number }> {
   const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
@@ -483,6 +484,7 @@ export async function autoAssignAction(): Promise<{ assigned: number }> {
         turnsTotal: t.turnsTotal,
         taken: takenByMember.get(t.memberId) ?? 0,
       })),
+      { shuffle: draw },
     );
 
     let count = 0;
@@ -502,6 +504,7 @@ export async function autoAssignAction(): Promise<{ assigned: number }> {
         toStatus: "auto_assigned",
         fromMemberId: slot.memberId,
         toMemberId: nextMemberId,
+        note: draw ? "random draw" : null,
       });
       count++;
     }
@@ -540,15 +543,22 @@ export async function createCycleAction(scheduledDate?: string): Promise<void> {
  * one, which would have made the MGR agreement gate permanently stuck on
  * cycle 1. This keeps the rotation self-progressing.
  */
-export async function closeCycleAction(cycleId: number): Promise<void> {
+export async function closeCycleAction(cycleId: number): Promise<MgrActionState> {
   const session = await requireProduct("mgr", "admin", "treasurer");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
     const cycle = await tx.query.mgrCycles.findFirst({
       where: and(eq(mgrCycles.id, cycleId), eq(mgrCycles.groupId, groupId)),
     });
-    if (!cycle) return;
+    if (!cycle) return { error: "Cycle not found" };
+    if (cycle.status !== "active") return { error: "Only the current cycle can be closed" };
+
+    const slots = await tx.query.mgrSlots.findMany({
+      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.cycleId, cycleId)),
+    });
+    const blocker = cycleCloseBlocker(slots.map((s) => s.status));
+    if (blocker) return { error: blocker };
 
     await tx
       .update(mgrCycles)
@@ -559,7 +569,7 @@ export async function closeCycleAction(cycleId: number): Promise<void> {
       where: and(
         eq(mgrCycles.groupId, groupId),
         eq(mgrCycles.status, "planned"),
-        ne(mgrCycles.id, cycleId),
+        gt(mgrCycles.cycleNumber, cycle.cycleNumber),
       ),
       orderBy: (c, { asc }) => [asc(c.cycleNumber)],
     });
@@ -569,9 +579,11 @@ export async function closeCycleAction(cycleId: number): Promise<void> {
         .set({ status: "active", updatedAt: new Date() })
         .where(eq(mgrCycles.id, next.id));
     }
+    return null;
   });
 
   revalidatePath("/dashboard/mgr");
+  return result;
 }
 
 // ── Agreement ────────────────────────────────────────────────────────────

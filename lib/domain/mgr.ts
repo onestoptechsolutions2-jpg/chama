@@ -36,16 +36,23 @@ export type GenerateScheduleResult = {
   cycles: GeneratedCycle[];
 };
 
-function nextCycleDate(date: Date, frequency: MgrFrequency): Date {
-  const d = new Date(date);
-  if (frequency === "weekly") d.setDate(d.getDate() + 7);
-  else if (frequency === "biweekly") d.setDate(d.getDate() + 14);
-  else d.setMonth(d.getMonth() + 1);
-  return d;
-}
-
-function toDateStr(d: Date): string {
-  return d.toISOString().split("T")[0];
+/**
+ * Date of the `index`-th cycle (0 = the start date itself). Always counted
+ * from the start date, never from the previous cycle, so nothing drifts:
+ * a monthly rotation started on 31 Jan lands on 28/29 Feb, then 31 Mar
+ * (not 3 Mar, 3 Apr... as repeatedly adding a month would give).
+ */
+function cycleDate(start: Date, frequency: MgrFrequency, index: number): string {
+  const y = start.getUTCFullYear();
+  const m = start.getUTCMonth();
+  const d = start.getUTCDate();
+  if (frequency === "monthly") {
+    const target = m + index;
+    const lastDay = new Date(Date.UTC(y, target + 1, 0)).getUTCDate();
+    return new Date(Date.UTC(y, target, Math.min(d, lastDay))).toISOString().split("T")[0];
+  }
+  const step = frequency === "weekly" ? 7 : 14;
+  return new Date(Date.UTC(y, m, d + step * index)).toISOString().split("T")[0];
 }
 
 /**
@@ -77,7 +84,6 @@ export function generateMgrSchedule(input: GenerateScheduleInput): GenerateSched
   const payoutPerSlot = contribPerCycle / recipientsPerCycle;
 
   const cycles: GeneratedCycle[] = [];
-  let date = new Date(startDate);
   let globalSlot = 1;
 
   for (let cycleNumber = 1; cycleNumber <= totalCycles; cycleNumber++) {
@@ -89,13 +95,12 @@ export function generateMgrSchedule(input: GenerateScheduleInput): GenerateSched
     }
     cycles.push({
       cycleNumber,
-      scheduledDate: toDateStr(date),
+      scheduledDate: cycleDate(startDate, frequency, cycleNumber - 1),
       slotCount: recipientsPerCycle,
       payoutPerSlot,
       totalContributions: contribPerCycle,
       slots,
     });
-    date = nextCycleDate(date, frequency);
   }
 
   return { totalSlots, totalCycles, contribPerCycle, payoutPerSlot, cycles };
@@ -115,13 +120,40 @@ export type MemberTurnStatus = {
  * an ordered list of memberIds; callers pop from the front for each open
  * slot in (cycleNumber, slotNumber) order.
  */
-export function buildAutoAssignQueue(turns: MemberTurnStatus[]): number[] {
+export function buildAutoAssignQueue(
+  turns: MemberTurnStatus[],
+  options: { shuffle?: boolean; rng?: () => number } = {},
+): number[] {
   const maxRounds = Math.max(0, ...turns.map((t) => t.turnsTotal));
   const queue: number[] = [];
   for (let round = 1; round <= maxRounds; round++) {
-    for (const t of turns) {
-      if (t.taken < round && t.turnsTotal >= round) queue.push(t.memberId);
-    }
+    const inRound = turns
+      .filter((t) => t.taken < round && t.turnsTotal >= round)
+      .map((t) => t.memberId);
+    // A random draw reorders people WITHIN a round only, so everyone still
+    // gets their first turn before anyone gets a second.
+    queue.push(...(options.shuffle ? shuffled(inRound, options.rng) : inRound));
   }
   return queue;
+}
+
+/** Fisher–Yates; `rng` is injectable so tests are deterministic. */
+export function shuffled<T>(items: T[], rng: () => number = Math.random): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Why a cycle can't be closed yet, or null if it can. Every slot must be
+ * settled — paid out, or deliberately skipped — so closing never silently
+ * drops a payout someone is still owed.
+ */
+export function cycleCloseBlocker(slotStatuses: string[]): string | null {
+  const unsettled = slotStatuses.filter((s) => s !== "paid" && s !== "skipped").length;
+  if (unsettled === 0) return null;
+  return `${unsettled} slot${unsettled === 1 ? " is" : "s are"} not paid yet. Mark each one paid or skipped first.`;
 }
