@@ -1,0 +1,1 @@
+ALTER TABLE "groups" ADD COLUMN "mgr_choices_close_date" date;

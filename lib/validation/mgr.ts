@@ -6,6 +6,7 @@ export const updateMgrConfigSchema = z.object({
   mgrFrequency: z.enum(mgrFrequencies),
   mgrRecipientsPerCycle: z.coerce.number().int().positive(),
   mgrStartDate: z.string().trim().optional(),
+  mgrChoicesCloseDate: z.string().trim().optional(),
   mgrContributionAmount: z.coerce.number().nonnegative().optional(),
 });
 

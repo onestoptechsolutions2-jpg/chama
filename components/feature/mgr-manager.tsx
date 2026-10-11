@@ -537,7 +537,19 @@ function TurnRow({ turn, editable }: { turn: Turn; editable: boolean }) {
 }
 
 /** A member's wish list for the current rotation: up to 3 cycles, best first. */
-function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] }) {
+function MyPreferences({
+  turn,
+  cycles,
+  closeDate,
+  choicesOpen,
+  isStaff,
+}: {
+  turn: Turn;
+  cycles: CycleWithSlots[];
+  closeDate: string | null;
+  choicesOpen: boolean;
+  isStaff: boolean;
+}) {
   const upcoming = cycles.filter((c) => c.status === "planned" || c.status === "active");
   const [choices, setChoices] = useState<string[]>([
     String(turn.preferredCycles?.[0] ?? ""),
@@ -546,6 +558,7 @@ function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] 
   ]);
   const [isPending, startTransition] = useTransition();
   const labels = ["First choice", "Second choice", "Third choice"];
+  const locked = !isStaff && !choicesOpen;
 
   function save() {
     const picked = choices.filter(Boolean).map(Number);
@@ -566,6 +579,7 @@ function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] 
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
           Pick up to 3. When the turns are given out, choices are honoured fairly and nobody is favoured.
+          {closeDate && (locked ? ` Choices closed on ${closeDate}.` : ` You can change them until ${closeDate}.`)}
         </p>
         {labels.map((label, i) => (
           <div key={label} className="flex items-center gap-3">
@@ -573,6 +587,7 @@ function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] 
             <select
               value={choices[i]}
               onChange={(e) => setChoices(choices.map((c, j) => (j === i ? e.target.value : c)))}
+              disabled={locked}
               className="h-11 flex-1 rounded-md border bg-background px-3 text-base"
             >
               <option value="">No preference</option>
@@ -585,7 +600,7 @@ function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] 
             </select>
           </div>
         ))}
-        <Button disabled={isPending} onClick={save}>
+        <Button disabled={isPending || locked} onClick={save}>
           {isPending ? "Saving…" : "Save my choices"}
         </Button>
       </CardContent>
@@ -598,16 +613,26 @@ function TurnsTab({
   cycles,
   isStaff,
   myMemberId,
+  choicesCloseDate,
+  choicesOpen,
 }: {
   turns: Turn[];
   cycles: CycleWithSlots[];
   isStaff: boolean;
   myMemberId: number | null;
+  choicesCloseDate: string | null;
+  choicesOpen: boolean;
 }) {
   const mine = turns.find((t) => t.memberId === myMemberId);
   return (
     <div className="space-y-4">
-      {mine && <MyPreferences turn={mine} cycles={cycles} />}
+      {mine && <MyPreferences
+          turn={mine}
+          cycles={cycles}
+          closeDate={choicesCloseDate}
+          choicesOpen={choicesOpen}
+          isStaff={isStaff}
+        />}
       <Card>
         <CardContent className="space-y-2">
           {turns.length === 0 && <p className="text-sm text-muted-foreground">No turn records yet.</p>}
@@ -635,6 +660,7 @@ function ConfigForm({
     mgrFrequency: string;
     mgrRecipientsPerCycle: number | null;
     mgrStartDate: string | null;
+    mgrChoicesCloseDate: string | null;
     mgrContributionAmount: string | null;
     sharePrice: string;
   };
@@ -691,6 +717,15 @@ function ConfigForm({
               name="mgrStartDate"
               type="date"
               defaultValue={config.mgrStartDate ?? ""}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mgrChoicesCloseDate">Members can choose turns until</Label>
+            <Input
+              id="mgrChoicesCloseDate"
+              name="mgrChoicesCloseDate"
+              type="date"
+              defaultValue={config.mgrChoicesCloseDate ?? ""}
             />
           </div>
           <div className="space-y-2">
@@ -880,11 +915,13 @@ export function MgrManager({
   blockedByAgreement,
   slotEvents,
   walletBalance,
+  choicesOpen,
 }: {
   config: {
     mgrFrequency: string;
     mgrRecipientsPerCycle: number | null;
     mgrStartDate: string | null;
+    mgrChoicesCloseDate: string | null;
     mgrContributionAmount: string | null;
     sharePrice: string;
     mgrFeePct: string;
@@ -897,6 +934,7 @@ export function MgrManager({
   blockedByAgreement: boolean;
   slotEvents: SlotEvent[];
   walletBalance: string;
+  choicesOpen: boolean;
 }) {
   return (
     <Tabs defaultValue="schedule">
@@ -918,7 +956,14 @@ export function MgrManager({
       </TabsContent>
 
       <TabsContent value="turns">
-        <TurnsTab turns={turns} cycles={cycles} isStaff={isStaff} myMemberId={myMemberId} />
+        <TurnsTab
+          turns={turns}
+          cycles={cycles}
+          isStaff={isStaff}
+          myMemberId={myMemberId}
+          choicesCloseDate={config.mgrChoicesCloseDate}
+          choicesOpen={choicesOpen}
+        />
       </TabsContent>
 
       {isStaff && (

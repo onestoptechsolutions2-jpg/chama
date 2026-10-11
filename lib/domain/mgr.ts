@@ -251,3 +251,17 @@ export function assignByPreferences(input: {
   }
   return out;
 }
+
+/**
+ * Can members still change their turn choices? `closeDate` is the last open
+ * day (inclusive); `today` is a YYYY-MM-DD string in the group's own time
+ * zone. No close date means always open.
+ */
+export function choicesAreOpen(closeDate: string | null, today: string): boolean {
+  return !closeDate || today <= closeDate;
+}
+
+/** Today's date (YYYY-MM-DD) in Nairobi, which is UTC+3 all year. */
+export function nairobiToday(now: Date = new Date()): string {
+  return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().split("T")[0];
+}

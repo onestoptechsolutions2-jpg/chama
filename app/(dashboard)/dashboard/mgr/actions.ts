@@ -28,6 +28,8 @@ import {
   buildAutoAssignQueue,
   cycleCloseBlocker,
   assignByPreferences,
+  choicesAreOpen,
+  nairobiToday,
 } from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
@@ -86,7 +88,7 @@ export async function updateMgrConfigAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { mgrFrequency, mgrRecipientsPerCycle, mgrStartDate, mgrContributionAmount } =
+  const { mgrFrequency, mgrRecipientsPerCycle, mgrStartDate, mgrContributionAmount, mgrChoicesCloseDate } =
     parsed.data;
   const groupId = session.activeMembership.groupId;
 
@@ -97,6 +99,7 @@ export async function updateMgrConfigAction(
         mgrFrequency,
         mgrRecipientsPerCycle,
         mgrStartDate: mgrStartDate || null,
+        mgrChoicesCloseDate: mgrChoicesCloseDate || null,
         mgrContributionAmount:
           mgrContributionAmount !== undefined ? String(mgrContributionAmount) : undefined,
         updatedAt: new Date(),
@@ -693,6 +696,12 @@ export async function setTurnPreferencesAction(
   if (wanted.length > 3) return { error: "Please choose at most 3 turns" };
 
   const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
+    if (!isStaff) {
+      const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
+      if (group && !choicesAreOpen(group.mgrChoicesCloseDate, nairobiToday())) {
+        return { error: `Choices closed on ${group.mgrChoicesCloseDate}. Please ask your admin.` };
+      }
+    }
     if (wanted.length > 0) {
       const valid = await tx.query.mgrCycles.findMany({
         where: and(

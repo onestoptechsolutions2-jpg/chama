@@ -6,6 +6,7 @@ import {
   cycleCloseBlocker,
   summarizeRotation,
   assignByPreferences,
+  choicesAreOpen,
 } from "../lib/domain/mgr";
 
 describe("generateMgrSchedule", () => {
@@ -305,5 +306,15 @@ describe("assignByPreferences", () => {
     });
     expect(result.filter((r) => r.memberId === 1)).toHaveLength(0);
     expect(result.filter((r) => r.memberId === 2)).toHaveLength(2);
+  });
+});
+
+describe("choicesAreOpen", () => {
+  it("is open with no deadline, and through the close date itself", () => {
+    expect(choicesAreOpen(null, "2026-12-31")).toBe(true);
+    expect(choicesAreOpen("2026-03-10", "2026-03-10")).toBe(true);
+  });
+  it("is closed the day after", () => {
+    expect(choicesAreOpen("2026-03-10", "2026-03-11")).toBe(false);
   });
 });

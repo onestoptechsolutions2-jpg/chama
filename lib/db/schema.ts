@@ -376,6 +376,8 @@ export const groups = pgTable("groups", {
   mgrCycleDay: integer("mgr_cycle_day").default(1),
   mgrRecipientsPerCycle: integer("mgr_recipients_per_cycle").default(1),
   mgrStartDate: date("mgr_start_date"),
+  // Last day members can change their preferred turns (null = no deadline).
+  mgrChoicesCloseDate: date("mgr_choices_close_date"),
   mgrContributionAmount: numeric("mgr_contribution_amount", {
     precision: 12,
     scale: 2,

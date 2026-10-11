@@ -14,6 +14,7 @@ import {
 import { PageHeader } from "@/components/feature/page-header";
 import { MgrManager } from "@/components/feature/mgr-manager";
 import { MgrAgreementGate } from "@/components/feature/mgr-agreement-gate";
+import { choicesAreOpen, nairobiToday } from "@/lib/domain/mgr";
 
 const CLAIMED_STATUSES = ["claimed", "auto_assigned", "paid"] as const;
 
@@ -100,6 +101,7 @@ export default async function MgrPage() {
   }));
 
   const needsAgreement = !!activeCycle && !agreement;
+  const choicesOpen = choicesAreOpen(group.mgrChoicesCloseDate, nairobiToday());
 
   return (
     <div className="space-y-6">
@@ -112,6 +114,7 @@ export default async function MgrPage() {
           mgrFrequency: group.mgrFrequency,
           mgrRecipientsPerCycle: group.mgrRecipientsPerCycle,
           mgrStartDate: group.mgrStartDate,
+          mgrChoicesCloseDate: group.mgrChoicesCloseDate,
           mgrContributionAmount: group.mgrContributionAmount,
           sharePrice: group.sharePrice,
           mgrFeePct: group.mgrFeePct,
@@ -124,6 +127,7 @@ export default async function MgrPage() {
         blockedByAgreement={needsAgreement}
         slotEvents={slotEvents}
         walletBalance={wallet?.balance ?? "0"}
+        choicesOpen={choicesOpen}
       />
     </div>
   );
