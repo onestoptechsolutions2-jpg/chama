@@ -4,6 +4,7 @@ import {
   buildAutoAssignQueue,
   shuffled,
   cycleCloseBlocker,
+  summarizeRotation,
 } from "../lib/domain/mgr";
 
 describe("generateMgrSchedule", () => {
@@ -232,5 +233,25 @@ describe("cycleCloseBlocker", () => {
   it("blocks while any slot is open or still owed", () => {
     expect(cycleCloseBlocker(["paid", "claimed"])).toMatch(/1 slot is not paid/);
     expect(cycleCloseBlocker(["open", "auto_assigned"])).toMatch(/2 slots are not paid/);
+  });
+});
+
+describe("summarizeRotation", () => {
+  it("reports the active cycle and how many slots are settled", () => {
+    const summary = summarizeRotation([
+      { cycleNumber: 1, status: "completed", slots: [{ status: "paid" }, { status: "paid" }] },
+      { cycleNumber: 2, status: "active", slots: [{ status: "paid" }, { status: "claimed" }] },
+      { cycleNumber: 3, status: "planned", slots: [{ status: "open" }, { status: "skipped" }] },
+    ]);
+    expect(summary).toEqual({
+      currentCycle: 2,
+      totalCycles: 3,
+      paidSlots: 3,
+      totalSlots: 6,
+      percent: 67,
+    });
+  });
+  it("handles an empty schedule", () => {
+    expect(summarizeRotation([])).toMatchObject({ currentCycle: null, totalSlots: 0, percent: 0 });
   });
 });

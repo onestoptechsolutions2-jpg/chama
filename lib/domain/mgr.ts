@@ -157,3 +157,29 @@ export function cycleCloseBlocker(slotStatuses: string[]): string | null {
   if (unsettled === 0) return null;
   return `${unsettled} slot${unsettled === 1 ? " is" : "s are"} not paid yet. Mark each one paid or skipped first.`;
 }
+
+export type RotationSummary = {
+  /** The active cycle's number, or null when none is active (not started, or all done). */
+  currentCycle: number | null;
+  totalCycles: number;
+  paidSlots: number;
+  totalSlots: number;
+  percent: number;
+};
+
+/** One-glance progress for the whole rotation: "Cycle 3 of 12 · 7 of 10 slots paid". */
+export function summarizeRotation(
+  cycles: { cycleNumber: number; status: string; slots: { status: string }[] }[],
+): RotationSummary {
+  const slots = cycles.flatMap((c) => c.slots);
+  const settled = slots.filter((s) => s.status === "paid" || s.status === "skipped").length;
+  const paid = slots.filter((s) => s.status === "paid").length;
+  const active = cycles.find((c) => c.status === "active");
+  return {
+    currentCycle: active?.cycleNumber ?? null,
+    totalCycles: cycles.length,
+    paidSlots: paid,
+    totalSlots: slots.length,
+    percent: slots.length === 0 ? 0 : Math.round((settled / slots.length) * 100),
+  };
+}

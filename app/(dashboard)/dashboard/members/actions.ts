@@ -14,6 +14,7 @@ import {
 import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
 import { computeRegistrationComplete, type MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
+import { releaseMemberFromRotation } from "@/app/(dashboard)/dashboard/mgr/rotation-data";
 import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
 import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 
@@ -338,12 +339,16 @@ export async function deactivateMemberAction(memberId: number): Promise<void> {
   const session = await requireRole("admin");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, (tx) =>
-    tx
+  await withTenant(groupId, async (tx) => {
+    await tx
       .update(members)
       .set({ active: false, updatedAt: new Date() })
-      .where(and(eq(members.id, memberId), eq(members.groupId, groupId))),
-  );
+      .where(and(eq(members.id, memberId), eq(members.groupId, groupId)));
+    await releaseMemberFromRotation(tx, groupId, memberId, {
+      userId: session.user.id,
+      role: session.activeMembership.role,
+    });
+  });
 
   revalidatePath("/dashboard/members");
 }

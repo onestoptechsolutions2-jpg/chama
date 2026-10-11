@@ -21,6 +21,7 @@ import {
   closeCycleAction,
   chargeFeeFromWalletAction,
 } from "@/app/(dashboard)/dashboard/mgr/actions";
+import { summarizeRotation } from "@/lib/domain/mgr";
 import { mgrFrequencies } from "@/lib/validation/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { Button } from "@/components/ui/button";
@@ -417,8 +418,23 @@ function ScheduleTab({
       </p>
     );
   }
+  const progress = summarizeRotation(cycles);
   return (
     <div className="space-y-3">
+      <div className="rounded-xl border bg-card p-4">
+        <p className="text-base font-semibold">
+          {progress.currentCycle
+            ? `Cycle ${progress.currentCycle} of ${progress.totalCycles}`
+            : "No cycle running"}
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            · {progress.paidSlots} of {progress.totalSlots} turns paid
+          </span>
+        </p>
+        <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+          <div className="h-full bg-primary" style={{ width: `${progress.percent}%` }} />
+        </div>
+      </div>
       {cycles.map((c) => (
         <CycleCard
           key={c.id}
