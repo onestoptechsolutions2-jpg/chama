@@ -89,7 +89,7 @@ export default async function DashboardPage() {
           <Link
             key={href}
             href={href}
-            className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-4 text-center hover:bg-accent"
+            className="flex min-h-36 flex-col items-center justify-center gap-2 rounded-2xl border bg-card p-4 text-center hover:border-primary hover:bg-accent"
           >
             <span className="flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
               <Icon className="size-7" />

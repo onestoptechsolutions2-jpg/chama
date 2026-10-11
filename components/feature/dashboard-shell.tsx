@@ -42,7 +42,7 @@ function NavLink({ item, onNavigate }: { item: NavItem; onNavigate?: () => void 
       href={item.href}
       onClick={onNavigate}
       className={`flex min-h-12 items-center gap-3 rounded-xl px-3 text-base font-medium ${
-        active ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+        active ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted"
       }`}
     >
       <Icon className="size-5" />
@@ -163,18 +163,18 @@ export function DashboardShell({
   );
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="hidden w-64 shrink-0 border-r md:block">
+    <div className="tailadmin flex min-h-screen bg-background">
+      <aside className="hidden w-[290px] shrink-0 border-r bg-card md:block">
         <Sidebar session={session} items={items} unread={unreadNotifications} />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b p-3 md:hidden">
+        <header className="flex items-center gap-3 border-b bg-card p-3 md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger render={<Button variant="ghost" size="icon" title="Menu" />}>
               <Menu className="size-5" />
             </SheetTrigger>
-            <SheetContent side="left" className="w-72 p-0">
+            <SheetContent side="left" className="w-[290px] p-0">
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <Sidebar
                 session={session}

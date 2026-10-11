@@ -204,3 +204,28 @@
     transform: translateY(0);
   }
 }
+/* TailAdmin look for the signed-in dashboard (brand blue #465fff, gray scale
+   from TailAdmin's theme). Scoped with :has() on the shell's .tailadmin
+   wrapper so the public site keeps its own palette, while portalled
+   dialogs/menus (rendered under <body>) still pick the tokens up. */
+:root:not(.dark):has(.tailadmin) {
+  --background: #f9fafb;
+  --foreground: #1d2939;
+  --card: #ffffff;
+  --card-foreground: #1d2939;
+  --popover: #ffffff;
+  --popover-foreground: #1d2939;
+  --primary: #465fff;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f4f7;
+  --secondary-foreground: #344054;
+  --muted: #f2f4f7;
+  --muted-foreground: #667085;
+  --accent: #ecf3ff;
+  --accent-foreground: #3641f5;
+  --destructive: #d92d20;
+  --border: #e4e7ec;
+  --input: #d0d5dd;
+  --ring: rgba(70, 95, 255, 0.4);
+  --radius: 0.75rem;
+}
