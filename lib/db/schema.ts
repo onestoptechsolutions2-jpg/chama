@@ -442,6 +442,8 @@ export const users = pgTable("users", {
   phone: text("phone"),
   idNumber: text("id_number"),
   passwordHash: text("password_hash").notNull(),
+  // Google account id ("sub") for "Continue with Google"; null for password-only users.
+  googleId: text("google_id").unique(),
   // Genuinely global role (not scoped to any group) — for the super-admin surface only.
   // Deliberately distinct from group_memberships.role, which is the per-group source of truth.
   platformRole: platformRoleEnum("platform_role"),

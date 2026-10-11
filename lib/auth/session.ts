@@ -2,7 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { randomBytes } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
 import { withUser } from "@/lib/db/rls";
@@ -74,6 +74,15 @@ export async function createSession(
   });
 
   return id;
+}
+
+/** Logs a user in: opens a session on their earliest active group (or none). */
+export async function startSessionForUser(userId: number): Promise<void> {
+  const firstActive = await db.query.groupMemberships.findFirst({
+    where: and(eq(groupMemberships.userId, userId), eq(groupMemberships.status, "active")),
+    orderBy: (m, { asc }) => [asc(m.createdAt)],
+  });
+  await createSession(userId, firstActive?.groupId ?? null);
 }
 
 export async function destroySession(): Promise<void> {

@@ -1,11 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { and, eq, or } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { users, groupMemberships } from "@/lib/db/schema";
+import { users } from "@/lib/db/schema";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { createSession, destroySession } from "@/lib/auth/session";
+import { createSession, destroySession, startSessionForUser } from "@/lib/auth/session";
 import { registerSchema, loginSchema } from "@/lib/validation/auth";
 
 export type AuthActionState = { error: string } | null;
@@ -85,16 +85,7 @@ export async function loginAction(
     return { error: "Invalid credentials" };
   }
 
-  const firstActive = await db.query.groupMemberships.findFirst({
-    where: and(
-      eq(groupMemberships.userId, user.id),
-      eq(groupMemberships.status, "active"),
-    ),
-    orderBy: (m, { asc }) => [asc(m.createdAt)],
-  });
-  const activeGroupId = firstActive?.groupId ?? null;
-
-  await createSession(user.id, activeGroupId);
+  await startSessionForUser(user.id);
   redirect(safeNext(formData));
 }
 
