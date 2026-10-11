@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { requireSession } from "@/lib/auth/session";
 
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+
 /**
  * Thin upload primitive — no business logic. Any authenticated user can
  * upload (KYC self-service via /profile, staff adding a member's documents
@@ -25,9 +27,9 @@ export async function POST(req: Request) {
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: "File is too large (max 8MB)" }, { status: 400 });
   }
-  if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+  if (!ALLOWED_TYPES.includes(file.type)) {
     return NextResponse.json(
-      { error: "Only images or PDFs are accepted" },
+      { error: "Please upload a photo (JPG, PNG) or a PDF" },
       { status: 400 },
     );
   }

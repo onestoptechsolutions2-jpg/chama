@@ -444,6 +444,9 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   // Google account id ("sub") for "Continue with Google"; null for password-only users.
   googleId: text("google_id").unique(),
+  // Brute-force guard: 5 wrong passwords lock sign-in for 15 minutes (see loginAction).
+  failedLogins: integer("failed_logins").notNull().default(0),
+  lockedUntil: timestamp("locked_until", { withTimezone: true }),
   // Genuinely global role (not scoped to any group) — for the super-admin surface only.
   // Deliberately distinct from group_memberships.role, which is the per-group source of truth.
   platformRole: platformRoleEnum("platform_role"),

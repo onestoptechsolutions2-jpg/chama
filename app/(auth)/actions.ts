@@ -8,6 +8,9 @@ import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession, startSessionForUser } from "@/lib/auth/session";
 import { registerSchema, loginSchema } from "@/lib/validation/auth";
 
+const MAX_FAILED_LOGINS = 5;
+const LOCK_MS = 15 * 60 * 1000;
+
 export type AuthActionState = { error: string } | null;
 
 /**
@@ -81,8 +84,27 @@ export async function loginAction(
     where: or(eq(users.email, identifier), eq(users.phone, identifier)),
   });
 
+  if (user?.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+    return { error: "Too many wrong tries. Please wait 15 minutes and try again." };
+  }
+
   if (!user || !user.active || !(await verifyPassword(password, user.passwordHash))) {
-    return { error: "Invalid credentials" };
+    if (user) {
+      const failed = user.failedLogins + 1;
+      await db
+        .update(users)
+        .set(
+          failed >= MAX_FAILED_LOGINS
+            ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MS) }
+            : { failedLogins: failed },
+        )
+        .where(eq(users.id, user.id));
+    }
+    return { error: "Wrong email, phone or password" };
+  }
+
+  if (user.failedLogins > 0 || user.lockedUntil) {
+    await db.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, user.id));
   }
 
   await startSessionForUser(user.id);

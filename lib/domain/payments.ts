@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 /**
  * Bug 5 (docs/architecture.md): the original payments.js hardcoded the
  * platform fee at 5% instead of reading the group's configurable
@@ -40,5 +41,9 @@ export function normalizeKenyanPhone(phone: string): string {
  */
 export function isValidIntasendChallenge(payload: { challenge?: string }): boolean {
   const expected = process.env.INTASEND_WEBHOOK_CHALLENGE;
-  return !!expected && payload.challenge === expected;
+  const given = payload.challenge;
+  if (!expected || typeof given !== "string") return false;
+  const a = Buffer.from(given);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }

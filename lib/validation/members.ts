@@ -33,7 +33,7 @@ export const createLoginSchema = z
       .regex(/^0\d{9}$/, "Phone must be a 10-digit number starting with 0")
       .optional()
       .or(z.literal("")),
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    password: z.string().min(8, "Password must be at least 8 characters"),
   })
   .refine((data) => data.email || data.phone, {
     message: "Email or phone is required",
