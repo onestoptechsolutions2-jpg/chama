@@ -19,6 +19,9 @@ import {
   autoAssignAction,
   createCycleAction,
   closeCycleAction,
+  startNewRotationAction,
+  reshuffleUnpaidAction,
+  archiveRotationAction,
   chargeFeeFromWalletAction,
 } from "@/app/(dashboard)/dashboard/mgr/actions";
 import { summarizeRotation } from "@/lib/domain/mgr";
@@ -428,7 +431,9 @@ function ScheduleTab({
       </p>
     );
   }
-  const progress = summarizeRotation(cycles);
+  const current = cycles.filter((c) => c.status !== "closed");
+  const archived = cycles.filter((c) => c.status === "closed");
+  const progress = summarizeRotation(current);
   return (
     <div className="space-y-3">
       <div className="rounded-xl border bg-card p-4">
@@ -445,7 +450,12 @@ function ScheduleTab({
           <div className="h-full bg-primary" style={{ width: `${progress.percent}%` }} />
         </div>
       </div>
-      {cycles.map((c) => (
+      {current.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          The last rotation is archived.{isStaff && " Use the Admin tab to start a new one."}
+        </p>
+      )}
+      {current.map((c) => (
         <CycleCard
           key={c.id}
           cycle={c}
@@ -456,6 +466,26 @@ function ScheduleTab({
           walletBalance={walletBalance}
         />
       ))}
+      {archived.length > 0 && (
+        <details className="rounded-xl border p-4">
+          <summary className="cursor-pointer text-base font-medium">
+            Past rotations ({archived.length} cycles)
+          </summary>
+          <div className="mt-3 space-y-3">
+            {archived.map((c) => (
+              <CycleCard
+                key={c.id}
+                cycle={c}
+                isStaff={false}
+                members={members}
+                canClaim={false}
+                feePct={feePct}
+                walletBalance={walletBalance}
+              />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
@@ -631,6 +661,33 @@ function AdminActions() {
     });
   }
 
+  function reshuffle() {
+    startTransition(async () => {
+      const result = await reshuffleUnpaidAction();
+      toast.success(
+        result.reshuffled === 0
+          ? "No handed-out turns to reshuffle"
+          : `${result.reshuffled} turn(s) drawn again`,
+      );
+    });
+  }
+
+  function archive() {
+    startTransition(async () => {
+      const result = await archiveRotationAction();
+      if (result?.error) toast.error(result.error);
+      else toast.success("Rotation archived");
+    });
+  }
+
+  function startNew(draw: boolean) {
+    startTransition(async () => {
+      const result = await startNewRotationAction(draw);
+      if (result?.error) toast.error(result.error);
+      else toast.success("New rotation started");
+    });
+  }
+
   function addCycle() {
     startTransition(() => createCycleAction());
   }
@@ -650,8 +707,23 @@ function AdminActions() {
         <Button variant="outline" disabled={isPending} onClick={() => autoAssign(true)}>
           Fill open slots by random draw
         </Button>
+        <Button variant="outline" disabled={isPending} onClick={reshuffle}>
+          Reshuffle turns not yet paid
+        </Button>
         <Button variant="outline" disabled={isPending} onClick={addCycle}>
           Add cycle manually
+        </Button>
+        <div className="basis-full border-t pt-3 text-sm text-muted-foreground">
+          When every cycle is done: archive it, or archive and start a fresh rotation in one step.
+        </div>
+        <Button variant="outline" disabled={isPending} onClick={archive}>
+          Archive finished rotation
+        </Button>
+        <Button disabled={isPending} onClick={() => startNew(true)}>
+          Start new rotation (random order)
+        </Button>
+        <Button variant="outline" disabled={isPending} onClick={() => startNew(false)}>
+          Start new rotation (same order)
         </Button>
       </CardContent>
     </Card>

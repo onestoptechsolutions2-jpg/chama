@@ -140,6 +140,19 @@ export async function setTurnsAction(
   return null;
 }
 
+/**
+ * Archived ("closed") cycles are earlier rotations. A new rotation continues
+ * numbering after them, and everything that counts turns only looks at
+ * cycles numbered above this, so an old rotation never uses up anyone's turns.
+ */
+async function rotationBase(tx: Tx, groupId: number): Promise<number> {
+  const [row] = await tx
+    .select({ base: sql<number>`coalesce(max(${mgrCycles.cycleNumber}), 0)::int` })
+    .from(mgrCycles)
+    .where(and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "closed")));
+  return row?.base ?? 0;
+}
+
 // ── Schedule generation ──────────────────────────────────────────────────
 export async function generateScheduleAction(): Promise<MgrActionState> {
   const session = await requireProduct("mgr", "admin", "treasurer");
@@ -148,6 +161,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
   await withTenant(groupId, async (tx) => {
     const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
     if (!group) return;
+    const base = await rotationBase(tx, groupId);
 
     const baseContribution = Number(group.mgrContributionAmount ?? group.sharePrice);
     const startDate = group.mgrStartDate ? new Date(group.mgrStartDate) : new Date();
@@ -193,7 +207,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
     // Remove not-yet-claimed slots and the now-empty planned cycles they
     // belonged to — claimed/auto_assigned/paid/skipped slots are left
     // untouched so regenerating the schedule never discards a real claim.
-    await tx.delete(mgrSlots).where(and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open")));
+    await tx.delete(mgrSlots).where(and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)));
 
     const remainingCycleIds = await tx
       .select({ id: mgrSlots.cycleId })
@@ -215,7 +229,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
         .insert(mgrCycles)
         .values({
           groupId,
-          cycleNumber: cycle.cycleNumber,
+          cycleNumber: base + cycle.cycleNumber,
           status: !hasActiveCycle && cycle.cycleNumber === 1 ? "active" : "planned",
           scheduledDate: cycle.scheduledDate,
           slotCount: cycle.slotCount,
@@ -240,7 +254,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
           .values({
             groupId,
             cycleId: cycleRow.id,
-            cycleNumber: cycle.cycleNumber,
+            cycleNumber: base + cycle.cycleNumber,
             slotNumber: slot.slotNumber,
             status: "open",
             payoutAmount: String(cycle.payoutPerSlot),
@@ -291,6 +305,7 @@ export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
           eq(mgrSlots.groupId, groupId),
           eq(mgrSlots.memberId, memberId),
           inArray(mgrSlots.status, CLAIMED_STATUSES),
+          gt(mgrSlots.cycleNumber, await rotationBase(tx, groupId)),
         ),
       );
     if (taken >= maxTurns) {
@@ -479,8 +494,9 @@ export async function autoAssignAction(draw = false): Promise<{ assigned: number
   const groupId = session.activeMembership.groupId;
 
   const assigned = await withTenant(groupId, async (tx) => {
+    const base = await rotationBase(tx, groupId);
     const openSlots = await tx.query.mgrSlots.findMany({
-      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open")),
+      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)),
       orderBy: (s, { asc }) => [asc(s.cycleNumber), asc(s.slotNumber)],
     });
     if (openSlots.length === 0) return 0;
@@ -492,7 +508,13 @@ export async function autoAssignAction(draw = false): Promise<{ assigned: number
     const takenCounts = await tx
       .select({ memberId: mgrSlots.memberId, taken: sql<number>`count(*)::int` })
       .from(mgrSlots)
-      .where(and(eq(mgrSlots.groupId, groupId), inArray(mgrSlots.status, CLAIMED_STATUSES)))
+      .where(
+        and(
+          eq(mgrSlots.groupId, groupId),
+          inArray(mgrSlots.status, CLAIMED_STATUSES),
+          gt(mgrSlots.cycleNumber, base),
+        ),
+      )
       .groupBy(mgrSlots.memberId);
     const takenByMember = new Map(takenCounts.map((t) => [t.memberId, t.taken]));
 
@@ -648,6 +670,92 @@ export async function closeCycleAction(cycleId: number): Promise<MgrActionState>
 
   revalidatePath("/dashboard/mgr");
   return result;
+}
+
+/**
+ * Files a finished rotation away: every cycle must be completed (none still
+ * planned or running). Archived cycles leave the main schedule, stay readable
+ * under "Past rotations", and stop counting against anyone's turns.
+ */
+export async function archiveRotationAction(): Promise<MgrActionState> {
+  const session = await requireProduct("mgr", "admin", "treasurer");
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
+    const live = await tx.query.mgrCycles.findMany({
+      where: and(
+        eq(mgrCycles.groupId, groupId),
+        inArray(mgrCycles.status, ["planned", "active", "completed"]),
+      ),
+    });
+    const completed = live.filter((c) => c.status === "completed");
+    if (completed.length === 0) return { error: "There is no finished rotation to archive yet." };
+    if (live.length > completed.length) {
+      return { error: "Some cycles are not finished yet. Finish or close them first." };
+    }
+
+    await tx
+      .update(mgrCycles)
+      .set({ status: "closed", updatedAt: new Date() })
+      .where(and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "completed")));
+    return null;
+  });
+
+  revalidatePath("/dashboard/mgr");
+  return result;
+}
+
+/** Archive the finished rotation, build a fresh schedule, and fill it (random draw or join order). */
+export async function startNewRotationAction(draw: boolean): Promise<MgrActionState> {
+  const archived = await archiveRotationAction();
+  if (archived?.error) return archived;
+  const generated = await generateScheduleAction();
+  if (generated?.error) return generated;
+  await autoAssignAction(draw);
+  return null;
+}
+
+/**
+ * Re-draws only the turns the system handed out (auto-assigned and not yet
+ * paid). Turns members chose for themselves, and anything already paid, are
+ * never touched. Every turn that moves is written to the activity log.
+ */
+export async function reshuffleUnpaidAction(): Promise<{ reshuffled: number }> {
+  const session = await requireProduct("mgr", "admin", "treasurer");
+  const groupId = session.activeMembership.groupId;
+
+  const reshuffled = await withTenant(groupId, async (tx) => {
+    const base = await rotationBase(tx, groupId);
+    const handedOut = await tx.query.mgrSlots.findMany({
+      where: and(
+        eq(mgrSlots.groupId, groupId),
+        eq(mgrSlots.status, "auto_assigned"),
+        gt(mgrSlots.cycleNumber, base),
+      ),
+    });
+    for (const slot of handedOut) {
+      await tx
+        .update(mgrSlots)
+        .set({ memberId: null, status: "open", claimedAt: null })
+        .where(eq(mgrSlots.id, slot.id));
+      await logSlotEvent(tx, {
+        groupId,
+        slotId: slot.id,
+        session,
+        action: "reshuffled",
+        fromStatus: slot.status,
+        toStatus: "open",
+        fromMemberId: slot.memberId,
+        toMemberId: null,
+        note: "turn returned for a fresh draw",
+      });
+    }
+    return handedOut.length;
+  });
+
+  if (reshuffled > 0) await autoAssignAction(true);
+  revalidatePath("/dashboard/mgr");
+  return { reshuffled };
 }
 
 // ── Agreement ────────────────────────────────────────────────────────────

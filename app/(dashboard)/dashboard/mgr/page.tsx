@@ -41,9 +41,13 @@ export default async function MgrPage() {
         where: eq(mgrMemberTurns.groupId, groupId),
         with: { member: true },
       });
+      const archivedUpTo = Math.max(
+        0,
+        ...cycles.filter((c) => c.status === "closed").map((c) => c.cycleNumber),
+      );
       const takenByMember = new Map<number, number>();
       for (const s of slots) {
-        if (s.memberId && CLAIMED_STATUSES.includes(s.status as (typeof CLAIMED_STATUSES)[number])) {
+        if (s.cycleNumber > archivedUpTo && s.memberId && CLAIMED_STATUSES.includes(s.status as (typeof CLAIMED_STATUSES)[number])) {
           takenByMember.set(s.memberId, (takenByMember.get(s.memberId) ?? 0) + 1);
         }
       }
