@@ -46,14 +46,6 @@ export type NavItem = {
    * way a separate help doc would.
    */
   guide: string;
-  /**
-   * Candidate for the mobile bottom tab bar (DashboardShell). Not every
-   * primary item necessarily makes the bar — it's capped at 4 real tabs
-   * + a trailing "More" tab, in this array's order, after role/product
-   * filtering — so a group only ever sees tabs for vehicles it actually
-   * has, and "a few essential tabs" holds regardless of role or group type.
-   */
-  primary?: boolean;
   /** Rarely-needed tools: tucked under "More tools" so the main menu stays short. */
   advanced?: boolean;
 };
@@ -74,7 +66,6 @@ export const navItems: NavItem[] = [
     label: "Home",
     icon: LayoutDashboard,
     guide: "An overview of the group: member count, balances, pending fines, and the next meeting.",
-    primary: true,
   },
   {
     href: "/dashboard/insights",
@@ -83,7 +74,6 @@ export const navItems: NavItem[] = [
     advanced: true,
     guide:
       "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in. Admins/treasurers/secretaries also get graphical group-performance reports here (contributions, balances, loan and fine exposure) with CSV export.",
-    primary: true,
   },
   {
     href: "/dashboard/members",
@@ -125,7 +115,6 @@ export const navItems: NavItem[] = [
     product: "loans",
     guide:
       "Approve or reject member-submitted loan applications, disburse and track active loans, and record repayments. A member's loan limit is a multiple of their total savings (configurable in Settings), enforced automatically — you can't approve past it.",
-    primary: true,
   },
   {
     href: "/dashboard/loans/apply",
@@ -135,7 +124,6 @@ export const navItems: NavItem[] = [
     product: "loans",
     guide:
       "Apply for a loan up to your current limit (shown on this page), track your active loan's balance and due date, or cancel a pending application before staff review it.",
-    primary: true,
   },
   {
     href: "/dashboard/mgr",
@@ -144,7 +132,6 @@ export const navItems: NavItem[] = [
     product: "mgr",
     guide:
       "The rotating-payout schedule. You'll be asked to sign a one-time agreement before you can claim a slot in the active cycle. Members claim open slots themselves (or staff can auto-assign/reassign); staff mark a slot paid once the actual payout has happened outside the app — that action is permanently logged against their account and can't be edited or deleted later, specifically so payouts stay accountable.",
-    primary: true,
   },
   {
     href: "/dashboard/welfare",
@@ -153,7 +140,6 @@ export const navItems: NavItem[] = [
     product: "welfare",
     guide:
       "Submit and review welfare claims (medical, bereavement, emergency, etc.) against the group's welfare fund, and see the fund's running balance.",
-    primary: true,
   },
   {
     href: "/dashboard/projects",
@@ -162,7 +148,6 @@ export const navItems: NavItem[] = [
     product: "projects",
     guide:
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
-    primary: true,
   },
   {
     href: "/dashboard/capital",
