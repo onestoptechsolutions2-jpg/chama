@@ -5,6 +5,7 @@ import {
   shuffled,
   cycleCloseBlocker,
   summarizeRotation,
+  assignByPreferences,
 } from "../lib/domain/mgr";
 
 describe("generateMgrSchedule", () => {
@@ -253,5 +254,56 @@ describe("summarizeRotation", () => {
   });
   it("handles an empty schedule", () => {
     expect(summarizeRotation([])).toMatchObject({ currentCycle: null, totalSlots: 0, percent: 0 });
+  });
+});
+
+describe("assignByPreferences", () => {
+  const slots = [
+    { id: 10, cycleNumber: 1, slotNumber: 1 },
+    { id: 11, cycleNumber: 2, slotNumber: 1 },
+    { id: 12, cycleNumber: 3, slotNumber: 1 },
+  ];
+  const turns = [1, 2, 3].map((memberId) => ({ memberId, turnsTotal: 1, taken: 0 }));
+
+  it("gives members the cycle they asked for", () => {
+    const result = assignByPreferences({
+      openSlots: slots,
+      turns,
+      preferences: new Map([[1, [3]], [2, [1]]]),
+      rng: () => 0.5,
+    });
+    const slotOf = (m: number) => result.find((r) => r.memberId === m)!.slotId;
+    expect(slotOf(1)).toBe(12);
+    expect(slotOf(2)).toBe(10);
+    expect(result.find((r) => r.memberId === 3)).toMatchObject({ slotId: 11, reason: "draw" });
+  });
+
+  it("settles a clash on one cycle with the loser falling back to their next choice", () => {
+    const result = assignByPreferences({
+      openSlots: slots,
+      turns,
+      preferences: new Map([[1, [1, 2]], [2, [1, 3]]]),
+      rng: () => 0.5,
+    });
+    const cycleOf = (m: number) => {
+      const slotId = result.find((r) => r.memberId === m)!.slotId;
+      return slots.find((s) => s.id === slotId)!.cycleNumber;
+    };
+    expect(new Set([cycleOf(1), cycleOf(2)]).size).toBe(2);
+    expect(result).toHaveLength(3);
+  });
+
+  it("never gives a member more turns than they have left", () => {
+    const result = assignByPreferences({
+      openSlots: slots,
+      turns: [
+        { memberId: 1, turnsTotal: 1, taken: 1 },
+        { memberId: 2, turnsTotal: 2, taken: 0 },
+      ],
+      preferences: new Map([[1, [1, 2, 3]]]),
+      rng: () => 0.5,
+    });
+    expect(result.filter((r) => r.memberId === 1)).toHaveLength(0);
+    expect(result.filter((r) => r.memberId === 2)).toHaveLength(2);
   });
 });

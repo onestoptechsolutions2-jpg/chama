@@ -337,6 +337,13 @@
       "when": 1791726325747,
       "tag": "0047_login_lockout",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1791741507275,
+      "tag": "0048_turn_preferences",
+      "breakpoints": true
     }
   ]
 }

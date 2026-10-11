@@ -23,7 +23,12 @@ import {
   setTurnsSchema,
   signAgreementSchema,
 } from "@/lib/validation/mgr";
-import { generateMgrSchedule, buildAutoAssignQueue, cycleCloseBlocker } from "@/lib/domain/mgr";
+import {
+  generateMgrSchedule,
+  buildAutoAssignQueue,
+  cycleCloseBlocker,
+  assignByPreferences,
+} from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
@@ -670,6 +675,121 @@ export async function closeCycleAction(cycleId: number): Promise<MgrActionState>
 
   revalidatePath("/dashboard/mgr");
   return result;
+}
+
+/** A member's wish list: up to 3 upcoming cycles they would like to receive in, best first. */
+export async function setTurnPreferencesAction(
+  memberId: number,
+  cycleNumbers: number[],
+): Promise<MgrActionState> {
+  const session = await requireProduct("mgr");
+  const groupId = session.activeMembership.groupId;
+  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+
+  if (!isStaff && session.activeMembership.memberId !== memberId) {
+    return { error: "You can only choose your own turns" };
+  }
+  const wanted = [...new Set(cycleNumbers.filter((n) => Number.isInteger(n)))];
+  if (wanted.length > 3) return { error: "Please choose at most 3 turns" };
+
+  const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
+    if (wanted.length > 0) {
+      const valid = await tx.query.mgrCycles.findMany({
+        where: and(
+          eq(mgrCycles.groupId, groupId),
+          inArray(mgrCycles.cycleNumber, wanted),
+          inArray(mgrCycles.status, ["planned", "active"]),
+        ),
+      });
+      if (valid.length !== wanted.length) return { error: "One of those turns is no longer available" };
+    }
+    // Keep the order the member chose (first = most wanted).
+    await tx
+      .insert(mgrMemberTurns)
+      .values({ groupId, memberId, turnsTotal: 1, contributionMultiplier: "1", preferredCycles: wanted })
+      .onConflictDoUpdate({
+        target: [mgrMemberTurns.groupId, mgrMemberTurns.memberId],
+        set: { preferredCycles: wanted, updatedAt: new Date() },
+      });
+    return null;
+  });
+
+  revalidatePath("/dashboard/mgr");
+  return result;
+}
+
+/**
+ * Fills every open turn in the current rotation, honouring members' wish
+ * lists first (fairly — see assignByPreferences), then drawing the rest.
+ * A turn a member asked for is recorded as "claimed" (their own choice), so
+ * "Reshuffle" never takes it back; drawn turns are "auto_assigned".
+ */
+export async function fillByPreferencesAction(): Promise<{ assigned: number; byChoice: number }> {
+  const session = await requireProduct("mgr", "admin", "treasurer");
+  const groupId = session.activeMembership.groupId;
+
+  const out = await withTenant(groupId, async (tx) => {
+    const base = await rotationBase(tx, groupId);
+    const openSlots = await tx.query.mgrSlots.findMany({
+      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)),
+    });
+    if (openSlots.length === 0) return { assigned: 0, byChoice: 0 };
+
+    const turnRows = await tx.query.mgrMemberTurns.findMany({
+      where: and(eq(mgrMemberTurns.groupId, groupId), eq(mgrMemberTurns.active, true)),
+    });
+    const takenCounts = await tx
+      .select({ memberId: mgrSlots.memberId, taken: sql<number>`count(*)::int` })
+      .from(mgrSlots)
+      .where(
+        and(
+          eq(mgrSlots.groupId, groupId),
+          inArray(mgrSlots.status, CLAIMED_STATUSES),
+          gt(mgrSlots.cycleNumber, base),
+        ),
+      )
+      .groupBy(mgrSlots.memberId);
+    const takenBy = new Map(takenCounts.map((t) => [t.memberId, t.taken]));
+
+    const assignments = assignByPreferences({
+      openSlots: openSlots.map((s) => ({ id: s.id, cycleNumber: s.cycleNumber, slotNumber: s.slotNumber })),
+      turns: turnRows.map((t) => ({
+        memberId: t.memberId,
+        turnsTotal: t.turnsTotal,
+        taken: takenBy.get(t.memberId) ?? 0,
+      })),
+      preferences: new Map(
+        turnRows.filter((t) => t.preferredCycles?.length).map((t) => [t.memberId, t.preferredCycles!]),
+      ),
+    });
+
+    for (const a of assignments) {
+      const byChoice = a.reason === "preference";
+      const status: SlotStatus = byChoice ? "claimed" : "auto_assigned";
+      await tx
+        .update(mgrSlots)
+        .set({ memberId: a.memberId, status, claimedAt: new Date() })
+        .where(eq(mgrSlots.id, a.slotId));
+      await logSlotEvent(tx, {
+        groupId,
+        slotId: a.slotId,
+        session,
+        action: byChoice ? "claimed" : "auto_assigned",
+        fromStatus: "open",
+        toStatus: status,
+        fromMemberId: null,
+        toMemberId: a.memberId,
+        note: byChoice ? `their choice number ${a.choice}` : "random draw",
+      });
+    }
+    return {
+      assigned: assignments.length,
+      byChoice: assignments.filter((a) => a.reason === "preference").length,
+    };
+  });
+
+  revalidatePath("/dashboard/mgr");
+  return out;
 }
 
 /**

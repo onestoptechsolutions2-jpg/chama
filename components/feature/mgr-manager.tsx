@@ -21,6 +21,8 @@ import {
   closeCycleAction,
   startNewRotationAction,
   reshuffleUnpaidAction,
+  setTurnPreferencesAction,
+  fillByPreferencesAction,
   archiveRotationAction,
   chargeFeeFromWalletAction,
 } from "@/app/(dashboard)/dashboard/mgr/actions";
@@ -534,24 +536,94 @@ function TurnRow({ turn, editable }: { turn: Turn; editable: boolean }) {
   );
 }
 
+/** A member's wish list for the current rotation: up to 3 cycles, best first. */
+function MyPreferences({ turn, cycles }: { turn: Turn; cycles: CycleWithSlots[] }) {
+  const upcoming = cycles.filter((c) => c.status === "planned" || c.status === "active");
+  const [choices, setChoices] = useState<string[]>([
+    String(turn.preferredCycles?.[0] ?? ""),
+    String(turn.preferredCycles?.[1] ?? ""),
+    String(turn.preferredCycles?.[2] ?? ""),
+  ]);
+  const [isPending, startTransition] = useTransition();
+  const labels = ["First choice", "Second choice", "Third choice"];
+
+  function save() {
+    const picked = choices.filter(Boolean).map(Number);
+    startTransition(async () => {
+      const result = await setTurnPreferencesAction(turn.memberId, picked);
+      if (result?.error) toast.error(result.error);
+      else toast.success("Your choices are saved");
+    });
+  }
+
+  if (upcoming.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Which turn would you like?</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Pick up to 3. When the turns are given out, choices are honoured fairly and nobody is favoured.
+        </p>
+        {labels.map((label, i) => (
+          <div key={label} className="flex items-center gap-3">
+            <span className="w-28 text-sm">{label}</span>
+            <select
+              value={choices[i]}
+              onChange={(e) => setChoices(choices.map((c, j) => (j === i ? e.target.value : c)))}
+              className="h-11 flex-1 rounded-md border bg-background px-3 text-base"
+            >
+              <option value="">No preference</option>
+              {upcoming.map((c) => (
+                <option key={c.id} value={c.cycleNumber}>
+                  Cycle {c.cycleNumber}
+                  {c.scheduledDate ? ` · ${c.scheduledDate}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+        <Button disabled={isPending} onClick={save}>
+          {isPending ? "Saving…" : "Save my choices"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function TurnsTab({
   turns,
+  cycles,
   isStaff,
   myMemberId,
 }: {
   turns: Turn[];
+  cycles: CycleWithSlots[];
   isStaff: boolean;
   myMemberId: number | null;
 }) {
+  const mine = turns.find((t) => t.memberId === myMemberId);
   return (
-    <Card>
-      <CardContent className="space-y-2">
-        {turns.length === 0 && <p className="text-sm text-muted-foreground">No turn records yet.</p>}
-        {turns.map((t) => (
-          <TurnRow key={t.id} turn={t} editable={isStaff || t.memberId === myMemberId} />
-        ))}
-      </CardContent>
-    </Card>
+    <div className="space-y-4">
+      {mine && <MyPreferences turn={mine} cycles={cycles} />}
+      <Card>
+        <CardContent className="space-y-2">
+          {turns.length === 0 && <p className="text-sm text-muted-foreground">No turn records yet.</p>}
+          {turns.map((t) => (
+            <div key={t.id}>
+              <TurnRow turn={t} editable={isStaff || t.memberId === myMemberId} />
+              {isStaff && t.preferredCycles && t.preferredCycles.length > 0 && (
+                <p className="pb-2 text-xs text-muted-foreground">
+                  Would like: {t.preferredCycles.map((n) => `Cycle ${n}`).join(", ")}
+                </p>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
@@ -661,6 +733,17 @@ function AdminActions() {
     });
   }
 
+  function fillByPreferences() {
+    startTransition(async () => {
+      const result = await fillByPreferencesAction();
+      toast.success(
+        result.assigned === 0
+          ? "No open turns to fill"
+          : `${result.assigned} turn(s) filled, ${result.byChoice} by members' choice`,
+      );
+    });
+  }
+
   function reshuffle() {
     startTransition(async () => {
       const result = await reshuffleUnpaidAction();
@@ -703,6 +786,9 @@ function AdminActions() {
         </Button>
         <Button variant="outline" disabled={isPending} onClick={() => autoAssign(false)}>
           Fill open slots in order
+        </Button>
+        <Button disabled={isPending} onClick={fillByPreferences}>
+          Fill open slots by members&apos; choices
         </Button>
         <Button variant="outline" disabled={isPending} onClick={() => autoAssign(true)}>
           Fill open slots by random draw
@@ -832,7 +918,7 @@ export function MgrManager({
       </TabsContent>
 
       <TabsContent value="turns">
-        <TurnsTab turns={turns} isStaff={isStaff} myMemberId={myMemberId} />
+        <TurnsTab turns={turns} cycles={cycles} isStaff={isStaff} myMemberId={myMemberId} />
       </TabsContent>
 
       {isStaff && (

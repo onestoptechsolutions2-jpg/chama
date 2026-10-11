@@ -183,3 +183,71 @@ export function summarizeRotation(
     percent: slots.length === 0 ? 0 : Math.round((settled / slots.length) * 100),
   };
 }
+
+export type OpenSlot = { id: number; cycleNumber: number; slotNumber: number };
+
+export type PreferenceAssignment = {
+  slotId: number;
+  memberId: number;
+  /** "preference": got a cycle they asked for. "draw": filled from the fair random queue. */
+  reason: "preference" | "draw";
+  /** 1-based choice number when reason is "preference". */
+  choice?: number;
+};
+
+/**
+ * Fair fill that honours what members asked for. Everyone's first choice is
+ * settled before any second choice (members in random order, so nobody is
+ * favoured by name or join date); a member never receives more turns than
+ * they have left. Whatever is still open is then filled by the usual
+ * round-robin random draw.
+ */
+export function assignByPreferences(input: {
+  openSlots: OpenSlot[];
+  turns: MemberTurnStatus[];
+  preferences: Map<number, number[]>;
+  rng?: () => number;
+}): PreferenceAssignment[] {
+  const { turns, preferences, rng } = input;
+  const remaining = new Map(turns.map((t) => [t.memberId, Math.max(0, t.turnsTotal - t.taken)]));
+  const assigned = new Map<number, number>();
+
+  const free = [...input.openSlots].sort(
+    (a, b) => a.cycleNumber - b.cycleNumber || a.slotNumber - b.slotNumber,
+);
+  const byCycle = new Map<number, OpenSlot[]>();
+  for (const slot of free) {
+    byCycle.set(slot.cycleNumber, [...(byCycle.get(slot.cycleNumber) ?? []), slot]);
+  }
+
+  const out: PreferenceAssignment[] = [];
+  const used = new Set<number>();
+  const maxChoices = Math.max(0, ...[...preferences.values()].map((p) => p.length));
+
+  for (let choice = 0; choice < maxChoices; choice++) {
+    const askers = [...preferences.entries()]
+      .filter(([memberId, p]) => p[choice] !== undefined && remaining.has(memberId))
+      .map(([memberId]) => memberId);
+    for (const memberId of shuffled(askers, rng)) {
+      if ((remaining.get(memberId) ?? 0) <= 0) continue;
+      const slot = byCycle.get(preferences.get(memberId)![choice])?.shift();
+      if (!slot) continue;
+      out.push({ slotId: slot.id, memberId, reason: "preference", choice: choice + 1 });
+      used.add(slot.id);
+      remaining.set(memberId, (remaining.get(memberId) ?? 0) - 1);
+      assigned.set(memberId, (assigned.get(memberId) ?? 0) + 1);
+    }
+  }
+
+  const queue = buildAutoAssignQueue(
+    turns.map((t) => ({ ...t, taken: t.taken + (assigned.get(t.memberId) ?? 0) })),
+    { shuffle: true, rng },
+  );
+  for (const slot of free) {
+    if (used.has(slot.id)) continue;
+    const memberId = queue.shift();
+    if (memberId === undefined) break;
+    out.push({ slotId: slot.id, memberId, reason: "draw" });
+  }
+  return out;
+}

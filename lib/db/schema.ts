@@ -1382,6 +1382,9 @@ export const mgrMemberTurns = pgTable(
       .notNull()
       .default("1.0"),
     active: boolean("active").notNull().default(true),
+    // Up to 3 cycle numbers this member would like to receive in, best first.
+    // Read by the "fill by preferences" draw (lib/domain/mgr.ts).
+    preferredCycles: integer("preferred_cycles").array(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

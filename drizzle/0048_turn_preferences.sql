@@ -1,0 +1,1 @@
+ALTER TABLE "mgr_member_turns" ADD COLUMN "preferred_cycles" integer[];
