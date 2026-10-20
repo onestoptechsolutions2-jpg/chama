@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
@@ -17,6 +18,8 @@ export default async function DashboardPage() {
   const session = await requireSession();
 
   if (!session.activeMembership) {
+    // Platform staff don't need a group; their home is the super-admin area.
+    if (session.user.platformRole) redirect("/super-admin");
     return (
       <Card>
         <CardHeader>

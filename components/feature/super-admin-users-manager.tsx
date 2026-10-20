@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   invitePlatformUserAction,
   setPlatformUserActiveAction,
+  resetUserPasswordAction,
   updatePlatformRoleAction,
 } from "@/app/super-admin/users/actions";
 import { platformRoleLabel, type PlatformRole } from "@/lib/domain/super-admin";
@@ -65,6 +66,8 @@ export function SuperAdminUsersManager({
   const [inviteEmail, setInviteEmail] = useState("");
   const [invitePhone, setInvitePhone] = useState("");
   const [creating, setCreating] = useState(false);
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [newPassword, setNewPassword] = useState("");
 
   const filteredUsers = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -114,6 +117,19 @@ export function SuperAdminUsersManager({
     setInviteName("");
     setInviteEmail("");
     setInvitePhone("");
+  }
+
+  async function handleResetPassword(userId: number) {
+    setSavingId(userId);
+    const result = await resetUserPasswordAction(userId, newPassword);
+    setSavingId(null);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Password changed. The user has been signed out everywhere.");
+    setResetId(null);
+    setNewPassword("");
   }
 
   async function handleToggleActive(userId: number, active: boolean) {
@@ -248,7 +264,37 @@ export function SuperAdminUsersManager({
                               ? "Deactivate"
                               : "Activate"}
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setResetId(resetId === user.id ? null : user.id);
+                            setNewPassword("");
+                          }}
+                          disabled={savingId === user.id}
+                        >
+                          Reset password
+                        </Button>
                       </div>
+                      {resetId === user.id && (
+                        <div className="flex justify-end gap-2">
+                          <Input
+                            type="text"
+                            autoComplete="off"
+                            className="w-56"
+                            placeholder="New password (8+ characters)"
+                            value={newPassword}
+                            onChange={(event) => setNewPassword(event.target.value)}
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => handleResetPassword(user.id)}
+                            disabled={savingId === user.id || newPassword.length < 8}
+                          >
+                            Save
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 );

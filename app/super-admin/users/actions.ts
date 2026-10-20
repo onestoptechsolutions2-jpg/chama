@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { randomBytes } from "crypto";
 import { eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { platformUserAuditLogs, users } from "@/lib/db/schema";
+import { platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
 import { requirePlatformAdmin } from "@/lib/auth/session";
 import { withPlatformAdmin, type Tx } from "@/lib/db/rls";
 import { hashPassword } from "@/lib/auth/password";
@@ -132,6 +132,50 @@ export async function setPlatformUserActiveAction(
         : "Platform user account was deactivated by a super-admin.",
     );
   });
+
+  revalidatePath("/super-admin/users");
+  return { ok: true };
+}
+
+/**
+ * Sets a new password for any user, signs them out everywhere and clears any
+ * lockout. Only owners may reset another platform user's password, so a
+ * support account can't take over an owner account.
+ */
+export async function resetUserPasswordAction(
+  userId: number,
+  password: string,
+): Promise<{ error?: string; ok?: true }> {
+  const session = await requirePlatformAdmin();
+
+  if (password.length < 8) return { error: "Password must be at least 8 characters" };
+  if (userId === session.user.id) return { error: "Use your profile to change your own password" };
+
+  const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
+  if (!targetUser) return { error: "User not found" };
+
+  if (targetUser.platformRole && session.user.platformRole !== "owner") {
+    return { error: "Only owners can reset a platform user's password" };
+  }
+
+  const passwordHash = await hashPassword(password);
+
+  await withPlatformAdmin(async (tx) => {
+    await tx
+      .update(users)
+      .set({ passwordHash, failedLogins: 0, lockedUntil: null, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+    await recordPlatformUserAudit(
+      tx,
+      userId,
+      session.user.id,
+      "password_reset",
+      targetUser.platformRole,
+      targetUser.platformRole,
+      "Password was reset by a super-admin.",
+    );
+  });
+  await db.delete(sessions).where(eq(sessions.userId, userId));
 
   revalidatePath("/super-admin/users");
   return { ok: true };
