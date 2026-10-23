@@ -25,6 +25,7 @@ import {
   Banknote,
   Smartphone,
   Coins,
+  KeyRound,
 } from "lucide-react";
 import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
@@ -49,6 +50,11 @@ export type NavItem = {
    * Omit for items every member of every group sees.
    */
   permission?: GroupPermission;
+  /**
+   * Built but kept out of the menu to keep it short (docs/product-plan.md:
+   * "hide for v1"). The page still works and is linked from Settings.
+   */
+  parked?: boolean;
   /**
    * Short (1-2 sentence) explanation of what this page is for and how to
    * use it — the single source both the sidebar's tooltip-free nav and
@@ -220,6 +226,7 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/wallet",
+    parked: true,
     permission: "billing.view",
     section: "money",
     label: "Prepaid Wallet",
@@ -238,6 +245,7 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/developer",
+    parked: true,
     permission: "developer.manage",
     section: "account",
     label: "Developer",
@@ -281,6 +289,13 @@ export const navItems: NavItem[] = [
       "Your own KYC details — ID number, ID document, photo, and (for admins/treasurers/secretaries) address and signature. Filled in once here, it's reused automatically for every other group you belong to, not re-collected each time.",
   },
   {
+    href: "/dashboard/access",
+    section: "account",
+    label: "Roles & access",
+    icon: KeyRound,
+    guide: "What each role (Chair/Admin, Treasurer, Secretary, Member) can do in this group, and who holds each office.",
+  },
+  {
     href: "/dashboard/guide",
     section: "account",
     label: "Help",
@@ -298,6 +313,7 @@ export const navItems: NavItem[] = [
  */
 export function getVisibleNavItems(activeMembership: MembershipLike | null): NavItem[] {
   return navItems.filter((item) => {
+    if (item.parked) return false;
     if (!item.permission) return true;
     return can(activeMembership, item.permission);
   });

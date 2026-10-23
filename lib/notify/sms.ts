@@ -1,6 +1,9 @@
 import "server-only";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { withTenant } from "@/lib/db/rls";
-import { smsMessages } from "@/lib/db/schema";
+import { groups, members, smsMessages } from "@/lib/db/schema";
+import { computeSubscriptionQuote } from "@/lib/domain/billing";
+import { nairobiToday } from "@/lib/domain/dates";
 
 /**
  * SMS through Africa's Talking (the usual Kenyan gateway). Optional: with
@@ -29,7 +32,9 @@ export async function sendSms(groupId: number, phone: string, message: string): 
   let providerMessageId: string | null = null;
   let error: string | null = null;
 
-  if (smsEnabled()) {
+  if (smsEnabled() && (await overAllowance(groupId))) {
+    error = "Monthly SMS allowance used up";
+  } else if (smsEnabled()) {
     try {
       const body = new URLSearchParams({ username: process.env.AT_USERNAME!, to: `+${phone}`, message });
       if (process.env.AT_SENDER_ID) body.set("from", process.env.AT_SENDER_ID);
@@ -67,4 +72,25 @@ export async function sendSms(groupId: number, phone: string, message: string): 
     // Logging must never block the action that sent the message.
   }
   return status === "sent";
+}
+
+/** Has this group sent its plan's SMS allowance this (Nairobi) month? */
+async function overAllowance(groupId: number): Promise<boolean> {
+  try {
+    const monthStart = new Date(`${nairobiToday().slice(0, 7)}-01T00:00:00+03:00`);
+    return await withTenant(groupId, async (tx) => {
+      const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId), columns: { segment: true } });
+      const [{ memberCount }] = await tx
+        .select({ memberCount: sql<number>`count(*)::int` })
+        .from(members)
+        .where(and(eq(members.groupId, groupId), eq(members.active, true)));
+      const [{ sent }] = await tx
+        .select({ sent: sql<number>`count(*)::int` })
+        .from(smsMessages)
+        .where(and(eq(smsMessages.groupId, groupId), eq(smsMessages.status, "sent"), gte(smsMessages.createdAt, monthStart)));
+      return sent >= computeSubscriptionQuote({ activeMembers: memberCount, segment: group?.segment }).smsPerMonth;
+    });
+  } catch {
+    return false;
+  }
 }

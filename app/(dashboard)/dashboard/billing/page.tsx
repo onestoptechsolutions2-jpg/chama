@@ -35,7 +35,7 @@ export default async function BillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Billing"
-        description="What this group owes for the platform, computed from members, active vehicles, and real financial activity — not a flat number."
+        description="Your plan and invoices. The price depends only on how many active members you have."
       />
       <BillingManager quote={quote} invoices={invoices} walletBalance={walletBalance} isAdmin={isAdmin} />
     </div>

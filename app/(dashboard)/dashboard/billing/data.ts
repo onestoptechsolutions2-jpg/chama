@@ -5,6 +5,7 @@ import type { ActiveVehicles } from "@/lib/domain/billing";
 
 export type GroupBillingInputs = {
   activeMembers: number;
+  segment: string | null;
   vehicles: ActiveVehicles;
   annualGrossFlow: number;
 };
@@ -66,6 +67,7 @@ export async function computeGroupBillingInputs(tx: Tx, groupId: number): Promis
 
   return {
     activeMembers: memberCountRow,
+    segment: group.segment,
     vehicles: {
       welfare: group.welfareEnabled,
       investment: group.projectsEnabled,
