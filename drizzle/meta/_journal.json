@@ -414,6 +414,13 @@
       "when": 1792729177438,
       "tag": "0058_support_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1792760518263,
+      "tag": "0059_group_wallets",
+      "breakpoints": true
     }
   ]
 }

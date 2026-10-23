@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import {
   platformPayments,
@@ -7,7 +7,11 @@ import {
   groupWallets,
   walletTransactions,
   subscriptionInvoices,
+  incomingPayments,
 } from "@/lib/db/schema";
+import { systemActor } from "@/lib/commands/actor";
+import { runCommand } from "@/lib/commands/run";
+import { confirmPrompt } from "@/lib/commands/wallet";
 import { isValidIntasendChallenge } from "@/lib/domain/payments";
 import type { IntasendWebhookPayload } from "@/lib/payments/intasend";
 
@@ -107,6 +111,25 @@ export async function POST(req: Request) {
         .where(eq(subscriptionInvoices.paymentId, existing.id));
     }
   });
+
+  // Not a platform fee? Then it may be a member's M-Pesa prompt into a group
+  // wallet (lib/commands/wallet.ts): find the pending payment by invoice id
+  // and record it through the normal command (idempotent on resends).
+  if (payload.state === "COMPLETE" || payload.state === "FAILED") {
+    const prompt = await withPlatformAdmin((tx) =>
+      tx.query.incomingPayments.findFirst({
+        where: and(eq(incomingPayments.source, "intasend"), eq(incomingPayments.externalId, payload.invoice_id)),
+        columns: { id: true, groupId: true },
+      }),
+    );
+    if (prompt) {
+      const actor = await systemActor(prompt.groupId, "mpesa", "M-Pesa (IntaSend)");
+      if (actor) {
+        const result = await runCommand(actor, confirmPrompt, { paymentId: prompt.id, state: payload.state });
+        if (!result.ok) console.error(`[intasend] prompt ${prompt.id}: ${result.error}`);
+      }
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -5,7 +5,8 @@ Decisions so far (Oct 2026):
 - **Who:** women's table-banking groups, boda-boda SACCO-style groups,
   welfare/funeral groups and employee welfare schemes.
 - **Where the money sits:** the group's own M-Pesa paybill/till, its bank
-  account, or both. The platform never holds members' money.
+  account, or both — or (optional, switched off by default) a **group wallet**
+  on IntaSend, see §6.
 - **Who pays:** groups, through a subscription.
 
 ## 1. Positioning
@@ -94,8 +95,15 @@ is in v1.
 
 ## 6. Rules we keep
 
-- **Never hold members' money.** Money stays in the group's paybill or
-  bank account. Saccos that raise share capital through digital platforms
+- **Don't hold members' money unless the group chooses the wallet.** By
+  default money stays in the group's own paybill or bank account. The
+  optional **group wallet** (Oct 2026) changes this: each group gets its own
+  wallet under the platform's IntaSend account, members pay it by M-Pesa
+  prompt and every payment records itself. Money leaves only to the
+  group's own bank/paybill/till, set by its admin, after one official asks
+  and a different one approves. It is off until `GROUP_WALLETS_ENABLED=true`
+  and must not be switched on before IntaSend approves the use and a lawyer
+  confirms the custody model. Saccos that raise share capital through digital platforms
   fall under SASRA's non-deposit-taking regulations (LN 82/2020), and a
   pending 2025 amendment bill tightens licensing. Get a Kenyan lawyer's
   view before launch, especially for boda-boda SACCO-style groups that may

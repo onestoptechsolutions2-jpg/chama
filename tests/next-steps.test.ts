@@ -10,16 +10,24 @@ const none = {
   welfareManage: false,
   settingsManage: false,
   rulesManage: false,
+  approveWithdrawal: false,
 };
 const admin = Object.fromEntries(Object.keys(none).map((k) => [k, true])) as typeof none;
 const base: NextStepsInput = {
   can: none,
   setup: { registrationComplete: true, missingOffices: [], memberCount: 20, hasPaybill: true, ruleCount: 5, contributionCount: 10, pendingInvites: 0 },
-  work: { unmatchedPayments: 0, pendingJoinRequests: 0, pendingLoanApplications: 0, overdueLoans: 0, pendingWelfareRequests: 0 },
+  work: { unmatchedPayments: 0, pendingJoinRequests: 0, pendingLoanApplications: 0, overdueLoans: 0, pendingWelfareRequests: 0, withdrawalsToApprove: 0 },
   me: { hasMemberRecord: true, pendingGuaranteeRequests: 0, pendingWelfareApprovals: 0, unpaidFines: 0, loanOverdue: false, loanDueInDays: null, mgrChoicesOpen: false, mgrHasChosen: false, kycIncomplete: false },
 };
 
 describe("generateNextSteps", () => {
+  it("asks an approving official about a wallet withdrawal", () => {
+    const work = { ...base.work, withdrawalsToApprove: 1 };
+    expect(generateNextSteps({ ...base, work }).map((s) => s.id)).toEqual([]);
+    const steps = generateNextSteps({ ...base, can: { ...none, approveWithdrawal: true }, work });
+    expect(steps.map((s) => [s.id, s.title, s.href])).toEqual([["approve-withdrawals", "1 withdrawal waiting for your approval", "/dashboard/payments"]]);
+  });
+
   it("walks a new group's admin through setup", () => {
     const ids = generateNextSteps({
       ...base,

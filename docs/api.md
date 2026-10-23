@@ -148,6 +148,28 @@ funds).
 { "ok": true, "paymentId": 20, "amount": 5000 }
 ```
 
+## Group wallets (IntaSend) — optional
+
+Off unless `GROUP_WALLETS_ENABLED=true` and `INTASEND_SECRET_KEY` are set
+(`groupWalletsEnabled()`). Server Actions only, no public routes
+(`app/(dashboard)/dashboard/payments/wallet-actions.ts`), all through
+commands in `lib/commands/wallet.ts`:
+
+| Command | Permission | What it does |
+|---|---|---|
+| `wallet.enable` | `settings.manage` | `POST wallets/` — a WORKING KES wallet labelled `GROUP-<id>` |
+| `collections.prompt` | `group.view` (others: `money.record`) | pending `incoming_payments` row (member + purpose known), then `POST payment/mpesa-stk-push/` with `wallet_id` and `api_ref chama-<group>-<payment>` |
+| `collections.confirm` | `money.record` (via `mpesa`) | from the webhook: COMPLETE → applied to the member and receipted; FAILED → failed. Idempotent |
+| `wallet.setDestination` | `money.payoutDestination` (admin; never support) | bank (PesaLink, bank code), paybill or till |
+| `wallet.requestWithdrawal` | `money.withdraw` | checks the live balance and destination |
+| `wallet.approveWithdrawal` | `money.approveWithdrawal` | a different official; then `POST send-money/initiate/` (PESALINK or MPESA-B2B) |
+| `wallet.cancelWithdrawal` | `money.withdraw` | only while waiting for approval |
+
+The existing IntaSend webhook (`/api/payments/callback`) routes a COMPLETE /
+FAILED event whose `invoice_id` matches a prompt to `collections.confirm`.
+Withdrawals are `movesMoney`: the agent can't run them, and in support mode
+only platform owners can.
+
 ## Webhooks (inbound)
 
 ### `POST /api/payments/callback` — IntaSend

@@ -224,6 +224,15 @@ import a **bank statement** or a **payroll check-off** file (CSV); uploading
 the same file twice is safe. The admin sets the paybill number and gets the
 two links to register with Safaricom under *M-Pesa setup*.
 
+**Group wallet (when the platform has it on).** The admin taps *Turn on the
+group wallet*. Then the treasurer can **send M-Pesa prompts** — pick what
+it's for, the amount, and the members; each gets a prompt on their phone and
+the payment lands on their record when they enter their PIN, with nothing to
+match. The wallet balance is shown live. To take money out, an official
+**asks to withdraw** and a *different* official **approves**; the money goes
+only to the group's own bank account, paybill or till, which only the admin
+can set (*Where withdrawals go*) and can't change while a withdrawal is open.
+
 ## Share-out (when loans are on)
 
 The year-end share-out: each member's savings plus their share of what the
@@ -288,7 +297,8 @@ deployment strays too far from it.
 
 One merged timeline of your own contributions, fines, and loan activity —
 the closest thing to a bank statement for your standing in the group. It also shows how to pay by M-Pesa (paybill and your
-account number). Members who don't log in get the same statement from the
+account number). If the group wallet is on, **Pay by M-Pesa** sends a
+prompt to your own phone and the payment shows up by itself. Members who don't log in get the same statement from the
 link in their SMS receipt — no password, only their own record, valid for
 90 days.
 

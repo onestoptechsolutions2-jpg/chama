@@ -1,16 +1,24 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import { requirePermission } from "@/lib/auth/session";
+import { redirect } from "next/navigation";
+import { requireActiveGroup } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { groups, incomingPayments, members } from "@/lib/db/schema";
 import { appUrl } from "@/lib/urls";
 import { PageHeader } from "@/components/feature/page-header";
 import { PaymentsManager } from "@/components/feature/payments-manager";
+import { GroupWalletPanel } from "@/components/feature/group-wallet-panel";
+import { getBankCodes, groupWalletsEnabled } from "@/lib/payments/intasend";
+import { loadWallet } from "./wallet-data";
 
 export default async function PaymentsPage() {
-  const session = await requirePermission("money.record");
+  const session = await requireActiveGroup();
   const groupId = session.activeMembership.groupId;
   const canSetup = can(session.activeMembership, "settings.manage");
+  const canRecord = can(session.activeMembership, "money.record");
+  const walletOn = groupWalletsEnabled();
+  // Officials who only approve wallet withdrawals (the secretary) see just the wallet.
+  if (!canRecord && !(walletOn && can(session.activeMembership, "money.approveWithdrawal"))) redirect("/dashboard");
 
   const { group, unmatched, recent, roster } = await withTenant(groupId, async (tx) => ({
     group: await tx.query.groups.findFirst({
@@ -34,6 +42,10 @@ export default async function PaymentsPage() {
     }),
   }));
 
+  // Group wallet on IntaSend (off unless GROUP_WALLETS_ENABLED).
+  const walletData = walletOn ? await loadWallet(groupId) : null;
+  const bankCodes = walletOn && can(session.activeMembership, "money.payoutDestination") ? await getBankCodes() : null;
+
   const mpesaBase = group?.c2bToken ? await appUrl(`/api/mpesa/c2b/${group.c2bToken}`) : null;
   const nameOf = new Map(roster.map((m) => [m.id, m.name]));
   const view = (p: typeof unmatched[number]) => ({
@@ -55,18 +67,38 @@ export default async function PaymentsPage() {
         title="Payments"
         description="M-Pesa, bank and payroll payments are matched to members by their account number and recorded automatically. Match the rest here."
       />
-      <PaymentsManager
-        setup={{
-          canSetup,
-          paybillNumber: group?.paybillNumber ?? "",
-          defaultType: group?.paymentDefaultType ?? "capital",
-          confirmationUrl: mpesaBase ? `${mpesaBase}/confirmation` : null,
-          validationUrl: mpesaBase ? `${mpesaBase}/validation` : null,
-        }}
-        unmatched={unmatched.map(view)}
-        recent={recent.map(view)}
-        roster={roster}
-      />
+      {walletOn && walletData && (
+        <GroupWalletPanel
+          walletId={walletData.walletId}
+          balance={walletData.balance}
+          destination={walletData.destination}
+          withdrawals={walletData.withdrawals}
+          roster={walletData.roster}
+          bankCodes={bankCodes}
+          myUserId={session.user.id}
+          can={{
+            setup: canSetup,
+            prompt: canRecord,
+            destination: can(session.activeMembership, "money.payoutDestination"),
+            withdraw: can(session.activeMembership, "money.withdraw"),
+            approve: can(session.activeMembership, "money.approveWithdrawal"),
+          }}
+        />
+      )}
+      {canRecord && (
+        <PaymentsManager
+          setup={{
+            canSetup,
+            paybillNumber: group?.paybillNumber ?? "",
+            defaultType: group?.paymentDefaultType ?? "capital",
+            confirmationUrl: mpesaBase ? `${mpesaBase}/confirmation` : null,
+            validationUrl: mpesaBase ? `${mpesaBase}/validation` : null,
+          }}
+          unmatched={unmatched.map(view)}
+          recent={recent.map(view)}
+          roster={roster}
+        />
+      )}
     </div>
   );
 }

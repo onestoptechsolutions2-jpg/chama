@@ -338,7 +338,11 @@ says who and through which door (`ui`, `api`, `mpesa`, `cron`, `support`,
 Commands today: `contributions.record`, `contributions.recordBatch`,
 `collections.recordMeeting`, `fines.issue`, `fines.settle`,
 `loans.recordRepayment`, `payments.receive`, `payments.import`,
-`payments.assign`, `payments.ignore`. The deterministic agent (`lib/agent/run.ts`) plans
+`payments.assign`, `payments.ignore`, `loans.sendReminder`, and the group
+wallet ones (`wallet.enable`, `collections.prompt`, `collections.confirm`,
+`wallet.setDestination`, `wallet.requestWithdrawal`,
+`wallet.approveWithdrawal`, `wallet.cancelWithdrawal`; rules in
+`lib/domain/group-wallet.ts`, table `group_withdrawals`, migration 0059). The deterministic agent (`lib/agent/run.ts`) plans
 from fixed playbooks (`lib/domain/agent-playbooks.ts`) and runs them through
 these commands. A Server Action using one is three
 lines (permission → `runCommand` → `revalidatePath`); the public API, the

@@ -314,6 +314,10 @@ export const groups = pgTable("groups", {
   c2bToken: text("c2b_token").unique(),
   /** What an M-Pesa/bank payment counts as when the account reference doesn't say. */
   paymentDefaultType: text("payment_default_type").notNull().default("capital"),
+  // ── Group wallet on IntaSend (lib/domain/group-wallet.ts; off unless GROUP_WALLETS_ENABLED) ──
+  intasendWalletId: text("intasend_wallet_id"),
+  /** The group's own bank account / paybill / till — the ONLY place wallet money can go. */
+  payoutDestination: jsonb("payout_destination"),
 
   // Product entitlements — a group's access to loans/MGR/welfare/projects
   // is an explicit, independently toggleable flag (Settings > Products),
@@ -744,6 +748,32 @@ export const incomingPayments = pgTable(
     unique("incoming_payments_source_external_unique").on(t.groupId, t.source, t.externalId),
     index("incoming_payments_group_status_idx").on(t.groupId, t.status),
   ],
+);
+
+// ── Group wallet withdrawals — money out, two officials ─────────────────
+// One official requests, a different official approves (lib/domain/
+// group-wallet.ts approvalError); then IntaSend pays the group's own payout
+// destination, snapshotted here so a later change can't redirect it.
+export const groupWithdrawals = pgTable(
+  "group_withdrawals",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    destination: jsonb("destination").notNull(),
+    narrative: text("narrative").notNull(),
+    /** requested | approved | sent | failed | cancelled */
+    status: text("status").notNull().default("requested"),
+    requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+    approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
+    trackingId: text("tracking_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("group_withdrawals_group_idx").on(t.groupId, t.createdAt)],
 );
 
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────

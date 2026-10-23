@@ -74,14 +74,17 @@ who is also a real chama member uses a separate personal account.
 | `reports.view` — staff reports, CSV | ✓ | ✓ | ✓ | | |
 | `audit.view` — Activity log | ✓ | ✓ | ✓ | | |
 | `settings.view` | ✓ | ✓ | ✓ | | |
-| `settings.manage` — settings, products, paybill, benefit table | ✓ | | | | |
+| `settings.manage` — settings, products, paybill, benefit table, turn on the wallet | ✓ | | | | |
+| `money.withdraw` — ask to withdraw from the group wallet | ✓ | ✓ | | | |
+| `money.approveWithdrawal` — approve another official's withdrawal | ✓ | ✓ | ✓ | | |
+| `money.payoutDestination` — where wallet withdrawals go | ✓ | | | | |
 | `billing.view` / `billing.pay` | ✓ | ✓ | | | |
 | `billing.invoice`, `platformFees.pay`, `developer.manage` | ✓ | | | | |
 
 **Maker–checker** (`selfDealingError`): nobody creates, approves or records
 repayment of their own loan, marks their own merry-go-round payout paid,
-waives their own fine, or approves their own welfare claim — another
-official must.
+waives their own fine, or approves their own welfare claim, or approves a wallet withdrawal
+they asked for — another official must.
 
 ## 4. Platform permissions
 
@@ -140,8 +143,9 @@ minutes. The group is shown exactly as that member sees it. A red banner is
 on every page. The group's admins are notified. In support mode:
 
 - view-only blocks every write;
-- never: API keys, paying the platform, member passwords, personal KYC;
-- loans/MGR/welfare management: platform owners only;
+- never: API keys, paying the platform, member passwords, personal KYC,
+  where wallet withdrawals go;
+- loans/MGR/welfare management and wallet withdrawals: platform owners only;
 - maker–checker applies to the member being acted as;
 - every write attempt — allowed or refused — is in the group's Activity log.
 

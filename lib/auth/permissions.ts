@@ -42,6 +42,9 @@ export const GROUP_PERMISSIONS = {
   "members.manage": { roles: ADMIN, label: "Change roles, remove or bring back members, reset passwords" },
 
   "money.record": { roles: MONEY, label: "Record contributions and match M-Pesa/bank payments" },
+  "money.withdraw": { roles: MONEY, label: "Ask to withdraw from the group wallet (to the group's own account)" },
+  "money.approveWithdrawal": { roles: OFFICIALS, label: "Approve a withdrawal another official asked for" },
+  "money.payoutDestination": { roles: ADMIN, label: "Set the group's own bank account or paybill for withdrawals" },
   "fines.issue": { roles: OFFICIALS, label: "Issue fines" },
   "fines.settle": { roles: MONEY, label: "Mark fines paid or waived" },
   "meetings.manage": { roles: OFFICIALS, label: "Schedule meetings and take attendance" },

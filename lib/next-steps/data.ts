@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { withTenant } from "@/lib/db/rls";
 import { db } from "@/lib/db/client";
 import {
@@ -7,6 +7,7 @@ import {
   groupInvites,
   groupMemberships,
   groups,
+  groupWithdrawals,
   incomingPayments,
   loanApplications,
   loanGuarantors,
@@ -45,6 +46,7 @@ export async function loadNextSteps(session: SessionWithGroup): Promise<NextStep
     welfareManage: can(m, "welfare.manage"),
     settingsManage: can(m, "settings.manage"),
     rulesManage: can(m, "rules.manage"),
+    approveWithdrawal: can(m, "money.approveWithdrawal"),
   };
 
   const roles = await db
@@ -95,6 +97,14 @@ export async function loadNextSteps(session: SessionWithGroup): Promise<NextStep
           : 0,
         pendingWelfareRequests: flags.welfareManage
           ? await one(tx.select({ n: count }).from(welfareRequests).where(and(eq(welfareRequests.groupId, groupId), inArray(welfareRequests.status, ["pending", "under_review"]))))
+          : 0,
+        withdrawalsToApprove: flags.approveWithdrawal && group?.intasendWalletId
+          ? await one(
+              tx
+                .select({ n: count })
+                .from(groupWithdrawals)
+                .where(and(eq(groupWithdrawals.groupId, groupId), eq(groupWithdrawals.status, "requested"), ne(groupWithdrawals.requestedBy, session.user.id))),
+            )
           : 0,
       },
       me: {

@@ -11,10 +11,17 @@ export const SUPPORT_NEVER: ReadonlySet<GroupPermission> = new Set([
   "billing.pay",
   "billing.invoice",
   "platformFees.pay",
+  "money.payoutDestination",
 ]);
 
 /** Money leaving the group (loans, payouts, welfare grants): platform owners only. */
-export const SUPPORT_MONEY_OUT: ReadonlySet<GroupPermission> = new Set(["loans.manage", "mgr.manage", "welfare.manage"]);
+export const SUPPORT_MONEY_OUT: ReadonlySet<GroupPermission> = new Set([
+  "loans.manage",
+  "mgr.manage",
+  "welfare.manage",
+  "money.withdraw",
+  "money.approveWithdrawal",
+]);
 
 /** Why this support write is refused, or null. Pure — also used by tests. */
 export function supportWriteError(

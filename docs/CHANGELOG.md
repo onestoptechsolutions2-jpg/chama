@@ -191,6 +191,23 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, and the full test suite (252 tests) clean at each step.
 
+## Group wallets on IntaSend (Oct 2026)
+
+- Optional wallet per group under the platform's IntaSend account
+  (`GROUP_WALLETS_ENABLED`, off by default). Members pay by M-Pesa prompt —
+  from Payments (treasurer) or My Money (themselves) — and the payment is on
+  their record as soon as IntaSend confirms it: no account numbers, no
+  matching.
+- Withdrawals only to the group's own bank (PesaLink), paybill or till; one
+  official asks, a different official approves, checked against the live
+  wallet balance. Only the admin sets the destination (never support), and
+  it can't change while a withdrawal is open.
+- This reverses the "never hold members' money" rule for groups that opt
+  in: needs IntaSend's approval and a lawyer's view before it is switched on.
+- New: `group_withdrawals`, `groups.intasend_wallet_id`,
+  `groups.payout_destination` (migration 0059); permissions
+  `money.withdraw`, `money.approveWithdrawal`, `money.payoutDestination`.
+
 ## Staff separation, deterministic agent, mobile (Oct 2026)
 
 - Platform staff never belong to a group; they work on groups from the
