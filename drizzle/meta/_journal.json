@@ -379,6 +379,13 @@
       "when": 1792727269946,
       "tag": "0053_sms_messages",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1792727527726,
+      "tag": "0054_group_audit_log",
+      "breakpoints": true
     }
   ]
 }

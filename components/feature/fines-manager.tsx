@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useTransition } from "react";
+import { toast } from "sonner";
 import type { fines as finesTable, members as membersTable } from "@/lib/db/schema";
 import { fineTypes } from "@/lib/validation/fines";
 import { createFineAction, resolveFineAction, type FineActionState } from "@/app/(dashboard)/dashboard/fines/actions";
@@ -107,13 +108,17 @@ function AddFineForm({ members }: { members: Member[] }) {
 
 function ResolveButtons({ fineId }: { fineId: number }) {
   const [isPending, startTransition] = useTransition();
+  async function settle(status: "paid" | "waived") {
+    const result = await resolveFineAction(fineId, status);
+    if (result?.error) toast.error(result.error);
+  }
   return (
     <div className="flex gap-2">
       <Button
         size="sm"
         variant="outline"
         disabled={isPending}
-        onClick={() => startTransition(() => resolveFineAction(fineId, "paid"))}
+        onClick={() => startTransition(() => settle("paid"))}
       >
         Mark paid
       </Button>
@@ -121,7 +126,7 @@ function ResolveButtons({ fineId }: { fineId: number }) {
         size="sm"
         variant="ghost"
         disabled={isPending}
-        onClick={() => startTransition(() => resolveFineAction(fineId, "waived"))}
+        onClick={() => startTransition(() => settle("waived"))}
       >
         Waive
       </Button>

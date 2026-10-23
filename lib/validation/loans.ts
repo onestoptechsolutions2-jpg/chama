@@ -21,10 +21,6 @@ export const createLoanSchema = z.object({
   purpose: z.string().trim().optional(),
 });
 
-export const recordRepaymentSchema = z.object({
-  amount: z.coerce.number().positive("Amount must be greater than 0"),
-  reference: z.string().trim().optional(),
-});
 
 export const reviewApplicationSchema = z.object({
   decision: z.enum(["approved", "rejected"]),
@@ -37,6 +33,5 @@ export const respondToGuaranteeRequestSchema = z.object({
 
 export type ApplyForLoanInput = z.infer<typeof applyForLoanSchema>;
 export type CreateLoanInput = z.infer<typeof createLoanSchema>;
-export type RecordRepaymentInput = z.infer<typeof recordRepaymentSchema>;
 export type ReviewApplicationInput = z.infer<typeof reviewApplicationSchema>;
 export type RespondToGuaranteeRequestInput = z.infer<typeof respondToGuaranteeRequestSchema>;

@@ -663,6 +663,33 @@ export const smsMessages = pgTable(
   (t) => [index("sms_messages_group_created_idx").on(t.groupId, t.createdAt)],
 );
 
+// ── Group audit log — who did what, through which door ─────────────────
+// One row per command run through lib/commands (UI, API, cron, support,
+// agent, M-Pesa). Append-only: SELECT/INSERT RLS policies only, so the app
+// itself can never edit or erase history (same pattern as mgr_slot_events).
+export const groupAuditLog = pgTable(
+  "group_audit_log",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    command: text("command").notNull(),
+    /** The person the change is attributed to (support staff in support mode); null for API keys/M-Pesa. */
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** ui | api | cron | support | agent | mpesa */
+    via: text("via").notNull(),
+    /** Support/agent acting for this user. */
+    onBehalfOfUserId: integer("on_behalf_of_user_id").references(() => users.id, { onDelete: "set null" }),
+    reason: text("reason"),
+    input: jsonb("input").notNull(),
+    ok: boolean("ok").notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("group_audit_log_group_created_idx").on(t.groupId, t.createdAt)],
+);
+
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(), // opaque random token

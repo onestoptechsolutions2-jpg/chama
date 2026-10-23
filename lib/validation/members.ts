@@ -17,13 +17,5 @@ export const contributionTypes = [
   "welfare",
 ] as const;
 
-export const recordContributionSchema = z.object({
-  memberId: z.coerce.number().int().positive(),
-  type: z.enum(contributionTypes),
-  amount: z.coerce.number().positive("Amount must be greater than 0"),
-  reference: z.string().trim().optional().or(z.literal("")),
-  notes: z.string().trim().optional().or(z.literal("")),
-});
 
 export type CreateMemberInput = z.infer<typeof createMemberSchema>;
-export type RecordContributionInput = z.infer<typeof recordContributionSchema>;

@@ -46,8 +46,21 @@ export type ActiveMembership = {
   products: ProductFlags;
 };
 
+/** Present when platform support has opened this group as a member (lib/auth/support.ts). */
+export type SupportContext = {
+  supportSessionId: number;
+  /** The member being helped, if support is acting as one; null = as the group's admin. */
+  asUserId: number | null;
+  asUserName: string | null;
+  reason: string;
+  mode: "view" | "act";
+  expiresAt: Date;
+};
+
 export type Session = {
   sessionId: string;
+  /** Support mode, or null for a normal session. */
+  support: SupportContext | null;
   user: SessionUser;
   activeGroupId: number | null;
   /** The caller's role/status in the currently active group, or null if none selected/active. */
@@ -172,6 +185,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
 
   return {
     sessionId: row.id,
+    support: null,
     user: {
       id: row.user.id,
       name: row.user.name,

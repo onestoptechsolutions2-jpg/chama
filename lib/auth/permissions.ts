@@ -59,6 +59,7 @@ export const GROUP_PERMISSIONS = {
   "governance.manage": { roles: ["admin", "secretary"], label: "Upload group papers and track deadlines" },
   "rules.manage": { roles: ADMIN, label: "Add or retire group rules" },
   "reports.view": { roles: OFFICIALS, label: "See staff reports and export CSV" },
+  "audit.view": { roles: OFFICIALS, label: "See the group's activity log (who did what)" },
   "settings.view": { roles: OFFICIALS, label: "See group settings" },
   "settings.manage": { roles: ADMIN, label: "Change group settings and products" },
 

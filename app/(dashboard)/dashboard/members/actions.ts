@@ -5,19 +5,16 @@ import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser } from "@/lib/db/rls";
-import { members, contributions, users, groupMemberships, groups, sessions, loans, mgrMemberTurns } from "@/lib/db/schema";
-import {
-  createMemberSchema,
-  recordContributionSchema,
-} from "@/lib/validation/members";
-import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
+import { members, users, groupMemberships, sessions, loans, mgrMemberTurns } from "@/lib/db/schema";
+import { createMemberSchema } from "@/lib/validation/members";
 import { refreshRegistrationStatus } from "@/lib/db/registration";
+import { runCommand } from "@/lib/commands/run";
+import { actorFromSession } from "@/lib/commands/actor";
+import { recordContribution } from "@/lib/commands/contributions";
 import type { MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
 import { normalizeEmail, normalizePhone } from "@/lib/domain/identity";
 import { releaseMemberFromRotation } from "@/app/(dashboard)/dashboard/mgr/rotation-data";
-import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
-import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 
 /** `message` carries a success summary (e.g. what a CSV import did). */
 export type MemberActionState = { error?: string; message?: string } | null;
@@ -167,71 +164,9 @@ export async function recordContributionAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const session = await requirePermission("money.record");
-
-  // Same Object.fromEntries reasoning as createMemberAction above — the
-  // RecordContributionDialog form has no "notes" input, so formData.get()
-  // would return null there and fail z.optional().
-  const parsed = recordContributionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-  const { memberId, type, amount, reference, notes } = parsed.data;
-  const groupId = session.activeMembership.groupId;
-
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
-    const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
-    if (!group) return { error: "Group not found" };
-
-    const amountError = validateContributionAmount(type, amount, Number(group.minPersonalSavingsIncrement));
-    if (amountError) return { error: amountError };
-
-    const [contribution] = await tx
-      .insert(contributions)
-      .values({
-        groupId,
-        memberId,
-        amount: String(amount),
-        type,
-        status: "paid",
-        reference: reference || null,
-        notes: notes || null,
-        recordedBy: session.user.id,
-      })
-      .returning();
-
-    // welfare has no members.* balance column (Phase 8) — it feeds the
-    // collective fund instead. See CONTRIBUTION_BALANCE_FIELD's comment.
-    if (type === "welfare") {
-      const policy = await getOrCreateWelfarePolicy(tx, groupId);
-      const routed = computeContributionAllocation({
-        method: policy.fundingMethod,
-        contributionAmount: amount,
-        fixedAmount: policy.fundingFixedAmount ? Number(policy.fundingFixedAmount) : null,
-        pct: policy.fundingPct ? Number(policy.fundingPct) : null,
-      });
-      if (routed > 0) {
-        const split = splitAcrossReserves(routed, {
-          emergencyPct: Number(policy.emergencyAllocationPct),
-          longTermPct: Number(policy.longTermAllocationPct),
-          advancePct: Number(policy.advanceAllocationPct),
-        });
-        await allocateContributionToWelfareFund(tx, groupId, contribution.id, routed, split);
-      }
-      return { ok: true };
-    }
-
-    const balanceField = CONTRIBUTION_BALANCE_FIELD[type];
-    await tx
-      .update(members)
-      .set({
-        [balanceField]: sql`${members[balanceField]} + ${amount}`,
-        updatedAt: new Date(),
-      })
-      .where(and(eq(members.id, memberId), eq(members.groupId, groupId)));
-    return { ok: true };
-  });
-
-  if ("error" in result) return { error: result.error };
+  // One rule for every door (UI, meeting recorder, API, M-Pesa) — see lib/commands.
+  const result = await runCommand(actorFromSession(session), recordContribution, Object.fromEntries(formData));
+  if (!result.ok) return { error: result.error };
 
   revalidatePath("/dashboard/members");
   revalidatePath("/dashboard/welfare");

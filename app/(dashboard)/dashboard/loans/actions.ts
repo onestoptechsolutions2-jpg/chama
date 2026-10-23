@@ -1,6 +1,8 @@
 "use server";
 
-import { nairobiToday } from "@/lib/domain/dates";
+import { runCommand } from "@/lib/commands/run";
+import { actorFromSession } from "@/lib/commands/actor";
+import { recordLoanRepayment } from "@/lib/commands/loans";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
@@ -10,7 +12,6 @@ import {
   loans,
   loanApplications,
   loanGuarantors,
-  loanRepayments,
   members,
   groups,
   platformPayments,
@@ -20,7 +21,6 @@ import {
 import {
   applyForLoanSchema,
   createLoanSchema,
-  recordRepaymentSchema,
   reviewApplicationSchema,
   respondToGuaranteeRequestSchema,
 } from "@/lib/validation/loans";
@@ -149,44 +149,11 @@ export async function recordRepaymentAction(
   formData: FormData,
 ): Promise<LoanActionState> {
   const session = await requirePermission("loans.manage");
-  const parsed = recordRepaymentSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-  const { amount, reference } = parsed.data;
-  const groupId = session.activeMembership.groupId;
-
-  const blocked = await withTenant(groupId, async (tx): Promise<string | null> => {
-    const loan = await tx.query.loans.findFirst({
-      where: and(eq(loans.id, loanId), eq(loans.groupId, groupId)),
-    });
-    if (!loan) return "Loan not found";
-    const self = selfDealingError(session.activeMembership.memberId, loan.memberId, "record a loan repayment");
-    if (self) return self;
-
-    await tx.insert(loanRepayments).values({
-      groupId,
-      loanId,
-      amount: String(amount),
-      reference: reference || null,
-      recordedBy: session.user.id,
-    });
-
-    const newRemaining = Math.max(0, Number(loan.amountRemaining) - amount);
-    const newStatus = newRemaining <= 0 ? "cleared" : loan.status;
-
-    await tx
-      .update(loans)
-      .set({
-        amountRemaining: String(newRemaining),
-        status: newStatus,
-        clearedDate: newStatus === "cleared" ? nairobiToday() : loan.clearedDate,
-        updatedAt: new Date(),
-      })
-      .where(eq(loans.id, loanId));
-    return null;
+  const result = await runCommand(actorFromSession(session), recordLoanRepayment, {
+    loanId,
+    ...Object.fromEntries(formData),
   });
-  if (blocked) return { error: blocked };
+  if (!result.ok) return { error: result.error };
 
   revalidatePath("/dashboard/loans");
   revalidatePath("/dashboard/statement");

@@ -21,6 +21,7 @@ import {
   Lightbulb,
   Webhook,
   ShieldCheck,
+  History,
 } from "lucide-react";
 import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
@@ -222,6 +223,15 @@ export const navItems: NavItem[] = [
     icon: ShieldCheck,
     guide:
       "Group documents (constitution, bank details, registration certificate) and compliance obligations like AGM dates and annual returns — with reminders as they come due. Basic administrative housekeeping, not tied to any financial product.",
+  },
+  {
+    href: "/dashboard/activity",
+    permission: "audit.view",
+    section: "group",
+    label: "Activity",
+    icon: History,
+    guide:
+      "Every recorded change — money in, fines, repayments — with who did it and how (in the app, by M-Pesa, through the API, or by platform support on your behalf). It can't be edited or deleted.",
   },
   {
     href: "/dashboard/settings",
