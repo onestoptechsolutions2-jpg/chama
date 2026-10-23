@@ -55,7 +55,7 @@ export const GROUP_PERMISSIONS = {
   "projects.view": { roles: ALL, product: "projects", label: "See group projects" },
   "projects.manage": { roles: MONEY, product: "projects", label: "Create projects and record project money" },
 
-  "shareout.view": { roles: ALL, label: "See the year-end share-out" },
+  "shareout.view": { roles: ALL, product: "loans", label: "See the year-end share-out" },
   "governance.manage": { roles: ["admin", "secretary"], label: "Upload group papers and track deadlines" },
   "rules.manage": { roles: ADMIN, label: "Add or retire group rules" },
   "reports.view": { roles: OFFICIALS, label: "See staff reports and export CSV" },

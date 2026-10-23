@@ -1084,6 +1084,8 @@ export const welfarePolicies = pgTable("welfare_policies", {
   fundingMethod: welfareFundingMethodEnum("funding_method").notNull().default("manual"),
   fundingFixedAmount: numeric("funding_fixed_amount", { precision: 14, scale: 2 }),
   fundingPct: numeric("funding_pct", { precision: 5, scale: 2 }),
+  /** Fixed payouts per event (lib/domain/welfare-benefits.ts); empty = no table. */
+  benefitSchedule: jsonb("benefit_schedule").notNull().default([]),
   // emergency + longTerm + advance must sum to 100 — validated in
   // lib/domain/welfare-policy.ts's validateAllocationSplit, not a DB CHECK
   // (numeric rounding makes an exact-100 constraint brittle at the DB layer).

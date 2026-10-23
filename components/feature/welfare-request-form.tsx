@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { welfareClaimTypes } from "@/lib/validation/welfare";
+import type { BenefitItem } from "@/lib/domain/welfare-benefits";
 import { submitWelfareRequestAction, type WelfareActionState } from "@/app/(dashboard)/dashboard/welfare/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,10 +27,13 @@ export function WelfareRequestForm({
   maxEmergencyGrant,
   maxLongTermGrant,
   maxAdvance,
+  benefits = [],
 }: {
   maxEmergencyGrant: number;
   maxLongTermGrant: number;
   maxAdvance: number;
+  /** The group's benefit table; when present, members pick an event and the amount is fixed. */
+  benefits?: BenefitItem[];
 }) {
   const [state, formAction, pending] = useActionState<WelfareActionState, FormData>(
     submitWelfareRequestAction,
@@ -38,7 +42,9 @@ export function WelfareRequestForm({
   const [wantEmergency, setWantEmergency] = useState(false);
   const [wantLongTerm, setWantLongTerm] = useState(false);
   const [wantAdvance, setWantAdvance] = useState(false);
-  const nothingSelected = !wantEmergency && !wantLongTerm && !wantAdvance;
+  const [benefitId, setBenefitId] = useState<string>(benefits.length ? "" : "other");
+  const benefit = benefits.find((b) => b.id === benefitId) ?? null;
+  const nothingSelected = benefit ? false : !wantEmergency && !wantLongTerm && !wantAdvance;
 
   return (
     <Card>
@@ -47,6 +53,36 @@ export function WelfareRequestForm({
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-4">
+          {benefits.length > 0 && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">What happened?</legend>
+              {benefits.map((b) => (
+                <label key={b.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
+                  <span className="flex items-center gap-2">
+                    <input type="radio" name="benefitChoice" checked={benefitId === b.id} onChange={() => setBenefitId(b.id)} />
+                    {b.label}
+                  </span>
+                  <span className="font-medium tabular-nums">Ksh {b.amount.toLocaleString()}</span>
+                </label>
+              ))}
+              <label className="flex items-center gap-2 rounded-md border p-2 text-sm">
+                <input type="radio" name="benefitChoice" checked={benefitId === "other"} onChange={() => setBenefitId("other")} />
+                Something else
+              </label>
+            </fieldset>
+          )}
+          {benefit && (
+            <>
+              <input type="hidden" name="benefitId" value={benefit.id} />
+              <input type="hidden" name="reason" value={benefit.reason} />
+              <input type="hidden" name="requestedEmergencyAmount" value={benefit.amount} />
+              <p className="rounded-md bg-muted/50 p-3 text-sm">
+                The group pays <strong>Ksh {benefit.amount.toLocaleString()}</strong> for this, once it is approved.
+              </p>
+            </>
+          )}
+          {benefitId === "other" && (
+          <>
           <div className="space-y-2">
             <Label htmlFor="reason">Reason</Label>
             <Select
@@ -129,6 +165,9 @@ export function WelfareRequestForm({
             )}
           </div>
 
+          </>
+          )}
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="beneficiaryName">Beneficiary name (optional)</Label>
@@ -145,7 +184,7 @@ export function WelfareRequestForm({
           </div>
 
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-          <Button type="submit" disabled={pending || nothingSelected}>
+          <Button type="submit" disabled={pending || nothingSelected || benefitId === ""}>
             {pending ? "Submitting…" : "Submit request"}
           </Button>
         </form>

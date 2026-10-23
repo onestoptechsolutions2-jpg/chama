@@ -1,6 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
+import { readBenefitSchedule } from "@/lib/domain/welfare-benefits";
+import { BenefitTableEditor } from "@/components/feature/benefit-table-editor";
 import { withTenant } from "@/lib/db/rls";
 import { welfareRequests, welfareAdvances, welfareApprovals } from "@/lib/db/schema";
 import { getOrCreateWelfarePolicy, getOrCreateWelfareFund } from "./welfare-data";
@@ -83,6 +85,9 @@ export default async function WelfarePage() {
         isStaff={isStaff}
         memberId={memberId}
       />
+      {can(session.activeMembership, "settings.manage") && (
+        <BenefitTableEditor initial={readBenefitSchedule(policy.benefitSchedule)} />
+      )}
     </div>
   );
 }

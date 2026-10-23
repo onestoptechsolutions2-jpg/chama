@@ -1,5 +1,6 @@
 import type { GroupType, ProductFlags } from "./products";
 import { RULE_TEMPLATES, type RuleTemplate } from "./rule-templates";
+import { DEFAULT_FUNERAL_BENEFITS, type BenefitItem } from "./welfare-benefits";
 
 /**
  * The four kinds of group the product is built for, as ready-made setups.
@@ -28,8 +29,8 @@ export type SegmentTemplate = {
     fineLateness: number;
     fineAbsence: number;
   };
-  /** Welfare policy start: a fixed amount per member per period. */
-  welfare?: { fixedAmount: number };
+  /** Welfare policy start: a fixed amount per member per period, and an optional benefit table. */
+  welfare?: { fixedAmount: number; benefits?: BenefitItem[] };
   ruleTemplateIds: string[];
 };
 
@@ -98,7 +99,7 @@ export const SEGMENTS: Record<Segment, SegmentTemplate> = {
     type: "welfare",
     products: { loans: false, mgr: false, welfare: true, projects: false },
     settings: { sharePrice: 0, sharesPerMember: 1, meetingDay: null, fineLateness: 0, fineAbsence: 0 },
-    welfare: { fixedAmount: 200 },
+    welfare: { fixedAmount: 200, benefits: DEFAULT_FUNERAL_BENEFITS },
     ruleTemplateIds: [
       "general-eligibility",
       "general-exit",
@@ -116,7 +117,7 @@ export const SEGMENTS: Record<Segment, SegmentTemplate> = {
     type: "welfare",
     products: { loans: false, mgr: false, welfare: true, projects: false },
     settings: { sharePrice: 0, sharesPerMember: 1, meetingDay: null, fineLateness: 0, fineAbsence: 0 },
-    welfare: { fixedAmount: 500 },
+    welfare: { fixedAmount: 500, benefits: DEFAULT_FUNERAL_BENEFITS },
     ruleTemplateIds: [
       "general-eligibility",
       "general-exit",

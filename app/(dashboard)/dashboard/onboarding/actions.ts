@@ -85,6 +85,11 @@ export async function createOnboardingGroupAction(_prev: CreateGroupState, formD
         groupId: newGroupId,
         fundingMethod: "fixed_amount",
         fundingFixedAmount: String(template.welfare.fixedAmount),
+        benefitSchedule: template.welfare.benefits ?? [],
+        // The cap must cover the largest benefit, or the table can't pay it.
+        ...(template.welfare.benefits?.length
+          ? { maxEmergencyGrant: String(Math.max(...template.welfare.benefits.map((b) => b.amount))) }
+          : {}),
       });
     }
 

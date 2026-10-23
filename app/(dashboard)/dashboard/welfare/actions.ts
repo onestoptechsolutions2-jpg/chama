@@ -1,6 +1,7 @@
 "use server";
 
 import { nairobiToday } from "@/lib/domain/dates";
+import { buildSchedule, readBenefitSchedule, resolveBenefit } from "@/lib/domain/welfare-benefits";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
@@ -13,6 +14,7 @@ import {
   welfareAdvanceRepayments,
   welfareFunds,
   welfareLedger,
+  welfarePolicies,
 } from "@/lib/db/schema";
 import {
   submitWelfareRequestSchema,
@@ -20,6 +22,7 @@ import {
   respondToWelfareApprovalSchema,
   recordAdvanceRepaymentSchema,
   allocateToWelfareFundSchema,
+  welfareClaimTypes,
 } from "@/lib/validation/welfare";
 import {
   resolveApprovalTier,
@@ -60,15 +63,8 @@ export async function submitWelfareRequestAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const {
-    reason,
-    beneficiaryName,
-    beneficiaryRel,
-    description,
-    requestedEmergencyAmount,
-    requestedLongTermAmount,
-    requestedAdvanceAmount,
-  } = parsed.data;
+  const { beneficiaryName, beneficiaryRel, benefitId } = parsed.data;
+  let { reason, description, requestedEmergencyAmount, requestedLongTermAmount, requestedAdvanceAmount } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true; requestId: number; total: number }> => {
@@ -91,6 +87,17 @@ export async function submitWelfareRequestAction(
     const policy = await getOrCreateWelfarePolicy(tx, groupId);
     const eligibility = await evaluateMemberWelfareEligibility(tx, groupId, memberId, policy);
     if (!eligibility.eligible) return { error: eligibility.reason };
+
+    // A benefit from the group's table: the table sets reason and amount.
+    if (benefitId) {
+      const benefit = resolveBenefit(readBenefitSchedule(policy.benefitSchedule), benefitId, Number(policy.maxEmergencyGrant));
+      if ("error" in benefit) return { error: benefit.error };
+      reason = benefit.reason;
+      requestedEmergencyAmount = benefit.amount;
+      requestedLongTermAmount = 0;
+      requestedAdvanceAmount = 0;
+      description = [benefit.label, description].filter(Boolean).join(" — ");
+    }
 
     if (requestedEmergencyAmount > Number(policy.maxEmergencyGrant)) {
       return {
@@ -574,6 +581,22 @@ export async function allocateToWelfareFundAction(
     });
   });
 
+  revalidatePath("/dashboard/welfare");
+  return null;
+}
+
+/** The group's benefit table (fixed payout per event). Admin only — it's policy. */
+export async function saveBenefitScheduleAction(
+  rows: { label: string; reason: string; amount: number }[],
+): Promise<{ error: string } | null> {
+  const session = await requirePermission("settings.manage");
+  if (!session.activeMembership.products.welfare) return { error: "Welfare is switched off for this group" };
+  const schedule = buildSchedule(rows, welfareClaimTypes);
+  const groupId = session.activeMembership.groupId;
+  await withTenant(groupId, async (tx) => {
+    await getOrCreateWelfarePolicy(tx, groupId);
+    await tx.update(welfarePolicies).set({ benefitSchedule: schedule, updatedAt: new Date() }).where(eq(welfarePolicies.groupId, groupId));
+  });
   revalidatePath("/dashboard/welfare");
   return null;
 }

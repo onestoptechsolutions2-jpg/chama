@@ -24,6 +24,7 @@ import {
   History,
   Banknote,
   Smartphone,
+  Coins,
 } from "lucide-react";
 import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
@@ -184,6 +185,15 @@ export const navItems: NavItem[] = [
     icon: Hammer,
     guide:
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
+  },
+  {
+    href: "/dashboard/share-out",
+    permission: "shareout.view",
+    section: "money",
+    label: "Share-out",
+    icon: Coins,
+    guide:
+      "The year-end share-out: each member's savings plus their share of the group's earnings (loan interest, fines, other income, less expenses), less any loan or fines still owed. Share by savings × time saved (fairer) or by savings at the end. Officials see everyone; members see their own line. Printable.",
   },
   {
     href: "/dashboard/capital",
