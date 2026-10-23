@@ -280,7 +280,8 @@ app/
     v1/{group,members,contributions,loans,fines,meetings,mgr/cycles,
         welfare/requests,welfare/policy,capital-position}/  # public developer API — see api.md
     mpesa/c2b/[token]/[kind]/   # the group's own paybill/till notifications
-    internal/commands/          # the backend agent's door
+    internal/agent/             # trigger the deterministic agent's playbooks
+    cron/agent/                 # daily agent run
   invite/[token]/               # accept an invite
   s/[token]/                    # a member's no-password statement
   print/registration-pack/      # printable registration papers
@@ -337,7 +338,9 @@ says who and through which door (`ui`, `api`, `mpesa`, `cron`, `support`,
 Commands today: `contributions.record`, `contributions.recordBatch`,
 `collections.recordMeeting`, `fines.issue`, `fines.settle`,
 `loans.recordRepayment`, `payments.receive`, `payments.import`,
-`payments.assign`, `payments.ignore`. A Server Action using one is three
+`payments.assign`, `payments.ignore`. The deterministic agent (`lib/agent/run.ts`) plans
+from fixed playbooks (`lib/domain/agent-playbooks.ts`) and runs them through
+these commands. A Server Action using one is three
 lines (permission → `runCommand` → `revalidatePath`); the public API, the
 M-Pesa callback and the agent endpoint call the same commands. Older
 actions still hold their logic inline; move one into a command when another

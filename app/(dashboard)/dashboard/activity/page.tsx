@@ -21,6 +21,7 @@ const COMMAND_LABELS: Record<string, string> = {
   "payments.ignore": "Set aside a payment",
   "support.start": "Opened the group to help",
   "support.extend": "Stayed 30 more minutes",
+  "reminders.loanDue": "Sent a loan reminder",
 };
 const VIA_LABELS: Record<string, string> = {
   ui: "in the app",
@@ -28,7 +29,7 @@ const VIA_LABELS: Record<string, string> = {
   mpesa: "by M-Pesa",
   cron: "automatically",
   support: "by platform support",
-  agent: "by the assistant",
+  agent: "by the agent (fixed rules)",
 };
 
 export default async function ActivityPage() {

@@ -145,10 +145,15 @@ on every page. The group's admins are notified. In support mode:
 - maker–checker applies to the member being acted as;
 - every write attempt — allowed or refused — is in the group's Activity log.
 
-## 8. The agent
+## 8. The agent — fixed rules, no AI
 
-`POST /api/internal/commands` with `Authorization: Bearer $AGENT_API_TOKEN`
-runs a registered command (`lib/commands/registry.ts`) as `AGENT_USER_ID`
-(an account with the `agent` platform role). Dry-run by default; a reason
-is required; `asUserId` makes it act with that member's role; it never moves
-money out (it prepares, a person pays). See `api.md`.
+The agent is deterministic: a set of playbooks (`lib/domain/agent-playbooks.ts`)
+— plain rules that read the group's records and return a plan. The same
+records always give the same plan. `lib/agent/run.ts` carries a plan out
+through the normal commands as `via: agent`, with the playbook as the
+reason, so the permission matrix, maker–checker and audit log apply and it
+never moves money out. It runs daily (cron), from the Support console's
+**Run agent** (staff with `agent.run`; preview first), or via
+`POST /api/internal/agent` (`AGENT_API_TOKEN`), which can trigger playbooks
+only — never arbitrary commands. Next steps on Home is the same idea for
+people: fixed rules that list what to do.

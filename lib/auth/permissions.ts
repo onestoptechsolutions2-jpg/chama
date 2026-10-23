@@ -81,7 +81,7 @@ export const PLATFORM_PERMISSIONS = {
   "support.view": { roles: ["owner", "support"], label: "Open a group as a user, read-only" },
   "support.act": { roles: ["owner", "support"], label: "Make changes in a group on a user's behalf" },
   "support.money": { roles: ["owner"], label: "Move money (payouts, disbursements) on a user's behalf" },
-  "agent.run": { roles: ["agent", "owner"], label: "Run commands through the internal agent endpoint" },
+  "agent.run": { roles: ["agent", "owner", "support"], label: "Run the agent's fixed playbooks for a group (no AI; never moves money out)" },
 } as const satisfies Record<string, { roles: PlatformRole[]; label: string }>;
 
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;

@@ -10,6 +10,7 @@ import { requirePlatformPermission, requireSession } from "@/lib/auth/session";
 import { canPlatform } from "@/lib/auth/permissions";
 import { SUPPORT_SESSION_MINUTES } from "@/lib/auth/support";
 import { insertNotification } from "@/lib/db/notifications";
+import { runAgent, type AgentReport } from "@/lib/agent/run";
 
 const startSchema = z.object({
   reason: z.string().trim().min(5, "Say why you're opening this group (at least a few words)").max(300),
@@ -110,4 +111,15 @@ export async function extendSupportSessionAction(): Promise<void> {
     }),
   );
   redirect("/dashboard");
+}
+
+/**
+ * Runs the deterministic agent's playbooks for one group from the support
+ * console: dryRun shows the plan, otherwise it's carried out (audited as
+ * via = agent, with the staff member recorded).
+ */
+export async function runAgentAction(groupId: number, dryRun: boolean): Promise<AgentReport | { error: string }> {
+  const session = await requirePlatformPermission("agent.run");
+  const report = await runAgent(groupId, { dryRun, trigger: "support", triggeredBy: session.user.id });
+  return report ?? { error: "Group not found or inactive" };
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
-import { startSupportSessionAction } from "@/app/super-admin/support/actions";
+import { useActionState, useState, useTransition } from "react";
+import { runAgentAction, startSupportSessionAction } from "@/app/super-admin/support/actions";
+import type { AgentReport } from "@/lib/agent/run";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -38,7 +39,17 @@ const WORK_LABELS: Record<keyof ConsoleGroup["work"], string> = {
 };
 
 /** Every group, its waiting work, and a one-step "Open" into support mode. */
-export function SupportConsole({ groups, recent, canAct }: { groups: ConsoleGroup[]; recent: ConsoleSession[]; canAct: boolean }) {
+export function SupportConsole({
+  groups,
+  recent,
+  canAct,
+  canRunAgent,
+}: {
+  groups: ConsoleGroup[];
+  recent: ConsoleSession[];
+  canAct: boolean;
+  canRunAgent: boolean;
+}) {
   const [query, setQuery] = useState("");
   const [onlyWork, setOnlyWork] = useState(false);
   const q = query.trim().toLowerCase();
@@ -57,7 +68,7 @@ export function SupportConsole({ groups, recent, canAct }: { groups: ConsoleGrou
 
       <div className="space-y-3">
         {shown.map((g) => (
-          <GroupRow key={g.id} group={g} canAct={canAct} />
+          <GroupRow key={g.id} group={g} canAct={canAct} canRunAgent={canRunAgent} />
         ))}
         {shown.length === 0 && <p className="text-sm text-muted-foreground">No groups match.</p>}
       </div>
@@ -86,8 +97,11 @@ export function SupportConsole({ groups, recent, canAct }: { groups: ConsoleGrou
   );
 }
 
-function GroupRow({ group: g, canAct }: { group: ConsoleGroup; canAct: boolean }) {
+function GroupRow({ group: g, canAct, canRunAgent }: { group: ConsoleGroup; canAct: boolean; canRunAgent: boolean }) {
   const [open, setOpen] = useState(false);
+  const [agent, setAgent] = useState<AgentReport | { error: string } | null>(null);
+  const [agentPending, startAgent] = useTransition();
+  const runAgent = (dryRun: boolean) => startAgent(async () => setAgent(await runAgentAction(g.id, dryRun)));
   const [state, formAction, pending] = useActionState(startSupportSessionAction.bind(null, g.id), null);
   const work = (Object.keys(WORK_LABELS) as (keyof ConsoleGroup["work"])[]).filter((k) => g.work[k] > 0);
 
@@ -112,15 +126,46 @@ function GroupRow({ group: g, canAct }: { group: ConsoleGroup; canAct: boolean }
               {work.length === 0 && !g.setupIncomplete && <span className="text-xs text-muted-foreground">Nothing waiting</span>}
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link href={`/super-admin/groups/${g.id}`} className={buttonVariants({ variant: "ghost", size: "sm" })}>
               Details
             </Link>
+            {canRunAgent && (
+              <Button size="sm" variant="outline" disabled={agentPending} onClick={() => runAgent(true)}>
+                {agentPending ? "Checking…" : "Run agent"}
+              </Button>
+            )}
             <Button size="sm" variant={open ? "secondary" : "default"} onClick={() => setOpen((o) => !o)}>
               {open ? "Cancel" : "Open"}
             </Button>
           </div>
         </div>
+        {agent && (
+          <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+            {"error" in agent ? (
+              <p className="text-destructive">{agent.error}</p>
+            ) : agent.steps.length === 0 ? (
+              <p className="text-muted-foreground">The agent&apos;s rules find nothing to do for this group right now.</p>
+            ) : (
+              <>
+                <p className="font-medium">{agent.dryRun ? "The agent would do this (fixed rules, no AI):" : "Done:"}</p>
+                <ul className="list-disc space-y-1 pl-5">
+                  {agent.steps.map((s, i) => (
+                    <li key={i}>
+                      {s.summary}
+                      {s.ok === false && <span className="text-destructive"> — not done: {s.error}</span>}
+                    </li>
+                  ))}
+                </ul>
+                {agent.dryRun && (
+                  <Button size="sm" disabled={agentPending} onClick={() => runAgent(false)}>
+                    {agentPending ? "Running…" : "Do it"}
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        )}
         {open && (
           <form action={formAction} className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/40 p-3">
             <div className="min-w-56 flex-1 space-y-1">

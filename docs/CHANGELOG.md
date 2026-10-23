@@ -191,6 +191,19 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, and the full test suite (252 tests) clean at each step.
 
+## Staff separation, deterministic agent, mobile (Oct 2026)
+
+- Platform staff never belong to a group; they work on groups from the
+  Support console (`/super-admin/support`) through time-boxed, audited
+  support sessions.
+- The agent is fixed rules, not an AI model: playbooks
+  (`rematch-payments`, `loan-reminders`) plan from the group's records and
+  run through the normal commands; daily cron, Support console *Run agent*,
+  or `POST /api/internal/agent` (playbooks only). The earlier
+  `/api/internal/commands` endpoint, which accepted arbitrary commands, is
+  removed.
+- One-screen landing page; every page measured and fixed at 375px.
+
 ## Lean v1: IAM, identity, payments and the assistant (Oct 2026)
 
 Driven by `docs/audit-2026-10.md` and `docs/product-plan.md` (segments:

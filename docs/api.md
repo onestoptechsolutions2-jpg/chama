@@ -221,31 +221,35 @@ app only records it.
 Bank statements and payroll check-off files are imported as CSV on the
 Payments page (`payments.import`), with the same matching.
 
-## Internal agent API
+## The agent (deterministic — no AI)
 
-### `GET /api/internal/commands`
-Lists the commands the agent may run (`lib/commands/registry.ts`).
+The agent is a set of fixed rules ("playbooks", `lib/domain/agent-playbooks.ts`),
+not an AI model: the same group records always produce the same actions. It
+runs daily from Vercel Cron (`GET /api/cron/agent`, 09:00 Nairobi), from the
+Support console's **Run agent** button (preview, then *Do it*), or from
+another system with:
 
-### `POST /api/internal/commands`
+### `GET /api/internal/agent`
+Lists the playbooks and the rule each follows.
+
+### `POST /api/internal/agent`
 
 ```json
-{
-  "groupId": 12,
-  "command": "contributions.record",
-  "input": { "memberId": 5, "type": "capital", "amount": 250 },
-  "reason": "Treasurer asked to add a missed cash payment",
-  "asUserId": 31,        // optional: act with this member's role (maker–checker applies)
-  "dryRun": true         // default true: shows the result and rolls back
-}
-// 200 { "dryRun": true, "ok": true, "data": { ... } }
-// 403 { "dryRun": false, "ok": false, "error": "..." }
+{ "groupId": 12, "playbooks": ["rematch-payments"], "dryRun": true }
+// 200 { "groupId": 12, "groupName": "...", "dryRun": true,
+//       "steps": [{ "playbook": "rematch-payments", "summary": "Payment #8 → Akinyi (capital, matched by account)", "ok": null }] }
 ```
 
-- Auth: `Authorization: Bearer $AGENT_API_TOKEN`; acts as `AGENT_USER_ID`,
-  which must have the `agent` platform role. 401 otherwise.
-- Same permission matrix, validation, transaction and audit log
-  (`via: agent`, with the reason) as a person. Commands that move money out
-  are refused.
+- Auth: `Authorization: Bearer $AGENT_API_TOKEN`. `dryRun` defaults to true.
+- It can only run playbooks — it can't be given arbitrary commands, so no
+  outside system (an AI model included) can steer it.
+- Each step runs through the normal commands as `via: agent` with the
+  playbook as the reason: permission-checked, re-validated, audited, never
+  moving money out.
+
+Playbooks: **rematch-payments** (re-checks unmatched payments against
+today's member numbers/phones) and **loan-reminders** (SMS 3 days before,
+on the due date, and weekly while overdue).
 
 ## Public developer API (v1)
 

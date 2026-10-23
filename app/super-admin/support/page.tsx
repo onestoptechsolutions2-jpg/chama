@@ -120,7 +120,12 @@ export default async function SupportConsolePage() {
         title="Support console"
         description="Platform staff don't belong to groups. Open any group here to see it as its admin and help — every session is time-boxed, has a reason the group sees, and is logged in the group's Activity."
       />
-      <SupportConsole groups={consoleGroups} recent={recent} canAct={canPlatform(session.user.platformRole, "support.act")} />
+      <SupportConsole
+        groups={consoleGroups}
+        recent={recent}
+        canAct={canPlatform(session.user.platformRole, "support.act")}
+        canRunAgent={canPlatform(session.user.platformRole, "agent.run")}
+      />
     </div>
   );
 }
