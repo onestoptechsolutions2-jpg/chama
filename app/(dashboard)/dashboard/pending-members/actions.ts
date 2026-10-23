@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -33,6 +34,7 @@ export async function approveMembershipAction(
     with: { user: true },
   });
   if (!membership) return { error: "Request not found" };
+  if (isPlatformStaff(membership.user.platformRole)) return { error: PLATFORM_STAFF_NO_GROUPS };
 
   // Cross-group KYC reuse — "captured once, reused across every
   // membership" (see lib/db/schema.ts's members KYC comment). Scoped to

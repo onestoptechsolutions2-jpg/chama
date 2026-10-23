@@ -28,7 +28,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
-    if (canPlatform(session.user.platformRole, "platform.console") && myInvites.length === 0) redirect("/super-admin");
+    if (canPlatform(session.user.platformRole, "platform.console")) redirect("/super-admin/support");
     return (
       <div className="space-y-4">
       <MyInvites invites={myInvites} />

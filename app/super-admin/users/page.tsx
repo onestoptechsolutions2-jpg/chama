@@ -1,6 +1,7 @@
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { requirePlatformPermission } from "@/lib/auth/session";
-import { canPlatform } from "@/lib/auth/permissions";
+import { canPlatform, isPlatformStaff } from "@/lib/auth/permissions";
+import { Card, CardContent } from "@/components/ui/card";
 import { normalizeEmail, normalizePhone } from "@/lib/domain/identity";
 import { PageHeader } from "@/components/feature/page-header";
 import { SuperAdminUsersManager } from "@/components/feature/super-admin-users-manager";
@@ -19,6 +20,13 @@ export default async function SuperAdminUsersPage() {
     const memberships = await tx.query.groupMemberships.findMany({ columns: { userId: true } });
     return [usersList, logs, memberships] as const;
   });
+
+  // Platform staff must not belong to groups; older accounts may still have
+  // memberships (they're ignored at sign-in). List them so they get tidied.
+  const activeMembershipUsers = new Set(
+    (await withPlatformAdmin((tx) => tx.query.groupMemberships.findMany({ where: (m, { inArray }) => inArray(m.status, ["active", "pending"]), columns: { userId: true } }))).map((m) => m.userId),
+  );
+  const staffInGroups = platformUsers.filter((u) => isPlatformStaff(u.platformRole) && activeMembershipUsers.has(u.id));
 
   const groupsPerUser = new Map<number, number>();
   for (const m of membershipCounts) groupsPerUser.set(m.userId, (groupsPerUser.get(m.userId) ?? 0) + 1);
@@ -57,6 +65,25 @@ export default async function SuperAdminUsersPage() {
         title="Platform users"
         description="Manage who can access the cross-tenant super-admin surface."
       />
+      {staffInGroups.length > 0 && (
+        <Card className="border-amber-500/50">
+          <CardContent className="space-y-1 pt-6 text-sm">
+            <p className="font-medium">Platform staff still listed in groups</p>
+            <p className="text-muted-foreground">
+              Staff accounts can&apos;t act as group members — these memberships are ignored at sign-in. Hand their group roles
+              to someone else (in support mode, Members → role), then remove them from the group; if they are also a real member,
+              they should use a separate personal account.
+            </p>
+            <ul className="list-disc pl-5">
+              {staffInGroups.map((u) => (
+                <li key={u.id}>
+                  {u.name} ({u.platformRole})
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
       <DuplicateUsersPanel sets={duplicateSets} canMerge={canPlatform(session.user.platformRole, "platform.users.merge")} />
       <SuperAdminUsersManager users={platformUsers} auditLogs={auditLogs} />
     </div>

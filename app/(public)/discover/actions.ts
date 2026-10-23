@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { and, count, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -41,6 +42,7 @@ export async function requestToJoinAction(
   formData: FormData,
 ): Promise<JoinRequestState> {
   const session = await requireSession();
+  if (isPlatformStaff(session.user.platformRole)) return { error: PLATFORM_STAFF_NO_GROUPS };
   const parsed = joinRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

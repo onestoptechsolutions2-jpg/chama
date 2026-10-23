@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
@@ -40,6 +41,9 @@ export async function createInviteAction(_prev: InviteActionState, formData: For
     : email
       ? await db.query.users.findFirst({ where: eq(users.email, email) })
       : undefined;
+  if (existingUser && isPlatformStaff(existingUser.platformRole)) {
+    return { error: "That phone belongs to a platform staff account, which can't join groups." };
+  }
   if (existingUser) {
     const membership = await db.query.groupMemberships.findFirst({
       where: and(eq(groupMemberships.userId, existingUser.id), eq(groupMemberships.groupId, groupId)),

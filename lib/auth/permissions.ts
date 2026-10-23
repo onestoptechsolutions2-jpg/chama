@@ -124,3 +124,16 @@ export function selfDealingError(
   }
   return null;
 }
+
+/**
+ * Platform staff (owner, support, agent) never belong to a group — they
+ * work on groups only through support mode, so every change they make is
+ * time-boxed, reasoned and audited, and their access never mixes with a
+ * member's. Checked wherever someone joins a group, and at sign-in.
+ */
+export function isPlatformStaff(role: PlatformRole | null | undefined): boolean {
+  return role !== null && role !== undefined;
+}
+
+export const PLATFORM_STAFF_NO_GROUPS =
+  "Platform staff accounts can't belong to a group. Use support mode to help this group, or a separate personal account to be a member.";

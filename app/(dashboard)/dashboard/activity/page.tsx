@@ -20,6 +20,7 @@ const COMMAND_LABELS: Record<string, string> = {
   "payments.assign": "Matched a payment to a member",
   "payments.ignore": "Set aside a payment",
   "support.start": "Opened the group to help",
+  "support.extend": "Stayed 30 more minutes",
 };
 const VIA_LABELS: Record<string, string> = {
   ui: "in the app",

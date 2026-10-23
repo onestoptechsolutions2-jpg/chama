@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requirePlatformPermission } from "@/lib/auth/session";
 import { logoutAction } from "@/app/(auth)/actions";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 
 export default async function SuperAdminLayout({
   children,
@@ -16,6 +16,9 @@ export default async function SuperAdminLayout({
         <div className="flex items-center gap-6">
           <span className="font-semibold">Chama Platform · Super Admin</span>
           <nav className="flex gap-4 text-sm">
+            <Link href="/super-admin/support" className="font-medium text-foreground hover:text-primary">
+              Support
+            </Link>
             <Link href="/super-admin/groups" className="text-muted-foreground hover:text-foreground">
               Groups
             </Link>
@@ -32,9 +35,6 @@ export default async function SuperAdminLayout({
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{session.user.name}</span>
-          <Link href="/dashboard" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            Back to app
-          </Link>
           <form action={logoutAction}>
             <Button type="submit" variant="ghost" size="sm">
               Log out

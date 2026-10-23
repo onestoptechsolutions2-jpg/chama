@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
@@ -20,6 +21,7 @@ export type CreateGroupState = { error: string } | null;
  */
 export async function createOnboardingGroupAction(_prev: CreateGroupState, formData: FormData): Promise<CreateGroupState> {
   const session = await requireSession();
+  if (isPlatformStaff(session.user.platformRole)) return { error: PLATFORM_STAFF_NO_GROUPS };
   const parsed = onboardingGroupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid group details" };
 

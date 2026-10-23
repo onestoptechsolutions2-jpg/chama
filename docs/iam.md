@@ -37,6 +37,16 @@ mirrors it. Members see the same matrix in plain words at **Roles & access**
 Products (loans, MGR, welfare, projects) are switched on per group, and a
 permission tied to a product only applies when it is on.
 
+**Platform staff never belong to a group.** An account with a platform role
+can't create, join, accept an invite to, or be approved into a group, and
+any memberships it had before are ignored at sign-in
+(`isPlatformStaff`). Granting a platform role to someone who is in a group
+is refused, and merging a member account into a staff account is refused.
+Staff reach groups only through support mode — so everything they do is
+time-boxed, has a reason and is in the group's Activity log. A staff member
+who is also a real chama member uses a separate personal account.
+`/super-admin/users` lists any staff account still recorded in a group.
+
 ## 3. Group permissions
 
 | Permission | Admin | Treasurer | Secretary | Member | Product |
@@ -116,7 +126,15 @@ Officials read it at **Activity** (`/dashboard/activity`).
 
 ## 7. Support mode ("act as")
 
-From `/super-admin/groups/<id>` → *Open as support*: a reason (shown to
+Staff start at the **Support console** (`/super-admin/support`, their home
+page): every group with its waiting work — payments to match, join, loan and
+welfare requests, overdue loans, unaccepted invites, unfinished setup — and
+an **Open** button (reason + view-only or work on it). It opens the group as
+its admin, so every function of the group is available, within the rules
+below. *Add 30 min* in the banner extends the session (logged). The same
+form, plus "see it as a particular member", is on `/super-admin/groups/<id>`.
+
+From either place: a reason (shown to
 the group), as the group admin or as one member, view-only or act, for 30
 minutes. The group is shown exactly as that member sees it. A red banner is
 on every page. The group's admins are notified. In support mode:

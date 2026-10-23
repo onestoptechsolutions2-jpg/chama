@@ -85,5 +85,29 @@ export async function endSupportSessionAction(): Promise<void> {
   }
   const groupId = session.activeMembership?.groupId;
   await db.update(sessions).set({ supportSessionId: null, activeGroupId: null }).where(eq(sessions.id, session.sessionId));
-  redirect(groupId ? `/super-admin/groups/${groupId}` : "/super-admin");
+  redirect(groupId ? `/super-admin/support?left=${groupId}` : "/super-admin/support");
+}
+
+/** Another 30 minutes on the open support session (logged in the group's Activity). */
+export async function extendSupportSessionAction(): Promise<void> {
+  const session = await requireSession();
+  if (!session.support || !session.activeMembership) return;
+  const id = session.support.supportSessionId;
+  const expiresAt = new Date(Date.now() + SUPPORT_SESSION_MINUTES * 60_000);
+  await withPlatformAdmin((tx) =>
+    tx.update(supportSessions).set({ expiresAt }).where(and(eq(supportSessions.id, id), eq(supportSessions.staffUserId, session.user.id))),
+  );
+  await withTenant(session.activeMembership.groupId, (tx) =>
+    tx.insert(groupAuditLog).values({
+      groupId: session.activeMembership!.groupId,
+      command: "support.extend",
+      actorUserId: session.user.id,
+      via: "support",
+      onBehalfOfUserId: session.support!.asUserId,
+      reason: session.support!.reason,
+      input: {},
+      ok: true,
+    }),
+  );
+  redirect("/dashboard");
 }
