@@ -4,18 +4,17 @@ import { revalidatePath } from "next/cache";
 import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
-import { withTenant, withUser, type Tx } from "@/lib/db/rls";
+import { withTenant, withUser } from "@/lib/db/rls";
 import { members, contributions, users, groupMemberships, groups, sessions, loans, mgrMemberTurns } from "@/lib/db/schema";
 import {
   createMemberSchema,
   recordContributionSchema,
-  createLoginSchema,
 } from "@/lib/validation/members";
 import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
-import { computeRegistrationComplete, type MembershipRole } from "@/lib/domain/officials";
+import { refreshRegistrationStatus } from "@/lib/db/registration";
+import type { MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
 import { normalizeEmail, normalizePhone } from "@/lib/domain/identity";
-import { findPerson } from "@/lib/identity/people";
 import { releaseMemberFromRotation } from "@/app/(dashboard)/dashboard/mgr/rotation-data";
 import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
 import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
@@ -115,23 +114,6 @@ export async function importMembersAction(
   };
 }
 
-/**
- * Recomputes groups.registrationComplete from the group's actual current
- * active roles — called after every role change rather than trusted to
- * stay in sync, so it can't go stale if e.g. a treasurer is later demoted.
- * Shared by updateMemberRoleAction and anything else that changes a
- * membership's role or status (join approval, login creation for a member).
- */
-async function refreshRegistrationStatus(tx: Tx, groupId: number): Promise<void> {
-  const active = await tx
-    .select({ role: groupMemberships.role })
-    .from(groupMemberships)
-    .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.status, "active")));
-
-  const complete = computeRegistrationComplete(active.map((r) => r.role as MembershipRole));
-
-  await tx.update(groups).set({ registrationComplete: complete }).where(eq(groups.id, groupId));
-}
 
 export async function createMemberAction(
   _prev: MemberActionState,
@@ -254,80 +236,6 @@ export async function recordContributionAction(
   revalidatePath("/dashboard/members");
   revalidatePath("/dashboard/welfare");
   return null;
-}
-
-/**
- * Creates a login for an existing member row (email/phone + password),
- * linking members.userId and creating the group_membership that makes it
- * possible to actually sign in and use member self-service features (loan
- * applications, statement, etc.) — the original app's members.js supported
- * this via a create_user option at member-creation time; this rewrite
- * exposes it as a separate action on an existing member instead.
- */
-export async function createLoginForMemberAction(
-  memberId: number,
-  _prev: MemberActionState,
-  formData: FormData,
-): Promise<MemberActionState> {
-  const session = await requirePermission("members.manage");
-  const parsed = createLoginSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
-  }
-  const { email, phone, password } = parsed.data;
-  const groupId = session.activeMembership.groupId;
-  let linkedExisting = false;
-
-  const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
-    const member = await tx.query.members.findFirst({
-      where: and(eq(members.id, memberId), eq(members.groupId, groupId)),
-    });
-    if (!member) return { error: "Member not found" };
-    if (member.userId) return { error: "This member already has a login" };
-
-    // Same person already has an account (another group, or they
-    // registered themselves) → link it; never create a second one.
-    const found = await findPerson({ phone, email });
-    if ("error" in found) return { error: found.error };
-    let user = found.user;
-    if (user) {
-      const taken = await tx.query.members.findFirst({
-        where: and(eq(members.groupId, groupId), eq(members.userId, user.id)),
-      });
-      if (taken) return { error: `That account already belongs to ${taken.name} in this group.` };
-    } else {
-      if (!password) return { error: "Set a password (at least 8 characters) for the new login" };
-      [user] = await tx
-        .insert(users)
-        .values({ name: member.name, email: email ?? null, phone: phone ?? null, passwordHash: await hashPassword(password) })
-        .returning();
-    }
-    linkedExisting = found.user !== null;
-
-    await tx.update(members).set({ userId: user.id }).where(eq(members.id, memberId));
-
-    // Automatic, same reasoning as approveMembershipAction — this
-    // membership goes straight to active without a separate approval
-    // step (staff are creating it directly), but rule acceptance still
-    // applies the moment it exists. An existing pending/rejected request
-    // from the same person is turned into the active membership.
-    await tx
-      .insert(groupMemberships)
-      .values({ userId: user.id, groupId, role: "member", status: "active", rulesAcceptedAt: new Date() })
-      .onConflictDoUpdate({
-        target: [groupMemberships.userId, groupMemberships.groupId],
-        set: { status: "active", rulesAcceptedAt: new Date(), updatedAt: new Date() },
-      });
-    await refreshRegistrationStatus(tx, groupId);
-
-    return { ok: true };
-  });
-
-  if ("error" in result) return { error: result.error };
-  revalidatePath("/dashboard/members");
-  return linkedExisting
-    ? { message: "Linked to the account they already have. They sign in with their own password." }
-    : null;
 }
 
 /**

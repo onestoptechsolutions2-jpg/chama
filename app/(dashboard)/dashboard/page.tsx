@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { nairobiToday } from "@/lib/domain/dates";
+import { listMyInvites } from "@/lib/invites/data";
+import { MyInvites } from "@/components/feature/my-invites";
 import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
@@ -19,10 +21,14 @@ type Tile = { href: string; label: string; hint: string; icon: LucideIcon };
 export default async function DashboardPage() {
   const session = await requireSession();
 
+  const myInvites = await listMyInvites(session.user);
+
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
-    if (canPlatform(session.user.platformRole, "platform.console")) redirect("/super-admin");
+    if (canPlatform(session.user.platformRole, "platform.console") && myInvites.length === 0) redirect("/super-admin");
     return (
+      <div className="space-y-4">
+      <MyInvites invites={myInvites} />
       <Card>
         <CardHeader>
           <CardTitle>Welcome, {session.user.name}</CardTitle>
@@ -37,6 +43,7 @@ export default async function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     );
   }
 
@@ -81,6 +88,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      <MyInvites invites={myInvites} />
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Hello, {session.user.name.split(" ")[0]}</h1>
         <p className="text-base text-muted-foreground">
@@ -108,10 +116,10 @@ export default async function DashboardPage() {
         <Card className="border-amber-500/50 bg-amber-500/5">
           <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
             <p className="text-sm">
-              Your group needs a Treasurer and a Secretary before new members can be approved.
+              Your group needs a Treasurer and a Secretary before new members can be approved. Invite them from Members → Add Member.
             </p>
             <Link href="/dashboard/members" className={buttonVariants({ size: "sm", variant: "outline" })}>
-              Choose them
+              Invite them
             </Link>
           </CardContent>
         </Card>

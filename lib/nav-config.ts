@@ -90,7 +90,7 @@ export const navItems: NavItem[] = [
     label: "Members",
     icon: Users,
     guide:
-      "The member roster and each member's financial profile — capital, security, savings, fines. Admins and treasurers can add members and record contributions directly here; admins can also create a login for a member who doesn't have one yet.",
+      "The member roster and each member's financial profile — capital, security, savings, fines. Admins and treasurers add members and record contributions here. Add Member can also send an invite: the person joins with their own account (admins can invite officials this way).",
   },
   {
     href: "/dashboard/pending-members",

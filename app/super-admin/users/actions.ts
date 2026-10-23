@@ -4,7 +4,7 @@ import { findPerson } from "@/lib/identity/people";
 import { normalizePhone, planMerge, type MergeMembership } from "@/lib/domain/identity";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "crypto";
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { groupMemberships, groups, members, notifications, platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
 import { requirePlatformPermission } from "@/lib/auth/session";

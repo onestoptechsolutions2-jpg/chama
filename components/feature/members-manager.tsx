@@ -11,13 +11,14 @@ import {
   createMemberAction,
   importMembersAction,
   recordContributionAction,
-  createLoginForMemberAction,
   resetMemberPasswordAction,
   deactivateMemberAction,
   reinstateMemberAction,
   updateMemberRoleAction,
   type MemberActionState,
 } from "@/app/(dashboard)/dashboard/members/actions";
+import { createInviteAction, type InviteActionState } from "@/app/(dashboard)/dashboard/members/invite-actions";
+import { InviteResult, InviteRowButton, PendingInvites, type PendingInvite } from "@/components/feature/invite-panel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -57,54 +58,100 @@ function totalSavings(m: Member) {
   return Number(m.capital) + Number(m.security) + Number(m.personalSavings);
 }
 
-function AddMemberForm() {
+type AddState = InviteActionState | MemberActionState;
+
+/**
+ * One dialog for both cases: a roster-only member (never logs in — gets SMS
+ * receipts), or an invite so they join with their own account. Officials
+ * always need an invite: an office means using the app.
+ */
+function AddMemberForm({ canInviteOfficials }: { canInviteOfficials: boolean }) {
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
-    async (prev, formData) => {
-      const result = await createMemberAction(prev, formData);
-      if (!result) setOpen(false);
-      return result;
-    },
-    null,
-  );
+  const [role, setRole] = useState<(typeof ASSIGNABLE_ROLES)[number]>("member");
+  const [state, formAction, pending] = useActionState<AddState, FormData>(async (prev, formData) => {
+    if (role !== "member" || formData.get("sendInvite") === "on") {
+      return createInviteAction(null, formData);
+    }
+    const result = await createMemberAction(null, formData);
+    if (!result) setOpen(false);
+    return result;
+  }, null);
+  const roles = canInviteOfficials ? ASSIGNABLE_ROLES : (["member"] as const);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setRole("member");
+      }}
+    >
       <DialogTrigger render={<Button />}>
         <UserPlus className="size-5" /> Add Member
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add a new member</DialogTitle>
+          <DialogTitle>Add a member</DialogTitle>
         </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Full name</Label>
-            <Input id="name" name="name" required />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="phone">Phone number</Label>
-            <Input id="phone" name="phone" type="tel" placeholder="0712345678" />
-          </div>
-          <details className="rounded-lg border p-3">
-            <summary className="cursor-pointer text-sm font-medium">Already saved something? (optional)</summary>
-            <div className="mt-3 grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="capital">Capital (Ksh)</Label>
-                <Input id="capital" name="capital" type="number" min="0" step="1" defaultValue={0} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="security">Security (Ksh)</Label>
-                <Input id="security" name="security" type="number" min="0" step="1" defaultValue={0} />
-              </div>
+        {state && "ok" in state ? (
+          <InviteResult state={state} />
+        ) : (
+          <form action={formAction} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full name</Label>
+              <Input id="name" name="name" required />
             </div>
-          </details>
-          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
-          <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Adding…" : "Add member"}
-          </Button>
-        </form>
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone number</Label>
+              <Input id="phone" name="phone" type="tel" placeholder="0712 345 678" />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <input type="hidden" name="role" value={role} />
+              <Select value={role} onValueChange={(v) => v && setRole(v as typeof role)} items={ROLE_LABELS}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {roles.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {role === "member" ? (
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" name="sendInvite" defaultChecked />
+                Invite them to log in (they can still be added without a phone or login)
+              </label>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Officials join through an invite with their own account.
+              </p>
+            )}
+            {role === "member" && (
+              <details className="rounded-lg border p-3">
+                <summary className="cursor-pointer text-sm font-medium">Already saved something? (optional)</summary>
+                <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="capital">Capital (Ksh)</Label>
+                    <Input id="capital" name="capital" type="number" min="0" step="1" defaultValue={0} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="security">Security (Ksh)</Label>
+                    <Input id="security" name="security" type="number" min="0" step="1" defaultValue={0} />
+                  </div>
+                </div>
+              </details>
+            )}
+            {state && "error" in state && state.error && <p className="text-sm text-destructive">{state.error}</p>}
+            <Button type="submit" disabled={pending} className="w-full">
+              {pending ? "Saving…" : "Add member"}
+            </Button>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -199,57 +246,6 @@ function RecordContributionDialog({
           {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Saving…" : "Save"}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CreateLoginDialog({ member }: { member: Member }) {
-  const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
-    async (prev, formData) => {
-      const result = await createLoginForMemberAction(member.id, prev, formData);
-      if (!result || result.message) setOpen(false);
-      if (result?.message) toast.success(result.message);
-      return result;
-    },
-    null,
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={<Button variant="ghost" size="sm" />}>Create login</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create login — {member.name}</DialogTitle>
-        </DialogHeader>
-        <form action={formAction} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor={`login-email-${member.id}`}>Email</Label>
-            <Input id={`login-email-${member.id}`} name="email" type="email" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`login-phone-${member.id}`}>Phone</Label>
-            <Input
-              id={`login-phone-${member.id}`}
-              name="phone"
-              placeholder="0712 345 678"
-              defaultValue={displayPhone(member.phone)}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor={`login-password-${member.id}`}>Password</Label>
-            <Input id={`login-password-${member.id}`} name="password" type="password" />
-            <p className="text-xs text-muted-foreground">
-              Only for a new account. If this phone or email already has an account, it is linked and they keep their own password.
-            </p>
-          </div>
-          {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
-          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
-          <Button type="submit" disabled={pending} className="w-full">
-            {pending ? "Creating…" : "Create login"}
           </Button>
         </form>
       </DialogContent>
@@ -416,8 +412,10 @@ export function MembersManager({
   canEdit,
   isAdmin,
   showWelfare,
+  invites = [],
 }: {
   members: Member[];
+  invites?: PendingInvite[];
   removed?: { id: number; name: string }[];
   canEdit: boolean;
   isAdmin: boolean;
@@ -436,7 +434,7 @@ export function MembersManager({
         <p className="text-base text-muted-foreground">
           {members.length} members · {ksh(groupTotal)} saved together
         </p>
-        {canEdit && <AddMemberForm />}
+        {canEdit && <AddMemberForm canInviteOfficials={isAdmin} />}
       </div>
 
       <div className="relative">
@@ -501,7 +499,7 @@ export function MembersManager({
                       <span>Role:</span>
                       <RoleCell member={m} editable={isAdmin} />
                       {m.membership?.rulesAcceptedAt && <Badge variant="secondary">Accepted rules</Badge>}
-                      {canEdit && isAdmin && !m.userId && <CreateLoginDialog member={m} />}
+                      {canEdit && !m.userId && <InviteRowButton member={m} />}
                       {isAdmin && m.userId && m.membership?.role !== "admin" && <ResetPasswordDialog member={m} />}
                       {isAdmin && m.membership?.role !== "admin" && <RemoveMemberDialog member={m} />}
                     </div>
@@ -512,6 +510,8 @@ export function MembersManager({
           );
         })}
       </div>
+
+      {canEdit && <PendingInvites invites={invites} />}
 
       {isAdmin && removed.length > 0 && <RemovedMembers removed={removed} />}
 

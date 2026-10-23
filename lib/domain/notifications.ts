@@ -88,7 +88,8 @@ export function buildWelfareNotification(event: WelfareNotificationEvent): Notif
 export type MembershipNotificationEvent =
   | { type: "join_request_submitted"; requesterName: string }
   | { type: "join_request_approved"; groupName: string }
-  | { type: "join_request_rejected"; groupName: string };
+  | { type: "join_request_rejected"; groupName: string }
+  | { type: "invite_accepted"; name: string; role: string };
 
 export function buildMembershipNotification(event: MembershipNotificationEvent): NotificationTemplate {
   switch (event.type) {
@@ -109,6 +110,12 @@ export function buildMembershipNotification(event: MembershipNotificationEvent):
         category: "warning",
         title: "Join request declined",
         body: `Your request to join ${event.groupName} wasn't approved.`,
+      };
+    case "invite_accepted":
+      return {
+        category: "success",
+        title: "Invite accepted",
+        body: `${event.name} joined the group as ${event.role}.`,
       };
   }
 }

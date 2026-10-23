@@ -365,6 +365,20 @@
       "when": 1792726918909,
       "tag": "0051_unique_contacts",
       "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792727143361,
+      "tag": "0052_group_invites",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1792727269946,
+      "tag": "0053_sms_messages",
+      "breakpoints": true
     }
   ]
 }

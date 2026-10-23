@@ -51,7 +51,7 @@ export async function approveMembershipAction(
     // take on new active members yet — see lib/domain/officials.ts.
     if (!group?.registrationComplete) {
       return {
-        error: "This group's registration isn't complete yet — assign a Treasurer and Secretary on the Members page before approving new members.",
+        error: "This group's registration isn't complete yet — invite a Treasurer and Secretary from the Members page (Add Member → role) before approving new members.",
       };
     }
 

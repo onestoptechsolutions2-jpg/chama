@@ -606,6 +606,63 @@ export const groupMemberships = pgTable(
   ],
 );
 
+// ── Group invites — how officials and members get into a group ─────────
+// An admin/treasurer invites by phone (or email) with a role. The person
+// opens the link (or sees it on their dashboard after signing up with that
+// phone) and joins — no admin-typed password, no second account, and it
+// works before the group's registration is complete (that's how the first
+// Treasurer and Secretary get in).
+export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "cancelled"]);
+
+export const groupInvites = pgTable(
+  "group_invites",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    role: membershipRoleEnum("role").notNull().default("member"),
+    /** The roster row this invite fills, when staff added the person first. */
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    token: text("token").notNull().unique(),
+    status: inviteStatusEnum("status").notNull().default("pending"),
+    invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+    acceptedBy: integer("accepted_by").references(() => users.id, { onDelete: "set null" }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("group_invites_group_id_idx").on(t.groupId),
+    index("group_invites_phone_idx").on(t.phone),
+  ],
+);
+
+// ── SMS log — every text the platform sends, per group ─────────────────
+// Members mostly never log in; SMS is their channel (receipts, invites,
+// reminders). Logged for support ("did it go out?") and to count each
+// plan's monthly SMS allowance.
+export const smsMessages = pgTable(
+  "sms_messages",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    toPhone: text("to_phone").notNull(),
+    body: text("body").notNull(),
+    /** sent | failed | skipped (no provider configured / over allowance) */
+    status: text("status").notNull(),
+    providerMessageId: text("provider_message_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sms_messages_group_created_idx").on(t.groupId, t.createdAt)],
+);
+
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(), // opaque random token
@@ -1810,6 +1867,11 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const membersRelations = relations(members, ({ one }) => ({
   group: one(groups, { fields: [members.groupId], references: [groups.id] }),
   user: one(users, { fields: [members.userId], references: [users.id] }),
+}));
+
+export const groupInvitesRelations = relations(groupInvites, ({ one }) => ({
+  group: one(groups, { fields: [groupInvites.groupId], references: [groups.id] }),
+  inviter: one(users, { fields: [groupInvites.invitedBy], references: [users.id] }),
 }));
 
 export const groupMembershipsRelations = relations(groupMemberships, ({ one }) => ({

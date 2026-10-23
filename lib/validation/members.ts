@@ -25,22 +25,5 @@ export const recordContributionSchema = z.object({
   notes: z.string().trim().optional().or(z.literal("")),
 });
 
-export const createLoginSchema = z
-  .object({
-    email: optionalEmail,
-    phone: optionalPhone,
-    // Only needed when a new account is created; an existing account is linked as-is.
-    password: z
-      .string()
-      .optional()
-      .transform((v) => v || undefined)
-      .refine((v) => v === undefined || v.length >= 8, "Password must be at least 8 characters"),
-  })
-  .refine((data) => data.email || data.phone, {
-    message: "Email or phone is required",
-    path: ["email"],
-  });
-
 export type CreateMemberInput = z.infer<typeof createMemberSchema>;
 export type RecordContributionInput = z.infer<typeof recordContributionSchema>;
-export type CreateLoginInput = z.infer<typeof createLoginSchema>;
