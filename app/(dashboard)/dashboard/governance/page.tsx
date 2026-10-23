@@ -1,4 +1,6 @@
+import Link from "next/link";
 import { eq } from "drizzle-orm";
+import { buttonVariants } from "@/components/ui/button";
 import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groupDocuments, complianceObligations } from "@/lib/db/schema";
@@ -30,6 +32,9 @@ export default async function GovernancePage() {
         title="Governance"
         description="Group documents and compliance obligations — constitution, bank details, AGM and annual-returns reminders."
       />
+      <Link href="/print/registration-pack" className={buttonVariants({ variant: "outline" })}>
+        Registration pack — constitution, officials, member register, minutes (print or PDF)
+      </Link>
       <GovernanceManager documents={documents} obligations={obligations} />
     </div>
   );
