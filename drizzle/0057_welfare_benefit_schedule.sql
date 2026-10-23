@@ -1,0 +1,1 @@
+ALTER TABLE "welfare_policies" ADD COLUMN "benefit_schedule" jsonb DEFAULT '[]'::jsonb NOT NULL;

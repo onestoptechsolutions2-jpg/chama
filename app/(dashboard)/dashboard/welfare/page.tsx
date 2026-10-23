@@ -1,5 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
+import { readBenefitSchedule } from "@/lib/domain/welfare-benefits";
+import { BenefitTableEditor } from "@/components/feature/benefit-table-editor";
 import { withTenant } from "@/lib/db/rls";
 import { welfareRequests, welfareAdvances, welfareApprovals } from "@/lib/db/schema";
 import { getOrCreateWelfarePolicy, getOrCreateWelfareFund } from "./welfare-data";
@@ -8,10 +11,10 @@ import { PageHeader } from "@/components/feature/page-header";
 import { WelfareManager } from "@/components/feature/welfare-manager";
 
 export default async function WelfarePage() {
-  const session = await requireProduct("welfare");
+  const session = await requirePermission("welfare.use");
   const groupId = session.activeMembership.groupId;
   const memberId = session.activeMembership.memberId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "welfare.manage");
 
   // Independent withTenant calls, not a shared transaction — see
   // app/(dashboard)/dashboard/page.tsx for why concurrent queries inside one
@@ -82,6 +85,9 @@ export default async function WelfarePage() {
         isStaff={isStaff}
         memberId={memberId}
       />
+      {can(session.activeMembership, "settings.manage") && (
+        <BenefitTableEditor initial={readBenefitSchedule(policy.benefitSchedule)} />
+      )}
     </div>
   );
 }

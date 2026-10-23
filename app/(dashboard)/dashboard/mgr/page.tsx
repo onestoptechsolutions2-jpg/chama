@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   groups,
@@ -19,9 +20,9 @@ import { choicesAreOpen, nairobiToday } from "@/lib/domain/mgr";
 const CLAIMED_STATUSES = ["claimed", "auto_assigned", "paid"] as const;
 
 export default async function MgrPage() {
-  const session = await requireProduct("mgr");
+  const session = await requirePermission("mgr.use");
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "mgr.manage");
 
   const { group, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet } =
     await withTenant(groupId, async (tx) => {

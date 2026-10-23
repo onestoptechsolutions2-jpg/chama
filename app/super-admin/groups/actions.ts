@@ -1,21 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
-import { db } from "@/lib/db/client";
-import { withPlatformAdmin, withUser } from "@/lib/db/rls";
+import { withPlatformAdmin } from "@/lib/db/rls";
 import {
   groupAccountActivities,
   groups,
   groupMemberships,
   members,
-  sessions,
   users,
   rules,
 } from "@/lib/db/schema";
-import { requirePlatformAdmin, requireSession } from "@/lib/auth/session";
-import { createGroupSchema, groupTypes, onboardingGroupSchema } from "@/lib/validation/groups";
+import { requirePlatformPermission } from "@/lib/auth/session";
+import { createGroupSchema, groupTypes } from "@/lib/validation/groups";
 import { updateLoanSettingsSchema } from "@/lib/validation/settings";
 import { isKycComplete } from "@/lib/domain/officials";
 import { visibleRuleTemplates } from "@/lib/domain/rule-templates";
@@ -38,68 +35,6 @@ const ACCOUNT_TIERS = ["standard", "key", "strategic"] as const;
 
 export type AccountManagementState = { error: string } | null;
 
-export async function createOnboardingGroupAction(
-  _prev: CreateGroupState,
-  formData: FormData,
-): Promise<CreateGroupState> {
-  const session = await requireSession();
-  const parsed = onboardingGroupSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid group details" };
-
-  const { name, type, description, contactPersonPhone, contactPersonRole } = parsed.data;
-  const groupId = await withUser(session.user.id, async (tx) => {
-    // No .returning() here, deliberately: at the instant this row is
-    // inserted, none of groups' three SELECT policies match yet (not
-    // public/registration-complete, app.current_group_id isn't set under
-    // withUser, and the founding membership row below doesn't exist yet)
-    // — under FORCE ROW LEVEL SECURITY, INSERT ... RETURNING must ALSO
-    // satisfy a SELECT policy on the new row, so it throws "new row
-    // violates row-level security policy" instead of just returning it.
-    // lastval() reads back the id the session's own INSERT just consumed
-    // from the sequence — a session-local read, not a table SELECT, so it
-    // isn't subject to groups' RLS at all.
-    await tx.insert(groups).values({
-      name,
-      type,
-      description: description || null,
-      isPublic: false,
-      requireApproval: true,
-      loansEnabled: parsed.data.loansEnabled === "on",
-      mgrEnabled: parsed.data.mgrEnabled === "on",
-      welfareEnabled: parsed.data.welfareEnabled === "on",
-      projectsEnabled: parsed.data.projectsEnabled === "on",
-      contactPersonName: session.user.name,
-      contactPersonEmail: session.user.email,
-      contactPersonPhone: contactPersonPhone || session.user.phone,
-      contactPersonRole: contactPersonRole || "Group administrator",
-      onboardingStage: "registration",
-    });
-    const lastvalResult = await tx.execute<{ id: number }>(sql`select lastval()::int as id`);
-    const newGroupId = lastvalResult.rows[0].id;
-
-    await tx.execute(sql`select set_config('app.current_group_id', ${String(newGroupId)}, true)`);
-    await tx.insert(groupMemberships).values({
-      userId: session.user.id,
-      groupId: newGroupId,
-      role: "admin",
-      status: "active",
-      rulesAcceptedAt: new Date(),
-    });
-    await tx.insert(members).values({
-      groupId: newGroupId,
-      userId: session.user.id,
-      name: session.user.name,
-      phone: session.user.phone,
-      email: session.user.email,
-    });
-    return newGroupId;
-  });
-
-  await db.update(sessions).set({ activeGroupId: groupId }).where(eq(sessions.id, session.sessionId));
-  revalidatePath("/dashboard", "layout");
-  redirect("/dashboard");
-}
-
 export async function updateGroupAccountAction(
   groupId: number,
   input: {
@@ -115,7 +50,7 @@ export async function updateGroupAccountAction(
     activityNote: string;
   },
 ): Promise<AccountManagementState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.groups.manage");
   if (!ONBOARDING_STAGES.includes(input.onboardingStage as (typeof ONBOARDING_STAGES)[number])) {
     return { error: "Invalid onboarding stage" };
   }
@@ -180,7 +115,7 @@ export async function updateGroupAction(
     maxMembers: number | null;
   },
 ): Promise<UpdateGroupState> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission("platform.groups.manage");
   const name = input.name.trim();
   if (!name || !groupTypes.includes(input.type as (typeof groupTypes)[number])) {
     return { error: "A valid group name and type are required" };
@@ -216,7 +151,7 @@ export async function setGroupActiveAction(
   groupId: number,
   active: boolean,
 ): Promise<UpdateGroupState> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission("platform.groups.manage");
   const result = await withPlatformAdmin(async (tx) => {
     const [updated] = await tx
       .update(groups)
@@ -245,7 +180,7 @@ export async function createGroupAction(
   _prev: CreateGroupState,
   formData: FormData,
 ): Promise<CreateGroupState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.groups.manage");
   const parsed = createGroupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -285,7 +220,7 @@ export async function createGroupAction(
   );
 
   const result = await withPlatformAdmin(async (tx): Promise<{ error: string } | { ok: true }> => {
-    const admin = await tx.query.users.findFirst({ where: eq(users.email, adminEmail) });
+    const admin = await tx.query.users.findFirst({ where: sql`lower(${users.email}) = ${adminEmail.trim().toLowerCase()}` });
     if (!admin) {
       return { error: "No account with that email exists yet — ask them to register first" };
     }

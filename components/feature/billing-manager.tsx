@@ -52,32 +52,26 @@ function QuoteBreakdown({ quote }: { quote: SubscriptionQuote }) {
         </div>
         <div className="space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Member fee (annual)</span>
-            <span>{ksh(quote.memberFee)}</span>
+            <span className="text-muted-foreground">Plan</span>
+            <span>{quote.tierLabel}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Vehicle fee (annual)</span>
-            <span>{ksh(quote.vehicleFee)}</span>
+            <span className="text-muted-foreground">Pay a year up front</span>
+            <span>{ksh(quote.annualUpfront)}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-muted-foreground">Activity fee (annual)</span>
-            <span>{ksh(quote.activityFee)}</span>
-          </div>
-          <div className="flex justify-between border-t pt-2 font-medium">
-            <span>Total (annual)</span>
-            <span>{ksh(quote.totalAnnual)}</span>
+            <span className="text-muted-foreground">SMS included each month</span>
+            <span>{quote.smsPerMonth.toLocaleString()}</span>
           </div>
         </div>
         {quote.isCustomQuote && (
           <p className="text-xs text-muted-foreground">
-            This group is large or active enough to fall outside the standard bands — the number
-            above is an estimate; a real quote here should be negotiated directly.
+            Over 300 members: the number above is an estimate — we agree a price with you directly.
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Recomputed live from this group&apos;s actual members, active vehicles, and trailing
-          12-month financial activity — never a flat per-group number. Transaction fees on loan
-          disbursements are billed separately, not included here.
+          Free up to 10 members · Group (up to 50) Ksh 400/month · Large group (up to 300) Ksh 900/month · Employee welfare
+          Ksh 30 per member per month. Every plan has every feature. The price follows your active member count.
         </p>
       </CardContent>
     </Card>

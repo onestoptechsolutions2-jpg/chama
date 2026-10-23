@@ -1,14 +1,15 @@
 import { eq } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { projects, members } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { ProjectsManager } from "@/components/feature/projects-manager";
 
 export default async function ProjectsPage() {
-  const session = await requireProduct("projects");
+  const session = await requirePermission("projects.view");
   const groupId = session.activeMembership.groupId;
-  const canEdit = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const canEdit = can(session.activeMembership, "projects.manage");
 
   // Independent withTenant calls, not one Promise.all sharing a transaction
   // — see app/(dashboard)/dashboard/page.tsx for why.

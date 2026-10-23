@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { rules } from "@/lib/db/schema";
 import { createRuleSchema } from "@/lib/validation/rules";
@@ -13,7 +13,7 @@ export async function createRuleAction(
   _prev: RuleActionState,
   formData: FormData,
 ): Promise<RuleActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("rules.manage");
 
   const parsed = createRuleSchema.safeParse({
     category: formData.get("category"),
@@ -48,7 +48,7 @@ export async function createRuleAction(
 }
 
 export async function deactivateRuleAction(ruleId: number): Promise<void> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("rules.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {

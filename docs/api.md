@@ -195,6 +195,58 @@ To configure: set `INTASEND_WEBHOOK_CHALLENGE` to a string you choose, and
 paste the same string into IntaSend's dashboard under the webhook's
 settings — they echo it back on every call.
 
+## Incoming M-Pesa payments (C2B) — the group's own paybill/till
+
+### `POST /api/mpesa/c2b/<token>/validation` and `/confirmation`
+
+Safaricom Daraja C2B notifications for a group's **own** paybill or till.
+The URLs (with the group's secret `<token>`) are shown on the group's
+Payments page; register them with Daraja's *Register URL* or give them to
+the group's M-Pesa provider. The money goes to the group's account — this
+app only records it.
+
+- **validation** → always accepts.
+- **confirmation** → stores the payment once (`incoming_payments`, unique
+  per group + `TransID`, so retries are harmless), matches it to a member
+  by the account reference (`BillRefNumber`: member number, optionally
+  followed by `welfare`/`loan`/`savings`/`shares`, e.g. `12 welfare`, `12W`)
+  or phone, and records it with the same contribution/repayment rules as
+  the app (`payments.receive`, `via: mpesa`). Unmatched payments wait on
+  the Payments page.
+- Always answers `{"ResultCode":0,"ResultDesc":"Accepted"}` for a known
+  token (refusing would make Safaricom reverse the member's payment);
+  unknown token → 404. Daraja doesn't sign callbacks, so the token is the
+  credential; the group can rotate it from the Payments page.
+
+Bank statements and payroll check-off files are imported as CSV on the
+Payments page (`payments.import`), with the same matching.
+
+## Internal agent API
+
+### `GET /api/internal/commands`
+Lists the commands the agent may run (`lib/commands/registry.ts`).
+
+### `POST /api/internal/commands`
+
+```json
+{
+  "groupId": 12,
+  "command": "contributions.record",
+  "input": { "memberId": 5, "type": "capital", "amount": 250 },
+  "reason": "Treasurer asked to add a missed cash payment",
+  "asUserId": 31,        // optional: act with this member's role (maker–checker applies)
+  "dryRun": true         // default true: shows the result and rolls back
+}
+// 200 { "dryRun": true, "ok": true, "data": { ... } }
+// 403 { "dryRun": false, "ok": false, "error": "..." }
+```
+
+- Auth: `Authorization: Bearer $AGENT_API_TOKEN`; acts as `AGENT_USER_ID`,
+  which must have the `agent` platform role. 401 otherwise.
+- Same permission matrix, validation, transaction and audit log
+  (`via: agent`, with the reason) as a person. Commands that move money out
+  are refused.
+
 ## Public developer API (v1)
 
 For a third-party developer connecting their own system to **one specific
@@ -290,9 +342,10 @@ Optional `?memberId=5` to filter. Newest first, capped at 200 rows.
 
 ### `POST /api/v1/contributions`
 
-Records a contribution and updates the member's running balance, exactly
-as `recordContributionAction` does from the Contributions page. Fires a
-`contribution.recorded` webhook on success.
+Records a contribution by running the same command as the in-app button
+(`lib/commands/contributions.ts` → `contributions.record`): member check,
+balance update (atomic), welfare routing, audit log (`via: api`), the
+`contribution.recorded` webhook and the member's SMS receipt.
 
 ```json
 // Request
@@ -311,8 +364,10 @@ as `recordContributionAction` does from the Contributions page. Fires a
 { "error": "Member not found" }
 ```
 
-`welfare`-type contributions are recorded but don't move a `members`
-balance field — welfare has its own fund, managed separately.
+`welfare`-type contributions don't move a `members` balance field — they
+are split into the welfare fund's reserves by the group's welfare policy,
+the same as from the app. (Before the command layer, API welfare
+contributions skipped the fund; that drift is why the logic is now shared.)
 
 ### `GET /api/v1/loans`
 

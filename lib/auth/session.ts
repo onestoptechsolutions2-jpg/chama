@@ -1,13 +1,22 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { cache } from "react";
 import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
-import { withUser } from "@/lib/db/rls";
-import { sessions, groupMemberships, members } from "@/lib/db/schema";
+import { withTenant, withUser } from "@/lib/db/rls";
+import { sessions, groupMemberships, members, groupAuditLog } from "@/lib/db/schema";
+import { loadSupportContext } from "@/lib/auth/support";
+import { supportWriteError } from "@/lib/auth/support-rules";
 import type { ProductFlags } from "@/lib/domain/products";
+import {
+  can,
+  canPlatform,
+  type GroupPermission,
+  type PlatformPermission,
+  type PlatformRole,
+} from "@/lib/auth/permissions";
 
 const SESSION_COOKIE = "chama_session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -20,7 +29,7 @@ export type SessionUser = {
   name: string;
   email: string | null;
   phone: string | null;
-  platformRole: "owner" | "support" | null;
+  platformRole: PlatformRole | null;
 };
 
 export type ActiveMembership = {
@@ -39,8 +48,21 @@ export type ActiveMembership = {
   products: ProductFlags;
 };
 
+/** Present when platform support has opened this group as a member (lib/auth/support.ts). */
+export type SupportContext = {
+  supportSessionId: number;
+  /** The member being helped, if support is acting as one; null = as the group's admin. */
+  asUserId: number | null;
+  asUserName: string | null;
+  reason: string;
+  mode: "view" | "act";
+  expiresAt: Date;
+};
+
 export type Session = {
   sessionId: string;
+  /** Support mode, or null for a normal session. */
+  support: SupportContext | null;
   user: SessionUser;
   activeGroupId: number | null;
   /** The caller's role/status in the currently active group, or null if none selected/active. */
@@ -160,11 +182,24 @@ export const getSession = cache(async (): Promise<Session | null> => {
       },
     }));
 
-  const activeMembership =
+  let activeMembership =
     activeMemberships.find((m) => m.groupId === row.activeGroupId) ?? null;
+
+  // Support mode: platform staff inside a group, seeing it as a member does.
+  let support: SupportContext | null = null;
+  let activeGroupId = row.activeGroupId;
+  if (row.supportSessionId) {
+    const ctx = await loadSupportContext(row.supportSessionId, { id: row.user.id, platformRole: row.user.platformRole });
+    if (ctx) {
+      support = ctx.support;
+      activeMembership = ctx.membership;
+      activeGroupId = ctx.membership.groupId;
+    }
+  }
 
   return {
     sessionId: row.id,
+    support,
     user: {
       id: row.user.id,
       name: row.user.name,
@@ -172,7 +207,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       phone: row.user.phone,
       platformRole: row.user.platformRole,
     },
-    activeGroupId: row.activeGroupId,
+    activeGroupId,
     activeMembership,
     memberships: activeMemberships,
   };
@@ -224,11 +259,54 @@ export async function requireProduct(
   return session;
 }
 
-/** Redirects to /dashboard unless the user has a platform-level (super-admin) role. */
-export async function requirePlatformAdmin(): Promise<Session> {
-  const session = await requireSession();
-  if (!session.user.platformRole) redirect("/dashboard");
+/**
+ * The standard gate for anything inside a group: redirects to /login when
+ * signed out, to /dashboard when the active group's role or product switch
+ * doesn't grant `permission` (see lib/auth/permissions.ts for the matrix).
+ */
+export async function requirePermission(permission: GroupPermission): Promise<SessionWithGroup> {
+  const session = await requireActiveGroup();
+  if (!can(session.activeMembership, permission)) redirect("/dashboard");
+  if (session.support) await guardSupportWrite(session as SessionWithGroup, permission);
   return session;
+}
+
+/**
+ * In support mode every Server Action (a write — the request carries a
+ * Next-Action header) is checked against the support rules and written to
+ * the group's audit log with the reason, whether or not the action itself
+ * runs through lib/commands. Page loads (reads) pass through.
+ */
+async function guardSupportWrite(session: SessionWithGroup, permission: GroupPermission): Promise<void> {
+  const isWrite = (await headers()).has("next-action");
+  if (!isWrite || !session.support) return;
+  const refused = supportWriteError(session.support, session.user.platformRole, permission);
+  await withTenant(session.activeMembership.groupId, (tx) =>
+    tx.insert(groupAuditLog).values({
+      groupId: session.activeMembership.groupId,
+      command: `action:${permission}`,
+      actorUserId: session.user.id,
+      via: "support",
+      onBehalfOfUserId: session.support!.asUserId,
+      reason: session.support!.reason,
+      input: {},
+      ok: !refused,
+      error: refused,
+    }),
+  ).catch(() => {});
+  if (refused) redirect(`/dashboard?support_blocked=${encodeURIComponent(refused)}`);
+}
+
+/** Like requirePermission, for platform (super-admin/support/agent) permissions. */
+export async function requirePlatformPermission(permission: PlatformPermission): Promise<Session> {
+  const session = await requireSession();
+  if (!canPlatform(session.user.platformRole, permission)) redirect("/dashboard");
+  return session;
+}
+
+/** Redirects to /dashboard unless the user may open the super-admin console. */
+export async function requirePlatformAdmin(): Promise<Session> {
+  return requirePlatformPermission("platform.console");
 }
 
 /**

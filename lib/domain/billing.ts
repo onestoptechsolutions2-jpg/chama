@@ -1,164 +1,115 @@
 /**
- * The subscription pricing engine — implements the member/vehicle/activity
- * model from the Laitor pricing strategy review. Deliberately pure and
- * DB-free like every other lib/domain/* module: the caller supplies already-
- * queried numbers (active member count, which vehicles are active, trailing
- * 12-month gross financial activity), this computes the price.
+ * The subscription price — four plain plans a treasurer can understand at a
+ * glance (docs/product-plan.md §5), instead of the earlier member / vehicle
+ * / activity bands. Pure and DB-free: the caller supplies the active member
+ * count and the group's segment.
  *
- * Three additive bands, each pricing a genuinely different thing:
- *   1. Member band  — headcount/administrative load
- *   2. Vehicle band — which financial products are switched on, weighted by
- *      actual operational/risk complexity, not a flat per-count step
- *   3. Activity band — real financial throughput, NOT account balance (a
- *      group with Ksh 10M sitting idle pays nothing extra here)
+ *   Free        up to 10 members                         Ksh 0
+ *   Group       up to 50 members     Ksh 400/month  or 4,000/year
+ *   Large group up to 300 members    Ksh 900/month  or 9,000/year
+ *   Employer    employee welfare     Ksh 30 per member per month (employer pays)
+ *   Over 300 members → custom quote (estimate shown).
  *
- * Transaction fees (computeTransactionFee) are a separate, itemized layer —
- * never bundled into the annual quote — modeling the direct generalization
- * of the one fee mechanism already live in this codebase (calcPlatformFee /
- * groups.mgrFeePct) to loan disbursement and repayment events.
+ * Prices are a product decision to test, kept here in one place; every
+ * plan includes the core features. Transaction fees (below) stay separate.
  */
+export type PlanId = "free" | "group" | "large" | "employer" | "custom";
 
-// ── Member band ──────────────────────────────────────────────────────────
+export type Plan = {
+  id: PlanId;
+  label: string;
+  maxMembers: number | null;
+  monthly: number;
+  /** Annual price when paid up front (two months free). */
+  annual: number;
+  smsPerMonth: number;
+};
 
-type MemberBand = { max: number; fee: number };
+export const PLANS: Record<Exclude<PlanId, "employer" | "custom">, Plan> = {
+  free: { id: "free", label: "Free", maxMembers: 10, monthly: 0, annual: 0, smsPerMonth: 20 },
+  group: { id: "group", label: "Group", maxMembers: 50, monthly: 400, annual: 4000, smsPerMonth: 200 },
+  large: { id: "large", label: "Large group", maxMembers: 300, monthly: 900, annual: 9000, smsPerMonth: 600 },
+};
 
-/** Ordered ascending by `max`; the last entry's `max` is the ceiling before "custom". */
-const MEMBER_BANDS: MemberBand[] = [
-  { max: 15, fee: 1200 },
-  { max: 30, fee: 2400 },
-  { max: 50, fee: 3600 },
-  { max: 75, fee: 5000 },
-  { max: 100, fee: 6500 },
-  { max: 150, fee: 8500 },
-  { max: 250, fee: 12000 },
-];
-
-/** Illustrative marginal rate used only past the last real band (250+) — a real quote there should be a human-negotiated custom one. */
-const CUSTOM_MEMBER_MARGINAL_RATE = 50;
-
-export type MemberFeeResult = { fee: number; isCustomQuote: boolean };
-
-/**
- * Members 1-15 pay nothing unless the group has at least one paid vehicle
- * active (Starter tier) — otherwise the smallest, most price-sensitive
- * groups never clear a free incumbent's price floor (see the pricing
- * review's Chamasoft comparison) and Laitor never gets the chance to
- * demonstrate the features that would justify paying at all.
- */
-export function computeMemberFee(activeMembers: number, hasAnyPaidVehicle: boolean): MemberFeeResult {
-  const band = MEMBER_BANDS.find((b) => activeMembers <= b.max);
-  if (band) {
-    if (band.max === 15 && !hasAnyPaidVehicle) return { fee: 0, isCustomQuote: false };
-    return { fee: band.fee, isCustomQuote: false };
-  }
-  const last = MEMBER_BANDS[MEMBER_BANDS.length - 1];
-  const over = activeMembers - last.max;
-  return { fee: last.fee + over * CUSTOM_MEMBER_MARGINAL_RATE, isCustomQuote: true };
-}
-
-// ── Vehicle band ─────────────────────────────────────────────────────────
+export const EMPLOYER_PER_MEMBER_MONTHLY = 30;
+/** Estimate per member per month above 300 members (a real quote is agreed with the group). */
+const CUSTOM_PER_MEMBER_MONTHLY = 3;
 
 export type ActiveVehicles = {
   welfare: boolean;
-  /** "Investment" in the pricing review's language — projects in this schema. */
   investment: boolean;
-  /** "Table Banking" in the pricing review's language — loans in this schema. */
   tableBanking: boolean;
 };
 
-const VEHICLE_FEES: Record<keyof ActiveVehicles, number> = {
-  welfare: 400,
-  investment: 900,
-  tableBanking: 1800,
-};
-
-const VEHICLE_FEE_CAP = 3500;
-
-export function computeVehicleFee(vehicles: ActiveVehicles): number {
-  const total = (Object.keys(VEHICLE_FEES) as (keyof ActiveVehicles)[]).reduce(
-    (sum, key) => sum + (vehicles[key] ? VEHICLE_FEES[key] : 0),
-    0,
-  );
-  return Math.min(VEHICLE_FEE_CAP, total);
-}
-
-export function hasAnyPaidVehicle(vehicles: ActiveVehicles): boolean {
-  return vehicles.welfare || vehicles.investment || vehicles.tableBanking;
-}
-
-// ── Activity band ────────────────────────────────────────────────────────
-
-type ActivityBand = { max: number; fee: number };
-
-const ACTIVITY_BANDS: ActivityBand[] = [
-  { max: 1_000_000, fee: 0 },
-  { max: 3_000_000, fee: 1_000 },
-  { max: 5_000_000, fee: 2_000 },
-  { max: 10_000_000, fee: 4_000 },
-  { max: 25_000_000, fee: 7_500 },
-  { max: 50_000_000, fee: 12_500 },
-];
-
-/** Never a proxy for payment-processing cost — see computeTransactionFee for that. This prices support/complexity load only. */
-const CUSTOM_ACTIVITY_RATE = 0.0004; // 0.04%, the illustrative rate from the pricing review
-
-export type ActivityFeeResult = { fee: number; isCustomQuote: boolean };
-
-export function computeActivityFee(annualGrossFlow: number): ActivityFeeResult {
-  const band = ACTIVITY_BANDS.find((b) => annualGrossFlow <= b.max);
-  if (band) return { fee: band.fee, isCustomQuote: false };
-  return { fee: Math.round(annualGrossFlow * CUSTOM_ACTIVITY_RATE), isCustomQuote: true };
-}
-
-// ── Full subscription quote ─────────────────────────────────────────────
-
 export type SubscriptionQuoteInput = {
   activeMembers: number;
-  vehicles: ActiveVehicles;
-  annualGrossFlow: number;
+  /** lib/domain/segments.ts — employee welfare is billed per member to the employer. */
+  segment?: string | null;
+  /** Kept for the invoice snapshot; no longer changes the price. */
+  vehicles?: ActiveVehicles;
+  annualGrossFlow?: number;
 };
 
 export type SubscriptionQuote = {
+  plan: PlanId;
+  tierLabel: string;
+  /** Plan fee for a year at the monthly rate (stored on invoices as member_fee). */
   memberFee: number;
+  /** Always 0 now; columns kept so old invoices still read. */
   vehicleFee: number;
   activityFee: number;
-  totalAnnual: number;
   totalMonthly: number;
+  /** Twelve months at the monthly rate. */
+  totalAnnual: number;
+  /** Paying a year up front. */
+  annualUpfront: number;
+  smsPerMonth: number;
   isCustomQuote: boolean;
-  /** Display label only — the price is always the computed one above, never gated by tier. */
-  tierLabel: "Starter" | "Community" | "Finance" | "Pro";
 };
 
-const ANNUAL_DISCOUNT_RATE = 0.15;
-
-export function computeSubscriptionQuote(input: SubscriptionQuoteInput): SubscriptionQuote {
-  const paidVehicle = hasAnyPaidVehicle(input.vehicles);
-  const member = computeMemberFee(input.activeMembers, paidVehicle);
-  const vehicleFee = computeVehicleFee(input.vehicles);
-  const activity = computeActivityFee(input.annualGrossFlow);
-
-  const totalAnnual = member.fee + vehicleFee + activity.fee;
-  const totalMonthly = Math.round((totalAnnual / 12) * 100) / 100;
-
-  let tierLabel: SubscriptionQuote["tierLabel"] = "Starter";
-  if (totalAnnual === 0) tierLabel = "Starter";
-  else if (input.vehicles.tableBanking) tierLabel = input.vehicles.investment ? "Pro" : "Finance";
-  else tierLabel = "Community";
-
-  return {
-    memberFee: member.fee,
-    vehicleFee,
-    activityFee: activity.fee,
-    totalAnnual,
-    totalMonthly,
-    isCustomQuote: member.isCustomQuote || activity.isCustomQuote,
-    tierLabel,
-  };
+export function pickPlan(activeMembers: number, segment?: string | null): PlanId {
+  if (segment === "employee_welfare") return "employer";
+  if (activeMembers <= PLANS.free.maxMembers!) return "free";
+  if (activeMembers <= PLANS.group.maxMembers!) return "group";
+  if (activeMembers <= PLANS.large.maxMembers!) return "large";
+  return "custom";
 }
 
-/** The ~15% discount for committing to annual billing instead of paying the monthly-equivalent 12 times — matches the pricing review's stated discount. */
-export function computeAnnualDiscountedCharge(totalAnnual: number): number {
-  return Math.round(totalAnnual * (1 - ANNUAL_DISCOUNT_RATE));
+export function computeSubscriptionQuote(input: SubscriptionQuoteInput): SubscriptionQuote {
+  const members = Math.max(0, input.activeMembers);
+  const plan = pickPlan(members, input.segment);
+  let monthly: number;
+  let annualUpfront: number;
+  let label: string;
+  let sms: number;
+  if (plan === "employer") {
+    monthly = members * EMPLOYER_PER_MEMBER_MONTHLY;
+    annualUpfront = monthly * 10;
+    label = "Employer";
+    sms = members;
+  } else if (plan === "custom") {
+    monthly = PLANS.large.monthly + (members - PLANS.large.maxMembers!) * CUSTOM_PER_MEMBER_MONTHLY;
+    annualUpfront = monthly * 10;
+    label = "Custom";
+    sms = PLANS.large.smsPerMonth + (members - PLANS.large.maxMembers!) * 2;
+  } else {
+    monthly = PLANS[plan].monthly;
+    annualUpfront = PLANS[plan].annual;
+    label = PLANS[plan].label;
+    sms = PLANS[plan].smsPerMonth;
+  }
+  return {
+    plan,
+    tierLabel: label,
+    memberFee: monthly * 12,
+    vehicleFee: 0,
+    activityFee: 0,
+    totalMonthly: monthly,
+    totalAnnual: monthly * 12,
+    annualUpfront,
+    smsPerMonth: sms,
+    isCustomQuote: plan === "custom",
+  };
 }
 
 // ── Transaction fees (separate, itemized, never bundled into the quote) ──

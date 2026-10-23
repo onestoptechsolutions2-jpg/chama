@@ -1,11 +1,13 @@
 "use server";
 
+import { findPerson } from "@/lib/identity/people";
+import { normalizePhone, planMerge, type MergeMembership } from "@/lib/domain/identity";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "crypto";
-import { eq, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
-import { requirePlatformAdmin } from "@/lib/auth/session";
+import { groupMemberships, groups, members, notifications, platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
+import { requirePlatformPermission } from "@/lib/auth/session";
 import { withPlatformAdmin, type Tx } from "@/lib/db/rls";
 import { hashPassword } from "@/lib/auth/password";
 import {
@@ -43,18 +45,19 @@ function recordPlatformUserAudit(
 export async function invitePlatformUserAction(
   input: { name: string; email: string; phone?: string | null },
 ): Promise<PlatformUserInviteResult> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
-  const phone = input.phone?.trim() || null;
+  const phone = normalizePhone(input.phone);
 
   if (!name || !email) {
     return { error: "Name and email are required" };
   }
+  if (input.phone?.trim() && !phone) return { error: "Enter a Kenyan mobile number, e.g. 0712 345 678" };
 
-  const existing = await db.query.users.findFirst({
-    where: phone ? or(eq(users.email, email), eq(users.phone, phone)) : eq(users.email, email),
-  });
+  const found = await findPerson({ phone, email });
+  if ("error" in found) return { error: found.error };
+  const existing = found.user;
 
   if (existing) {
     if (existing.email?.toLowerCase() === email && !existing.active) {
@@ -107,7 +110,7 @@ export async function setPlatformUserActiveAction(
   userId: number,
   active: boolean,
 ): Promise<{ error?: string; ok?: true } | null> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
 
   const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!targetUser) {
@@ -146,7 +149,7 @@ export async function resetUserPasswordAction(
   userId: number,
   password: string,
 ): Promise<{ error?: string; ok?: true }> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
 
   if (password.length < 8) return { error: "Password must be at least 8 characters" };
   if (userId === session.user.id) return { error: "Use your profile to change your own password" };
@@ -185,7 +188,7 @@ export async function updatePlatformRoleAction(
   userId: number,
   rawRole: string,
 ): Promise<UpdatePlatformRoleState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
   const callerRole = session.user.platformRole;
   const nextRole = rawRole === "none" ? null : normalizePlatformRole(rawRole);
 
@@ -249,4 +252,99 @@ export async function updatePlatformRoleAction(
   revalidatePath("/super-admin/users");
   revalidatePath("/super-admin/stats");
   return null;
+}
+
+/**
+ * Folds a duplicate account into the account being kept: memberships,
+ * savings records, MGR agreements, notifications and account ownership move
+ * over; the duplicate is deactivated (not deleted, so history that names it
+ * still resolves) and signed out. Owners only. What moves is decided by
+ * lib/domain/identity.ts's planMerge, which refuses when both accounts
+ * have savings in the same group.
+ */
+export async function mergeUsersAction(
+  keepUserId: number,
+  duplicateUserId: number,
+): Promise<{ error: string } | { ok: true }> {
+  const session = await requirePlatformPermission("platform.users.merge");
+  if (keepUserId === duplicateUserId) return { error: "Choose two different accounts" };
+
+  const result = await withPlatformAdmin(async (tx): Promise<{ error: string } | { ok: true }> => {
+    const [keep, dup] = [
+      await tx.query.users.findFirst({ where: eq(users.id, keepUserId) }),
+      await tx.query.users.findFirst({ where: eq(users.id, duplicateUserId) }),
+    ];
+    if (!keep || !dup) return { error: "User not found" };
+    if (dup.platformRole) return { error: "Remove the duplicate's platform role before merging" };
+
+    const load = async (userId: number): Promise<MergeMembership[]> => {
+      const rows = await tx.query.groupMemberships.findMany({
+        where: eq(groupMemberships.userId, userId),
+        with: { group: true },
+      });
+      const memberRows = await tx.query.members.findMany({ where: eq(members.userId, userId) });
+      return rows.map((r) => ({
+        groupId: r.groupId,
+        groupName: r.group.name,
+        status: r.status,
+        role: r.role,
+        hasMemberRow: memberRows.some((m) => m.groupId === r.groupId),
+      }));
+    };
+    const plan = planMerge(await load(keep.id), await load(dup.id));
+    if (!plan.ok) return { error: plan.error };
+
+    for (const groupId of plan.moveGroupIds) {
+      await tx
+        .update(groupMemberships)
+        .set({ userId: keep.id, updatedAt: new Date() })
+        .where(and(eq(groupMemberships.userId, dup.id), eq(groupMemberships.groupId, groupId)));
+    }
+    for (const c of plan.collapse) {
+      if (c.takeFromDuplicate) {
+        await tx
+          .update(groupMemberships)
+          .set({ ...c.takeFromDuplicate, updatedAt: new Date() })
+          .where(and(eq(groupMemberships.userId, keep.id), eq(groupMemberships.groupId, c.groupId)));
+      }
+      await tx
+        .delete(groupMemberships)
+        .where(and(eq(groupMemberships.userId, dup.id), eq(groupMemberships.groupId, c.groupId)));
+    }
+    // Savings records follow the person (only in groups where the kept
+    // account has none — planMerge refused the rest).
+    await tx.update(members).set({ userId: keep.id, updatedAt: new Date() }).where(eq(members.userId, dup.id));
+
+    await tx.execute(sql`
+      update mgr_agreements a set user_id = ${keep.id}
+      where a.user_id = ${dup.id}
+        and not exists (select 1 from mgr_agreements k where k.user_id = ${keep.id} and k.cycle_id = a.cycle_id)`);
+    await tx.update(notifications).set({ userId: keep.id }).where(eq(notifications.userId, dup.id));
+    await tx.update(groups).set({ accountOwnerUserId: keep.id }).where(eq(groups.accountOwnerUserId, dup.id));
+
+    // Free the duplicate's phone/email/Google first (they're unique), then
+    // fill any gaps on the kept account.
+    await tx
+      .update(users)
+      .set({ phone: null, email: null, googleId: null, active: false, mergedIntoUserId: keep.id, updatedAt: new Date() })
+      .where(eq(users.id, dup.id));
+    await tx
+      .update(users)
+      .set({
+        phone: keep.phone ?? dup.phone,
+        email: keep.email ?? dup.email,
+        googleId: keep.googleId ?? dup.googleId,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, keep.id));
+    await tx.delete(sessions).where(eq(sessions.userId, dup.id));
+
+    const note = `Merged account #${dup.id} (${dup.name}) into #${keep.id} (${keep.name}).`;
+    await recordPlatformUserAudit(tx, keep.id, session.user.id, "user_merged", keep.platformRole, keep.platformRole, note);
+    await recordPlatformUserAudit(tx, dup.id, session.user.id, "user_merged_away", null, null, note);
+    return { ok: true };
+  });
+
+  revalidatePath("/super-admin/users");
+  return result;
 }

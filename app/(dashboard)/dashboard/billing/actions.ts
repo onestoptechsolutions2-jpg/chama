@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { subscriptionInvoices, platformPayments, groupWallets, walletTransactions } from "@/lib/db/schema";
 import { computeSubscriptionQuote } from "@/lib/domain/billing";
@@ -33,7 +33,7 @@ function toLocalDateString(d: Date): string {
  * already exists.
  */
 export async function generateInvoiceAction(): Promise<{ error: string } | { ok: true; invoiceId: number }> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("billing.invoice");
   const groupId = session.activeMembership.groupId;
 
   const now = new Date();
@@ -81,7 +81,7 @@ export async function generateInvoiceAction(): Promise<{ error: string } | { ok:
 export async function chargeInvoiceFromWalletAction(
   invoiceId: number,
 ): Promise<{ error: string } | { ok: true }> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("billing.pay");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx) => {

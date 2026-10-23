@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groupWallets, walletTransactions } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { WalletManager } from "@/components/feature/wallet-manager";
 
 export default async function WalletPage() {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("billing.view");
   const groupId = session.activeMembership.groupId;
 
   const { wallet, transactions } = await withTenant(groupId, async (tx) => {

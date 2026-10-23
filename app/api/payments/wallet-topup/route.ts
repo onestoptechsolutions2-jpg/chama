@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { platformPayments } from "@/lib/db/schema";
 import { walletTopupSchema } from "@/lib/validation/payments";
@@ -14,7 +14,7 @@ import { triggerMpesaStkPush } from "@/lib/payments/intasend";
  * takes custody of anything beyond this prepaid fee-credit balance.
  */
 export async function POST(req: Request) {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("billing.pay");
   const groupId = session.activeMembership.groupId;
 
   const body = await req.json().catch(() => null);

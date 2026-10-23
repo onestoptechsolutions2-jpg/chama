@@ -23,6 +23,8 @@ export const welfareReserves = ["emergency", "long_term", "advance"] as const;
 export const submitWelfareRequestSchema = z
   .object({
     reason: z.enum(welfareClaimTypes),
+    /** A row of the group's benefit table; when set, the server fixes reason and amount from it. */
+    benefitId: z.string().trim().max(80).optional().transform((v) => v || undefined),
     beneficiaryName: z.string().trim().optional(),
     beneficiaryRel: z.string().trim().optional(),
     description: z.string().trim().optional(),

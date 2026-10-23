@@ -20,7 +20,7 @@ export const createWebhookEndpointSchema = z.object({
 
 export type CreateWebhookEndpointInput = z.infer<typeof createWebhookEndpointSchema>;
 
-/** app/api/v1/contributions POST — a subset of recordContributionSchema's shape (lib/validation/members.ts), the notes field dropped since it's a staff-UI-only field with no equivalent integration use case. */
+/** app/api/v1/contributions POST — the public shape; the rule itself is lib/commands/contributions.ts (same as the UI). */
 export const recordApiContributionSchema = z.object({
   memberId: z.coerce.number().int().positive(),
   type: z.enum(["capital", "security", "mgr", "welfare", "personal_savings", "project", "other"]),

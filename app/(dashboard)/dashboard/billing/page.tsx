@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { subscriptionInvoices, groupWallets } from "@/lib/db/schema";
 import { computeSubscriptionQuote } from "@/lib/domain/billing";
@@ -8,9 +9,9 @@ import { PageHeader } from "@/components/feature/page-header";
 import { BillingManager } from "@/components/feature/billing-manager";
 
 export default async function BillingPage() {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("billing.view");
   const groupId = session.activeMembership.groupId;
-  const isAdmin = session.activeMembership.role === "admin";
+  const isAdmin = can(session.activeMembership, "billing.invoice");
 
   const { quote, invoices, walletBalance } = await withTenant(groupId, async (tx) => {
     const inputs = await computeGroupBillingInputs(tx, groupId);
@@ -34,7 +35,7 @@ export default async function BillingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Billing"
-        description="What this group owes for the platform, computed from members, active vehicles, and real financial activity — not a flat number."
+        description="Your plan and invoices. The price depends only on how many active members you have."
       />
       <BillingManager quote={quote} invoices={invoices} walletBalance={walletBalance} isAdmin={isAdmin} />
     </div>

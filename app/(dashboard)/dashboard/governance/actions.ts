@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groupDocuments, complianceObligations } from "@/lib/db/schema";
 import {
@@ -17,7 +17,7 @@ export async function uploadGroupDocumentAction(
   _prev: GovernanceActionState,
   formData: FormData,
 ): Promise<GovernanceActionState> {
-  const session = await requireRole("admin", "secretary");
+  const session = await requirePermission("governance.manage");
   const parsed = uploadGroupDocumentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -40,7 +40,7 @@ export async function uploadGroupDocumentAction(
 }
 
 export async function deleteGroupDocumentAction(documentId: number): Promise<void> {
-  const session = await requireRole("admin", "secretary");
+  const session = await requirePermission("governance.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>
@@ -56,7 +56,7 @@ export async function createComplianceObligationAction(
   _prev: GovernanceActionState,
   formData: FormData,
 ): Promise<GovernanceActionState> {
-  const session = await requireRole("admin", "secretary");
+  const session = await requirePermission("governance.manage");
   const parsed = createComplianceObligationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -85,7 +85,7 @@ export async function createComplianceObligationAction(
  * lost between "marked complete" and "cron next runs."
  */
 export async function markObligationCompleteAction(obligationId: number): Promise<void> {
-  const session = await requireRole("admin", "secretary");
+  const session = await requirePermission("governance.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -115,7 +115,7 @@ export async function markObligationCompleteAction(obligationId: number): Promis
 }
 
 export async function deleteComplianceObligationAction(obligationId: number): Promise<void> {
-  const session = await requireRole("admin", "secretary");
+  const session = await requirePermission("governance.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>

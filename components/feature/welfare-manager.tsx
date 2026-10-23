@@ -16,6 +16,7 @@ import {
   type WelfareActionState,
 } from "@/app/(dashboard)/dashboard/welfare/actions";
 import { WelfareRequestForm } from "@/components/feature/welfare-request-form";
+import { readBenefitSchedule } from "@/lib/domain/welfare-benefits";
 import { WelfareApprovalQueue, type PendingApproval } from "@/components/feature/welfare-approval-queue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -386,6 +387,7 @@ export function WelfareManager({
           maxEmergencyGrant={Number(policy.maxEmergencyGrant)}
           maxLongTermGrant={Number(policy.maxLongTermGrant)}
           maxAdvance={Number(policy.maxAdvance)}
+          benefits={readBenefitSchedule(policy.benefitSchedule)}
         />
       )}
 

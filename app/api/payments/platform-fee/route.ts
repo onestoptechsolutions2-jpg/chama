@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groups, mgrSlots, platformPayments } from "@/lib/db/schema";
 import { triggerPlatformFeeSchema } from "@/lib/validation/payments";
@@ -15,7 +15,7 @@ import { triggerMpesaStkPush } from "@/lib/payments/intasend";
  * Action (requireRole, no separate API key).
  */
 export async function POST(req: Request) {
-  const session = await requireRole("admin");
+  const session = await requirePermission("platformFees.pay");
   const groupId = session.activeMembership.groupId;
 
   const body = await req.json().catch(() => null);

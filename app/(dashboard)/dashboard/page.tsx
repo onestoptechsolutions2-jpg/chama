@@ -1,10 +1,16 @@
 import Link from "next/link";
+import { nairobiToday } from "@/lib/domain/dates";
+import { listMyInvites } from "@/lib/invites/data";
+import { MyInvites } from "@/components/feature/my-invites";
 import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, type SessionWithGroup } from "@/lib/auth/session";
+import { loadNextSteps } from "@/lib/next-steps/data";
+import { NextSteps } from "@/components/feature/next-steps";
+import { can, canPlatform } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
-import { members, fines, meetings, groups } from "@/lib/db/schema";
+import { members, fines, meetings } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -14,13 +20,18 @@ function ksh(n: string | number) {
 
 type Tile = { href: string; label: string; hint: string; icon: LucideIcon };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ support_blocked?: string }> }) {
   const session = await requireSession();
+
+  const myInvites = await listMyInvites(session.user);
+  const { support_blocked: supportBlocked } = await searchParams;
 
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
-    if (session.user.platformRole) redirect("/super-admin");
+    if (canPlatform(session.user.platformRole, "platform.console") && myInvites.length === 0) redirect("/super-admin");
     return (
+      <div className="space-y-4">
+      <MyInvites invites={myInvites} />
       <Card>
         <CardHeader>
           <CardTitle>Welcome, {session.user.name}</CardTitle>
@@ -35,14 +46,14 @@ export default async function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     );
   }
 
-  const { groupId, groupName, role, products } = session.activeMembership;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(role);
-  const today = new Date().toISOString().split("T")[0];
+  const { groupId, groupName } = session.activeMembership;
+  const today = nairobiToday();
 
-  const { totals, pendingFines, nextMeeting, group } = await withTenant(groupId, async (tx) => ({
+  const { totals, pendingFines, nextMeeting } = await withTenant(groupId, async (tx) => ({
     totals: await tx
       .select({
         memberCount: sql<number>`count(*)::int`,
@@ -61,25 +72,31 @@ export default async function DashboardPage() {
       where: and(eq(meetings.groupId, groupId), gte(meetings.meetingDate, today)),
       orderBy: (m, { asc }) => [asc(m.meetingDate)],
     }),
-    group: await tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
   }));
 
-  const tiles: Tile[] = isStaff
-    ? [
-        { href: "/dashboard/members", label: "Add Money", hint: "Record a payment", icon: Wallet },
-        { href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays },
-        ...(products.loans ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
-        { href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel },
-      ]
-    : [
-        { href: "/dashboard/statement", label: "My Money", hint: "What I have saved", icon: Wallet },
-        ...(products.loans ? [{ href: "/dashboard/loans/apply", label: "Ask for Loan", hint: "Borrow from the group", icon: Landmark }] : []),
-        ...(products.welfare ? [{ href: "/dashboard/welfare", label: "Get Help", hint: "Welfare support", icon: HeartHandshake }] : []),
-        ...(products.mgr ? [{ href: "/dashboard/mgr", label: "Mzunguko", hint: "When I receive", icon: RefreshCw }] : []),
-      ];
+  // Tiles follow permissions, so nobody sees a button for something they can't do.
+  const m = session.activeMembership;
+  const nextSteps = await loadNextSteps(session as SessionWithGroup);
+
+  const tiles: Tile[] = [
+    ...(can(m, "money.record") ? [{ href: "/dashboard/collect", label: "Add Money", hint: "Record today's payments", icon: Wallet }] : []),
+    ...(can(m, "meetings.manage") ? [{ href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays }] : []),
+    ...(can(m, "loans.manage") ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
+    ...(can(m, "fines.issue") ? [{ href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel }] : []),
+    { href: "/dashboard/statement", label: "My Money", hint: "What I have saved", icon: Wallet },
+    ...(can(m, "loans.use") ? [{ href: "/dashboard/loans/apply", label: "Ask for Loan", hint: "Borrow from the group", icon: Landmark }] : []),
+    ...(can(m, "welfare.use") ? [{ href: "/dashboard/welfare", label: "Get Help", hint: "Welfare support", icon: HeartHandshake }] : []),
+    ...(can(m, "mgr.use") ? [{ href: "/dashboard/mgr", label: "Mzunguko", hint: "When I receive", icon: RefreshCw }] : []),
+  ].slice(0, 4);
 
   return (
     <div className="space-y-6">
+      {session.support && supportBlocked && (
+        <Card className="border-red-500/50 bg-red-500/5">
+          <CardContent className="pt-6 text-sm">Not done: {supportBlocked}</CardContent>
+        </Card>
+      )}
+      <MyInvites invites={myInvites} />
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Hello, {session.user.name.split(" ")[0]}</h1>
         <p className="text-base text-muted-foreground">
@@ -103,18 +120,7 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {isStaff && group && !group.registrationComplete && (
-        <Card className="border-amber-500/50 bg-amber-500/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <p className="text-sm">
-              Your group needs a Treasurer and a Secretary before new members can be approved.
-            </p>
-            <Link href="/dashboard/members" className={buttonVariants({ size: "sm", variant: "outline" })}>
-              Choose them
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+      <NextSteps steps={nextSteps} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

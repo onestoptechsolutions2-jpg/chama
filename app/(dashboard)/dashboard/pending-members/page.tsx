@@ -1,12 +1,12 @@
 import { and, asc, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groupMemberships } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { PendingMembersManager } from "@/components/feature/pending-members-manager";
 
 export default async function PendingMembersPage() {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.approve");
   const groupId = session.activeMembership.groupId;
 
   const pending = await withTenant(groupId, (tx) =>

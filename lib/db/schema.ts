@@ -37,7 +37,8 @@ export const membershipStatusEnum = pgEnum("membership_status", [
   "suspended",
 ]);
 
-export const platformRoleEnum = pgEnum("platform_role", ["owner", "support"]);
+// agent = a service account for the internal command endpoint (lib/auth/permissions.ts).
+export const platformRoleEnum = pgEnum("platform_role", ["owner", "support", "agent"]);
 
 export const onboardingStageEnum = pgEnum("onboarding_stage", [
   "lead",
@@ -304,6 +305,15 @@ export const groups = pgTable("groups", {
   // public discoverability and new-member approval; existing operations
   // for the founding admin are NOT blocked by this (see docs/architecture.md).
   registrationComplete: boolean("registration_complete").notNull().default(false),
+  /** Which ready-made setup the group started from (lib/domain/segments.ts); null for older groups. */
+  segment: text("segment"),
+  // ── Incoming payments (lib/domain/payment-matching.ts) ──
+  /** The group's own M-Pesa paybill or till number, shown to members. */
+  paybillNumber: text("paybill_number"),
+  /** Secret path segment of this group's M-Pesa confirmation URL. */
+  c2bToken: text("c2b_token").unique(),
+  /** What an M-Pesa/bank payment counts as when the account reference doesn't say. */
+  paymentDefaultType: text("payment_default_type").notNull().default("capital"),
 
   // Product entitlements — a group's access to loans/MGR/welfare/projects
   // is an explicit, independently toggleable flag (Settings > Products),
@@ -453,9 +463,17 @@ export const users = pgTable("users", {
   // Deliberately distinct from group_memberships.role, which is the per-group source of truth.
   platformRole: platformRoleEnum("platform_role"),
   active: boolean("active").notNull().default(true),
+  // Set when support merged this duplicate account into another one; the
+  // row stays (deactivated) so history that points at it still resolves.
+  mergedIntoUserId: integer("merged_into_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // One person = one phone/email (lib/domain/identity.ts). Phones are
+  // stored canonical ("2547…"); emails compared lowercased.
+  uniqueIndex("users_phone_unique").on(t.phone).where(sql`${t.phone} is not null`),
+  uniqueIndex("users_email_lower_unique").on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
+]);
 
 export const platformUserAuditLogs = pgTable(
   "platform_user_audit_logs",
@@ -544,6 +562,12 @@ export const members = pgTable(
       .notNull()
       .default("0"),
     limitReduced: boolean("limit_reduced").notNull().default(false),
+    /**
+     * The account number this member types when paying the group's paybill
+     * (or their payroll number for check-off). Short and per group — e.g.
+     * "12" — or anything the group chooses, like a boda plate number.
+     */
+    memberNumber: text("member_number"),
 
     active: boolean("active").notNull().default(true),
     notes: text("notes"),
@@ -554,6 +578,9 @@ export const members = pgTable(
   (t) => [
     unique("members_user_group_unique").on(t.userId, t.groupId),
     index("members_group_id_idx").on(t.groupId),
+    // One roster row per phone per group (canonical phone, see users above).
+    uniqueIndex("members_group_phone_unique").on(t.groupId, t.phone).where(sql`${t.phone} is not null`),
+    uniqueIndex("members_group_number_unique").on(t.groupId, t.memberNumber).where(sql`${t.memberNumber} is not null`),
   ],
 );
 
@@ -595,6 +622,130 @@ export const groupMemberships = pgTable(
   ],
 );
 
+// ── Group invites — how officials and members get into a group ─────────
+// An admin/treasurer invites by phone (or email) with a role. The person
+// opens the link (or sees it on their dashboard after signing up with that
+// phone) and joins — no admin-typed password, no second account, and it
+// works before the group's registration is complete (that's how the first
+// Treasurer and Secretary get in).
+export const inviteStatusEnum = pgEnum("invite_status", ["pending", "accepted", "cancelled"]);
+
+export const groupInvites = pgTable(
+  "group_invites",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    phone: text("phone"),
+    email: text("email"),
+    role: membershipRoleEnum("role").notNull().default("member"),
+    /** The roster row this invite fills, when staff added the person first. */
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    token: text("token").notNull().unique(),
+    status: inviteStatusEnum("status").notNull().default("pending"),
+    invitedBy: integer("invited_by").references(() => users.id, { onDelete: "set null" }),
+    acceptedBy: integer("accepted_by").references(() => users.id, { onDelete: "set null" }),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("group_invites_group_id_idx").on(t.groupId),
+    index("group_invites_phone_idx").on(t.phone),
+  ],
+);
+
+// ── SMS log — every text the platform sends, per group ─────────────────
+// Members mostly never log in; SMS is their channel (receipts, invites,
+// reminders). Logged for support ("did it go out?") and to count each
+// plan's monthly SMS allowance.
+export const smsMessages = pgTable(
+  "sms_messages",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    toPhone: text("to_phone").notNull(),
+    body: text("body").notNull(),
+    /** sent | failed | skipped (no provider configured / over allowance) */
+    status: text("status").notNull(),
+    providerMessageId: text("provider_message_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("sms_messages_group_created_idx").on(t.groupId, t.createdAt)],
+);
+
+// ── Group audit log — who did what, through which door ─────────────────
+// One row per command run through lib/commands (UI, API, cron, support,
+// agent, M-Pesa). Append-only: SELECT/INSERT RLS policies only, so the app
+// itself can never edit or erase history (same pattern as mgr_slot_events).
+export const groupAuditLog = pgTable(
+  "group_audit_log",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    command: text("command").notNull(),
+    /** The person the change is attributed to (support staff in support mode); null for API keys/M-Pesa. */
+    actorUserId: integer("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** ui | api | cron | support | agent | mpesa */
+    via: text("via").notNull(),
+    /** Support/agent acting for this user. */
+    onBehalfOfUserId: integer("on_behalf_of_user_id").references(() => users.id, { onDelete: "set null" }),
+    reason: text("reason"),
+    input: jsonb("input").notNull(),
+    ok: boolean("ok").notNull(),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("group_audit_log_group_created_idx").on(t.groupId, t.createdAt)],
+);
+
+// ── Incoming payments — M-Pesa, bank and payroll check-off ─────────────
+// Every payment that reaches the group's own paybill/till or bank account
+// (or a payroll deduction file) lands here once (unique per source + id),
+// is matched to a member by account number or phone, and — when matched —
+// recorded as a contribution or loan repayment by the same commands the
+// treasurer uses. Unmatched ones wait in the Payments inbox.
+export const incomingPayments = pgTable(
+  "incoming_payments",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** mpesa | bank | checkoff */
+    source: text("source").notNull(),
+    /** M-Pesa TransID, bank reference, or "<file>:<row>" for check-off. */
+    externalId: text("external_id").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    payerPhone: text("payer_phone"),
+    payerName: text("payer_name"),
+    /** What the payer typed as the account (BillRefNumber) or the bank narration. */
+    accountRef: text("account_ref"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    /** matched | unmatched | ignored */
+    status: text("status").notNull().default("unmatched"),
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    /** capital | personal_savings | welfare | ... | loan */
+    appliedAs: text("applied_as"),
+    contributionId: integer("contribution_id").references(() => contributions.id, { onDelete: "set null" }),
+    loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
+    matchedBy: integer("matched_by").references(() => users.id, { onDelete: "set null" }),
+    raw: jsonb("raw"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("incoming_payments_source_external_unique").on(t.groupId, t.source, t.externalId),
+    index("incoming_payments_group_status_idx").on(t.groupId, t.status),
+  ],
+);
+
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────
 export const sessions = pgTable("sessions", {
   id: text("id").primaryKey(), // opaque random token
@@ -605,8 +756,36 @@ export const sessions = pgTable("sessions", {
     onDelete: "set null",
   }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** Set while platform support has this session open inside a group (lib/auth/support.ts). */
+  supportSessionId: integer("support_session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Support sessions — platform staff helping inside a group ───────────
+// Time-boxed (30 min), with a reason, view-only unless "act" was chosen,
+// and every change made is in the group's audit log with via = support.
+// The group's admins are notified when one starts.
+export const supportSessions = pgTable(
+  "support_sessions",
+  {
+    id: serial("id").primaryKey(),
+    staffUserId: integer("staff_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** The member whose view support takes; null = the group's admin view. */
+    asUserId: integer("as_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** view | act */
+    mode: text("mode").notNull(),
+    reason: text("reason").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("support_sessions_group_idx").on(t.groupId, t.createdAt)],
+);
 
 // ── Rules (group bylaws) ────────────────────────────────────────────────
 export const rules = pgTable(
@@ -933,6 +1112,8 @@ export const welfarePolicies = pgTable("welfare_policies", {
   fundingMethod: welfareFundingMethodEnum("funding_method").notNull().default("manual"),
   fundingFixedAmount: numeric("funding_fixed_amount", { precision: 14, scale: 2 }),
   fundingPct: numeric("funding_pct", { precision: 5, scale: 2 }),
+  /** Fixed payouts per event (lib/domain/welfare-benefits.ts); empty = no table. */
+  benefitSchedule: jsonb("benefit_schedule").notNull().default([]),
   // emergency + longTerm + advance must sum to 100 — validated in
   // lib/domain/welfare-policy.ts's validateAllocationSplit, not a DB CHECK
   // (numeric rounding makes an exact-100 constraint brittle at the DB layer).
@@ -1799,6 +1980,11 @@ export const usersRelations = relations(users, ({ many }) => ({
 export const membersRelations = relations(members, ({ one }) => ({
   group: one(groups, { fields: [members.groupId], references: [groups.id] }),
   user: one(users, { fields: [members.userId], references: [users.id] }),
+}));
+
+export const groupInvitesRelations = relations(groupInvites, ({ one }) => ({
+  group: one(groups, { fields: [groupInvites.groupId], references: [groups.id] }),
+  inviter: one(users, { fields: [groupInvites.invitedBy], references: [users.id] }),
 }));
 
 export const groupMembershipsRelations = relations(groupMemberships, ({ one }) => ({

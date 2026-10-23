@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalPhone } from "./identity";
 
 /**
  * Every field optional — a member can save KYC progress incrementally
@@ -11,12 +12,7 @@ export const updateKycSchema = z.object({
   idType: z.enum(["national_id", "passport"]).optional().or(z.literal("")),
   idNumber: z.string().trim().max(50).optional().or(z.literal("")),
   idDocumentUrl: z.string().trim().url().optional().or(z.literal("")),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^0\d{9}$/, "Phone must be a 10-digit number starting with 0")
-    .optional()
-    .or(z.literal("")),
+  phone: optionalPhone,
   photoUrl: z.string().trim().url().optional().or(z.literal("")),
   address: z.string().trim().max(500).optional().or(z.literal("")),
   signatureUrl: z.string().trim().url().optional().or(z.literal("")),

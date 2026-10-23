@@ -5,18 +5,19 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { withTenant, withPlatformAdmin } from "@/lib/db/rls";
 import { groupMemberships, members, groups } from "@/lib/db/schema";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { isKycComplete } from "@/lib/domain/officials";
 import { insertNotification } from "@/lib/db/notifications";
 import { buildMembershipNotification } from "@/lib/domain/notifications";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { linkOrCreateMemberRow } from "@/lib/identity/people";
 
 export type PendingMemberActionState = { error: string } | null;
 
 export async function approveMembershipAction(
   membershipId: number,
 ): Promise<{ error: string } | null> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.approve");
   const groupId = session.activeMembership.groupId;
 
   // group_memberships isn't RLS-protected (see drizzle/0001_rls_policies.sql),
@@ -50,7 +51,7 @@ export async function approveMembershipAction(
     // take on new active members yet — see lib/domain/officials.ts.
     if (!group?.registrationComplete) {
       return {
-        error: "This group's registration isn't complete yet — assign a Treasurer and Secretary on the Members page before approving new members.",
+        error: "This group's registration isn't complete yet — invite a Treasurer and Secretary from the Members page (Add Member → role) before approving new members.",
       };
     }
 
@@ -67,30 +68,32 @@ export async function approveMembershipAction(
       })
       .where(eq(groupMemberships.id, membershipId));
 
-    const existingMember = await tx.query.members.findFirst({
-      where: and(eq(members.groupId, groupId), eq(members.userId, membership.userId)),
-    });
-    if (!existingMember) {
-      const kycFields = {
-        idType: existingKyc?.idType ?? null,
-        idNumber: existingKyc?.idNumber ?? null,
-        idDocumentUrl: existingKyc?.idDocumentUrl ?? null,
-        photoUrl: existingKyc?.photoUrl ?? null,
-        signatureUrl: existingKyc?.signatureUrl ?? null,
-        address: existingKyc?.address ?? null,
-      };
-      await tx.insert(members).values({
-        groupId,
-        userId: membership.userId,
+    // Links the roster row staff may already have added for this person
+    // (same phone/email, no login yet) instead of creating a second one.
+    const kycFields = {
+      idType: existingKyc?.idType ?? null,
+      idNumber: existingKyc?.idNumber ?? null,
+      idDocumentUrl: existingKyc?.idDocumentUrl ?? null,
+      photoUrl: existingKyc?.photoUrl ?? null,
+      signatureUrl: existingKyc?.signatureUrl ?? null,
+      address: existingKyc?.address ?? null,
+    };
+    await linkOrCreateMemberRow(
+      tx,
+      groupId,
+      {
+        id: membership.userId,
         name: membership.user.name,
         phone: existingKyc?.phone ?? membership.user.phone,
         email: membership.user.email,
+      },
+      {
         ...kycFields,
         // A newly-approved join request always lands as role "member"
         // (see requestToJoinAction) — offices are assigned separately.
         kycCompletedAt: isKycComplete("member", kycFields) ? new Date() : null,
-      });
-    }
+      },
+    );
 
     await insertNotification(tx, {
       groupId,
@@ -118,7 +121,7 @@ export async function approveMembershipAction(
 }
 
 export async function rejectMembershipAction(membershipId: number): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.approve");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {

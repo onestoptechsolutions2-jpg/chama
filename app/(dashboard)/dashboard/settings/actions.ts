@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { groups, rules, welfarePolicies } from "@/lib/db/schema";
 import {
@@ -20,7 +20,7 @@ export async function updateSettingsAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
 
   const parsed = updateSettingsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
@@ -63,7 +63,7 @@ export async function updateProductAccessAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>
@@ -87,7 +87,7 @@ export async function updateLoanSettingsAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
 
   const parsed = updateLoanSettingsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
@@ -163,7 +163,7 @@ export async function activateProductAction(
   _prev: ActivateProductState,
   formData: FormData,
 ): Promise<ActivateProductState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
   const groupId = session.activeMembership.groupId;
 
   const product = formData.get("product");
@@ -274,7 +274,7 @@ export async function updateCapitalPolicyAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
 
   const parsed = updateCapitalPolicySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
@@ -313,7 +313,7 @@ export async function updateWelfarePolicyAction(
   _prev: SettingsActionState,
   formData: FormData,
 ): Promise<SettingsActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("settings.manage");
 
   const parsed = updateWelfarePolicySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {

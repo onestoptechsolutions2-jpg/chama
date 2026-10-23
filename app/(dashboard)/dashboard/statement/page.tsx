@@ -1,10 +1,8 @@
-import { eq } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
-import { withTenant } from "@/lib/db/rls";
-import { members, contributions, loans, fines } from "@/lib/db/schema";
-import { PageHeader } from "@/components/feature/page-header";
-import { StatementTimeline } from "@/components/feature/statement-timeline";
+import { can } from "@/lib/auth/permissions";
 import { Card, CardContent } from "@/components/ui/card";
+import { loadStatement } from "./data";
+import { StatementView } from "./statement-view";
 
 export default async function StatementPage({
   searchParams,
@@ -13,7 +11,7 @@ export default async function StatementPage({
 }) {
   const session = await requireActiveGroup();
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "reports.view");
   const { member_id } = await searchParams;
 
   const targetId = isStaff && member_id ? Number(member_id) : session.activeMembership.memberId;
@@ -28,74 +26,17 @@ export default async function StatementPage({
     );
   }
 
-  // Fixes bug 2 (docs/architecture.md): the original app's /statement
-  // endpoint queried contributions.payment_date and contributions.month_label,
-  // neither of which exists on the contributions table (it has `month` as
-  // an int and `createdAt`) — every call 500'd. This queries the real schema.
-  const { member, contribs, memberLoans, repayments, memberFines } = await withTenant(
-    groupId,
-    async (tx) => {
-      const member = await tx.query.members.findFirst({
-        where: eq(members.id, targetId),
-      });
-      const contribs = await tx.query.contributions.findMany({
-        where: eq(contributions.memberId, targetId),
-        orderBy: (c, { desc }) => [desc(c.createdAt)],
-      });
-      const memberLoans = await tx.query.loans.findMany({
-        where: eq(loans.memberId, targetId),
-        orderBy: (l, { desc }) => [desc(l.createdAt)],
-      });
-      const loanIds = memberLoans.map((l) => l.id);
-      const repayments = loanIds.length
-        ? await tx.query.loanRepayments.findMany({
-            where: (r, { inArray }) => inArray(r.loanId, loanIds),
-            orderBy: (r, { desc }) => [desc(r.createdAt)],
-          })
-        : [];
-      const memberFines = await tx.query.fines.findMany({
-        where: eq(fines.memberId, targetId),
-        orderBy: (f, { desc }) => [desc(f.createdAt)],
-      });
-      return { member, contribs, memberLoans, repayments, memberFines };
-    },
-  );
+  const data = await loadStatement(groupId, targetId);
+  const { member } = data;
 
   if (!member) return null;
 
-  const saved = Number(member.capital) + Number(member.security) + Number(member.personalSavings);
-  const owedFines = memberFines
-    .filter((f) => f.status === "pending")
-    .reduce((sum, f) => sum + Number(f.amount), 0);
   const isSelf = targetId === session.activeMembership.memberId;
-
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={isSelf ? "My Money" : `Money — ${member.name}`}
-        description={isSelf ? "What you have put in and what you owe." : "Full financial history."}
-      />
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Card className="border-emerald-500/40 bg-emerald-500/5">
-          <CardContent className="space-y-1 pt-6">
-            <p className="text-base text-muted-foreground">Total I have saved</p>
-            <p className="text-4xl font-bold tabular-nums">Ksh {saved.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-        <Card className={owedFines > 0 ? "border-amber-500/50 bg-amber-500/5" : undefined}>
-          <CardContent className="space-y-1 pt-6">
-            <p className="text-base text-muted-foreground">Fines I must pay</p>
-            <p className="text-4xl font-bold tabular-nums">Ksh {owedFines.toLocaleString()}</p>
-          </CardContent>
-        </Card>
-      </div>
-      <h2 className="text-xl font-semibold">History</h2>
-      <StatementTimeline
-        contributions={contribs}
-        loans={memberLoans}
-        repayments={repayments}
-        fines={memberFines}
-      />
-    </div>
+    <StatementView
+      title={isSelf ? "My Money" : `Money — ${member.name}`}
+      description={isSelf ? "What you have put in and what you owe." : "Full financial history."}
+      data={{ ...data, member }}
+    />
   );
 }

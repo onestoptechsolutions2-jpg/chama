@@ -1,15 +1,17 @@
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, groupMemberships } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { MembersManager } from "@/components/feature/members-manager";
+import { listGroupInvites } from "@/lib/invites/data";
 
 export default async function MembersPage() {
-  const session = await requireRole("admin", "treasurer", "secretary");
+  const session = await requirePermission("members.view");
   const groupId = session.activeMembership.groupId;
-  const canEdit = ["admin", "treasurer"].includes(session.activeMembership.role);
-  const isAdmin = session.activeMembership.role === "admin";
+  const canEdit = can(session.activeMembership, "members.add");
+  const isAdmin = can(session.activeMembership, "members.manage");
   const showWelfare = session.activeMembership.products.welfare;
 
   const { groupMembers, removedMembers, membershipByUserId } = await withTenant(groupId, async (tx) => {
@@ -36,6 +38,8 @@ export default async function MembersPage() {
     return { groupMembers, removedMembers, membershipByUserId };
   });
 
+  const invites = canEdit ? await listGroupInvites(groupId) : [];
+
   const membersWithRole = groupMembers.map((m) => ({
     ...m,
     membership: m.userId ? (membershipByUserId.get(m.userId) ?? null) : null,
@@ -53,6 +57,7 @@ export default async function MembersPage() {
         canEdit={canEdit}
         isAdmin={isAdmin}
         showWelfare={showWelfare}
+        invites={invites.map((i) => ({ id: i.id, name: i.name, phone: i.phone, email: i.email, role: i.role }))}
       />
     </div>
   );

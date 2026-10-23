@@ -144,6 +144,7 @@ function Sidebar({
  * this user can actually see are shown, then a Menu button for everything else. */
 const BOTTOM_BAR = [
   "/dashboard",
+  "/dashboard/collect",
   "/dashboard/members",
   "/dashboard/loans",
   "/dashboard/loans/apply",

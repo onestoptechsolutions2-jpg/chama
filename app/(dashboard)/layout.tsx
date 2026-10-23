@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { notifications } from "@/lib/db/schema";
 import { DashboardShell } from "@/components/feature/dashboard-shell";
+import { SupportBanner } from "@/components/feature/support-banner";
 
 export default async function DashboardLayout({
   children,
@@ -28,8 +29,13 @@ export default async function DashboardLayout({
     : 0;
 
   return (
-    <DashboardShell session={session} unreadNotifications={unreadNotifications}>
-      {children}
-    </DashboardShell>
+    <>
+      {session.support && session.activeMembership && (
+        <SupportBanner support={session.support} groupName={session.activeMembership.groupName} />
+      )}
+      <DashboardShell session={session} unreadNotifications={unreadNotifications}>
+        {children}
+      </DashboardShell>
+    </>
   );
 }

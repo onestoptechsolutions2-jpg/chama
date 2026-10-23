@@ -1,14 +1,15 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { fines, members } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { FinesManager } from "@/components/feature/fines-manager";
 
 export default async function FinesPage() {
-  const session = await requireRole("admin", "treasurer", "secretary");
+  const session = await requirePermission("fines.issue");
   const groupId = session.activeMembership.groupId;
-  const canResolve = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const canResolve = can(session.activeMembership, "fines.settle");
 
   // Independent withTenant calls, not one Promise.all sharing a transaction
   // — see app/(dashboard)/dashboard/page.tsx for why.

@@ -1,6 +1,6 @@
-export type PlatformRole = "owner" | "support";
+export type PlatformRole = "owner" | "support" | "agent";
 
-const PLATFORM_ROLES = new Set<PlatformRole>(["owner", "support"]);
+const PLATFORM_ROLES = new Set<PlatformRole>(["owner", "support", "agent"]);
 
 export function normalizePlatformRole(value: unknown): PlatformRole | null {
   if (typeof value !== "string") return null;
@@ -12,6 +12,7 @@ export function normalizePlatformRole(value: unknown): PlatformRole | null {
 export function platformRoleLabel(role: PlatformRole | null): string {
   if (role === "owner") return "Owner";
   if (role === "support") return "Support";
+  if (role === "agent") return "Agent";
   return "None";
 }
 
@@ -29,7 +30,7 @@ export function canGrantPlatformRole(
   if (!callerRole) return false;
   if (callerRole === "support") return false;
   if (callerRole === "owner") {
-    return targetRole === null || targetRole === "owner" || targetRole === "support";
+    return targetRole === null || targetRole === "owner" || targetRole === "support" || targetRole === "agent";
   }
   return false;
 }

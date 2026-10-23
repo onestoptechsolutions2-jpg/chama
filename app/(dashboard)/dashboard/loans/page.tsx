@@ -1,14 +1,15 @@
 import { and, eq } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { loans, loanApplications, members, groups, platformPayments, groupWallets } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { LoansManager } from "@/components/feature/loans-manager";
 
 export default async function LoansPage() {
-  const session = await requireProduct("loans", "admin", "treasurer");
+  const session = await requirePermission("loans.manage");
   const groupId = session.activeMembership.groupId;
-  const isAdmin = session.activeMembership.role === "admin";
+  const isAdmin = can(session.activeMembership, "platformFees.pay");
 
   // Sequential, not Promise.all — concurrent queries against the same `tx`
   // aren't guaranteed to share the transaction-local SET LOCAL context

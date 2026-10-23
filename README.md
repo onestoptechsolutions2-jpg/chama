@@ -3,6 +3,8 @@
 Multi-tenant SaaS for managing African group-savings associations (chama/SACCO/welfare/self-help groups) — contributions, loans, fines, meetings, welfare claims, table-banking projects, and merry-go-round (MGR) rotations, with M-Pesa collection via IntaSend.
 
 Documentation lives in [`docs/`](./docs/) — read the one that matches what you're doing:
+- [`docs/product-plan.md`](./docs/product-plan.md) — who it's for (table banking, boda-boda, welfare/funeral, employee welfare), pricing, what's built.
+- [`docs/iam.md`](./docs/iam.md) — identity and access: one person = one phone, the permission matrix, support mode, the agent, the audit log.
 - [`docs/architecture.md`](./docs/architecture.md) — current-state technical reference (stack, data model, multi-tenancy/RLS, auth). Start here for anything beyond initial setup.
 - [`docs/developer-guide.md`](./docs/developer-guide.md) — conventions for adding a feature, and a list of gotchas that have actually bitten this codebase (read before you rediscover one).
 - [`docs/api.md`](./docs/api.md) — every HTTP-facing route and the IntaSend webhook contract.
@@ -18,7 +20,7 @@ Next.js (App Router) on Vercel, Neon Postgres via Drizzle ORM, Row-Level Securit
 1. Copy `.env.example` to `.env.local` and fill in:
    - `DATABASE_URL` — Neon connection string for the **owner** role (used only by `drizzle-kit generate`/`migrate`, never by the running app).
    - `APP_DATABASE_URL` — a separate, least-privilege Postgres role the app actually connects as. RLS only works because this role has no `BYPASSRLS`; see `docs/architecture.md`'s Phase 7 notes for exactly how to create it.
-   - The rest (`CRON_SECRET`, `INTASEND_*`, `PORTAL_BASE_URL`, and optionally `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` for Continue with Google) as documented inline in `.env.example`.
+   - The rest (`PORTAL_BASE_URL`, `CRON_SECRET`, `STATEMENT_LINK_SECRET`, `INTASEND_*`, `BLOB_READ_WRITE_TOKEN`, and optionally Africa's Talking `AT_*` for SMS, `AGENT_*` for the backend agent, `GOOGLE_*` for Continue with Google) as documented inline in `.env.example`.
 2. `npm install`
 3. `npm run db:migrate` — applies every migration in `drizzle/`. Vercel runs this automatically before every production build using the owner `DATABASE_URL`, so deployments stop safely if the database cannot be upgraded.
 4. `npm run db:seed` — creates one demo group + admin login (prints the credentials).
@@ -33,6 +35,7 @@ Next.js (App Router) on Vercel, Neon Postgres via Drizzle ORM, Row-Level Securit
 - `npm run db:migrate` — apply pending migrations.
 - `npm run db:studio` — Drizzle Studio.
 - `npm run db:seed` — idempotent demo data seed.
+- `npm run db:enforce-unique-contacts` — add the one-phone/one-email unique indexes once duplicates are merged (see docs/iam.md).
 
 ## Project layout
 
