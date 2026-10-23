@@ -1,5 +1,6 @@
 "use server";
 
+import { nairobiToday } from "@/lib/domain/dates";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
@@ -493,7 +494,7 @@ export async function recordAdvanceRepaymentAction(
         amountRemaining: String(newRemaining),
         status: newStatus,
         clearedDate:
-          newStatus === "paid" ? new Date().toISOString().split("T")[0] : advance.clearedDate,
+          newStatus === "paid" ? nairobiToday() : advance.clearedDate,
         updatedAt: new Date(),
       })
       .where(eq(welfareAdvances.id, advanceId));

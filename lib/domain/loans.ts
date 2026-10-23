@@ -1,3 +1,5 @@
+import { nairobiToday } from "./dates";
+
 type MemberForLimit = {
   capital: string | number;
   security: string | number;
@@ -33,10 +35,10 @@ export function computeTotalRepayable(principal: number, interestRatePct: number
   return Math.round(principal * (1 + interestRatePct / 100));
 }
 
+/** Due date in Nairobi time, so a loan issued just after midnight there isn't dated a day early. */
 export function defaultDueDate(issuedDate: Date, repaymentMonths: number): string {
-  const d = new Date(issuedDate);
-  d.setMonth(d.getMonth() + repaymentMonths);
-  return d.toISOString().split("T")[0];
+  const [y, m, d] = nairobiToday(issuedDate).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1 + repaymentMonths, d)).toISOString().split("T")[0];
 }
 
 export function isActiveLoanStatus(status: string): boolean {

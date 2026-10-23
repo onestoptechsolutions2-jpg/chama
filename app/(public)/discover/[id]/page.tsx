@@ -78,7 +78,7 @@ export default async function GroupDetailPage({
           <p className="text-xs text-muted-foreground">
             {group.requireApproval
               ? "Join requests are reviewed by the group's admins."
-              : "Join requests here are typically approved quickly."}
+              : "Join requests are reviewed by the group's officials."}
           </p>
         </CardContent>
       </Card>

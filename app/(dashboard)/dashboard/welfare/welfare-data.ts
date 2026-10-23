@@ -1,4 +1,5 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { nairobiDate } from "@/lib/domain/dates";
 import type { Tx } from "@/lib/db/rls";
 import {
   welfarePolicies,
@@ -163,7 +164,7 @@ export async function evaluateMemberWelfareEligibility(
     minTenureMonths: policy.minTenureMonths,
     claimsThisYear: count,
     maxClaimsPerYear: policy.maxClaimsPerMemberPerYear,
-    lastRequestDate: lastRequest ? lastRequest.createdAt.toISOString().split("T")[0] : null,
+    lastRequestDate: lastRequest ? nairobiDate(lastRequest.createdAt) : null,
     cooldownDays: policy.cooldownDays,
     now,
   });

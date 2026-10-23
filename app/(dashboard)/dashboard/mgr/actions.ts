@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq, gt, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
-import { can } from "@/lib/auth/permissions";
+import { can, selfDealingError } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   groups,
@@ -375,6 +375,15 @@ export async function adminUpdateSlotAction(
     if (slot.status === "paid" && changesHistory) {
       blocked = "This turn is already paid and can't be changed.";
       return null;
+    }
+
+    if (data.status === "paid") {
+      const recipient = data.memberId !== undefined ? data.memberId : slot.memberId;
+      const self = selfDealingError(session.activeMembership.memberId, recipient, "mark a payout paid");
+      if (self) {
+        blocked = self;
+        return null;
+      }
     }
 
     const set: Record<string, unknown> = {};

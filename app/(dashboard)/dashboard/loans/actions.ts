@@ -1,9 +1,10 @@
 "use server";
 
+import { nairobiToday } from "@/lib/domain/dates";
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
-import { can } from "@/lib/auth/permissions";
+import { can, selfDealingError } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   loans,
@@ -55,6 +56,8 @@ export async function createLoanAction(
   }
   const { memberId, principal, purpose } = parsed.data;
   const groupId = session.activeMembership.groupId;
+  const self = selfDealingError(session.activeMembership.memberId, memberId, "create a loan");
+  if (self) return { error: self };
 
   // Optional here — staff are already vouching for this loan directly by
   // creating it, so unlike applyForLoanAction these are recorded as
@@ -153,11 +156,13 @@ export async function recordRepaymentAction(
   const { amount, reference } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const blocked = await withTenant(groupId, async (tx): Promise<string | null> => {
     const loan = await tx.query.loans.findFirst({
       where: and(eq(loans.id, loanId), eq(loans.groupId, groupId)),
     });
-    if (!loan) return;
+    if (!loan) return "Loan not found";
+    const self = selfDealingError(session.activeMembership.memberId, loan.memberId, "record a loan repayment");
+    if (self) return self;
 
     await tx.insert(loanRepayments).values({
       groupId,
@@ -175,11 +180,13 @@ export async function recordRepaymentAction(
       .set({
         amountRemaining: String(newRemaining),
         status: newStatus,
-        clearedDate: newStatus === "cleared" ? new Date().toISOString().split("T")[0] : loan.clearedDate,
+        clearedDate: newStatus === "cleared" ? nairobiToday() : loan.clearedDate,
         updatedAt: new Date(),
       })
       .where(eq(loans.id, loanId));
+    return null;
   });
+  if (blocked) return { error: blocked };
 
   revalidatePath("/dashboard/loans");
   revalidatePath("/dashboard/statement");
@@ -334,6 +341,8 @@ export async function reviewApplicationAction(
       where: and(eq(loanApplications.id, applicationId), eq(loanApplications.groupId, groupId)),
     });
     if (!app || app.status !== "pending") return { error: "Application already reviewed" };
+    const self = selfDealingError(session.activeMembership.memberId, app.memberId, "review a loan application");
+    if (self) return { error: self };
 
     let loanId: number | null = null;
 

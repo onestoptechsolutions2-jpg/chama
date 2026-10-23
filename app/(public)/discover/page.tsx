@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 
+// Rendered per request: groups go public or fill up at any time, and a
+// build-time snapshot would hide them until the next deploy.
+export const dynamic = "force-dynamic";
+
 export default async function DiscoverPage() {
   const publicGroups = await db.query.groups.findMany({
     // registrationComplete: a group without Chair/Treasurer/Secretary all

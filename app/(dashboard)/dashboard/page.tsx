@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { nairobiToday } from "@/lib/domain/dates";
 import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
-import { canPlatform } from "@/lib/auth/permissions";
+import { can, canPlatform } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, meetings, groups } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,9 +40,9 @@ export default async function DashboardPage() {
     );
   }
 
-  const { groupId, groupName, role, products } = session.activeMembership;
+  const { groupId, groupName, role } = session.activeMembership;
   const isStaff = ["admin", "treasurer", "secretary"].includes(role);
-  const today = new Date().toISOString().split("T")[0];
+  const today = nairobiToday();
 
   const { totals, pendingFines, nextMeeting, group } = await withTenant(groupId, async (tx) => ({
     totals: await tx
@@ -65,19 +66,18 @@ export default async function DashboardPage() {
     group: await tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
   }));
 
-  const tiles: Tile[] = isStaff
-    ? [
-        { href: "/dashboard/members", label: "Add Money", hint: "Record a payment", icon: Wallet },
-        { href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays },
-        ...(products.loans ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
-        { href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel },
-      ]
-    : [
-        { href: "/dashboard/statement", label: "My Money", hint: "What I have saved", icon: Wallet },
-        ...(products.loans ? [{ href: "/dashboard/loans/apply", label: "Ask for Loan", hint: "Borrow from the group", icon: Landmark }] : []),
-        ...(products.welfare ? [{ href: "/dashboard/welfare", label: "Get Help", hint: "Welfare support", icon: HeartHandshake }] : []),
-        ...(products.mgr ? [{ href: "/dashboard/mgr", label: "Mzunguko", hint: "When I receive", icon: RefreshCw }] : []),
-      ];
+  // Tiles follow permissions, so nobody sees a button for something they can't do.
+  const m = session.activeMembership;
+  const tiles: Tile[] = [
+    ...(can(m, "money.record") ? [{ href: "/dashboard/members", label: "Add Money", hint: "Record a payment", icon: Wallet }] : []),
+    ...(can(m, "meetings.manage") ? [{ href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays }] : []),
+    ...(can(m, "loans.manage") ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
+    ...(can(m, "fines.issue") ? [{ href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel }] : []),
+    { href: "/dashboard/statement", label: "My Money", hint: "What I have saved", icon: Wallet },
+    ...(can(m, "loans.use") ? [{ href: "/dashboard/loans/apply", label: "Ask for Loan", hint: "Borrow from the group", icon: Landmark }] : []),
+    ...(can(m, "welfare.use") ? [{ href: "/dashboard/welfare", label: "Get Help", hint: "Welfare support", icon: HeartHandshake }] : []),
+    ...(can(m, "mgr.use") ? [{ href: "/dashboard/mgr", label: "Mzunguko", hint: "When I receive", icon: RefreshCw }] : []),
+  ].slice(0, 4);
 
   return (
     <div className="space-y-6">

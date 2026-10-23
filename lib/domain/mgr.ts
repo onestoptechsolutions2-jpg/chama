@@ -261,7 +261,5 @@ export function choicesAreOpen(closeDate: string | null, today: string): boolean
   return !closeDate || today <= closeDate;
 }
 
-/** Today's date (YYYY-MM-DD) in Nairobi, which is UTC+3 all year. */
-export function nairobiToday(now: Date = new Date()): string {
-  return new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().split("T")[0];
-}
+// Re-exported so existing imports keep working; the helpers live in ./dates.
+export { nairobiToday } from "./dates";
