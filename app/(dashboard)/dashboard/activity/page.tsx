@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
+import { GROUP_PERMISSIONS, type GroupPermission } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { db } from "@/lib/db/client";
 import { groupAuditLog, users } from "@/lib/db/schema";
@@ -18,6 +19,7 @@ const COMMAND_LABELS: Record<string, string> = {
   "payments.import": "Imported a bank/payroll file",
   "payments.assign": "Matched a payment to a member",
   "payments.ignore": "Set aside a payment",
+  "support.start": "Opened the group to help",
 };
 const VIA_LABELS: Record<string, string> = {
   ui: "in the app",
@@ -52,7 +54,10 @@ export default async function ActivityPage() {
             <div key={r.id} className="flex flex-wrap items-start justify-between gap-2 py-3 text-sm">
               <div>
                 <p className="font-medium">
-                  {COMMAND_LABELS[r.command] ?? r.command}
+                  {COMMAND_LABELS[r.command] ??
+                    (r.command.startsWith("action:")
+                      ? GROUP_PERMISSIONS[r.command.slice(7) as GroupPermission]?.label ?? r.command
+                      : r.command)}
                   {!r.ok && <Badge variant="destructive" className="ml-2">Refused</Badge>}
                 </p>
                 <p className="text-muted-foreground">

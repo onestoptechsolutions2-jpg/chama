@@ -5,10 +5,12 @@ import { MyInvites } from "@/components/feature/my-invites";
 import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, type SessionWithGroup } from "@/lib/auth/session";
+import { loadNextSteps } from "@/lib/next-steps/data";
+import { NextSteps } from "@/components/feature/next-steps";
 import { can, canPlatform } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
-import { members, fines, meetings, groups } from "@/lib/db/schema";
+import { members, fines, meetings } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -47,11 +49,10 @@ export default async function DashboardPage() {
     );
   }
 
-  const { groupId, groupName, role } = session.activeMembership;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(role);
+  const { groupId, groupName } = session.activeMembership;
   const today = nairobiToday();
 
-  const { totals, pendingFines, nextMeeting, group } = await withTenant(groupId, async (tx) => ({
+  const { totals, pendingFines, nextMeeting } = await withTenant(groupId, async (tx) => ({
     totals: await tx
       .select({
         memberCount: sql<number>`count(*)::int`,
@@ -70,11 +71,12 @@ export default async function DashboardPage() {
       where: and(eq(meetings.groupId, groupId), gte(meetings.meetingDate, today)),
       orderBy: (m, { asc }) => [asc(m.meetingDate)],
     }),
-    group: await tx.query.groups.findFirst({ where: eq(groups.id, groupId) }),
   }));
 
   // Tiles follow permissions, so nobody sees a button for something they can't do.
   const m = session.activeMembership;
+  const nextSteps = await loadNextSteps(session as SessionWithGroup);
+
   const tiles: Tile[] = [
     ...(can(m, "money.record") ? [{ href: "/dashboard/collect", label: "Add Money", hint: "Record today's payments", icon: Wallet }] : []),
     ...(can(m, "meetings.manage") ? [{ href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays }] : []),
@@ -112,18 +114,7 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {isStaff && group && !group.registrationComplete && (
-        <Card className="border-amber-500/50 bg-amber-500/5">
-          <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
-            <p className="text-sm">
-              Your group needs a Treasurer and a Secretary before new members can be approved. Invite them from Members → Add Member.
-            </p>
-            <Link href="/dashboard/members" className={buttonVariants({ size: "sm", variant: "outline" })}>
-              Invite them
-            </Link>
-          </CardContent>
-        </Card>
-      )}
+      <NextSteps steps={nextSteps} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
