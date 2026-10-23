@@ -285,7 +285,7 @@ export async function createGroupAction(
   );
 
   const result = await withPlatformAdmin(async (tx): Promise<{ error: string } | { ok: true }> => {
-    const admin = await tx.query.users.findFirst({ where: eq(users.email, adminEmail) });
+    const admin = await tx.query.users.findFirst({ where: sql`lower(${users.email}) = ${adminEmail.trim().toLowerCase()}` });
     if (!admin) {
       return { error: "No account with that email exists yet — ask them to register first" };
     }

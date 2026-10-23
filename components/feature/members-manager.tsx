@@ -1,5 +1,6 @@
 "use client";
 
+import { displayPhone } from "@/lib/domain/identity";
 import { useActionState, useState, useTransition } from "react";
 import Link from "next/link";
 import { Plus, Search, UserPlus } from "lucide-react";
@@ -99,6 +100,7 @@ function AddMemberForm() {
             </div>
           </details>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Adding…" : "Add member"}
           </Button>
@@ -120,6 +122,7 @@ function ImportMembersForm() {
           <div className="min-w-64 flex-1 space-y-2"><Label htmlFor="member-import">CSV file</Label><Input id="member-import" name="file" type="file" accept=".csv,text/csv" required /></div>
           <Button type="submit" variant="outline" disabled={pending}>{pending ? "Importing..." : "Import CSV"}</Button>
           {state?.error && <p className="basis-full text-sm text-destructive">{state.error}</p>}
+          {state?.message && <p className="basis-full text-sm text-muted-foreground">{state.message}</p>}
         </form>
         <p className="mt-3 text-xs text-muted-foreground">Headers: name, phone, email, capital, security, personal_savings, welfare_balance</p>
       </div>
@@ -193,6 +196,7 @@ function RecordContributionDialog({
             <Input id={`reference-${member.id}`} name="reference" placeholder="M-Pesa code" />
           </div>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Saving…" : "Save"}
           </Button>
@@ -207,7 +211,8 @@ function CreateLoginDialog({ member }: { member: Member }) {
   const [state, formAction, pending] = useActionState<MemberActionState, FormData>(
     async (prev, formData) => {
       const result = await createLoginForMemberAction(member.id, prev, formData);
-      if (!result) setOpen(false);
+      if (!result || result.message) setOpen(false);
+      if (result?.message) toast.success(result.message);
       return result;
     },
     null,
@@ -227,18 +232,22 @@ function CreateLoginDialog({ member }: { member: Member }) {
           </div>
           <div className="space-y-2">
             <Label htmlFor={`login-phone-${member.id}`}>Phone</Label>
-            <Input id={`login-phone-${member.id}`} name="phone" placeholder="0712345678" />
+            <Input
+              id={`login-phone-${member.id}`}
+              name="phone"
+              placeholder="0712 345 678"
+              defaultValue={displayPhone(member.phone)}
+            />
           </div>
           <div className="space-y-2">
             <Label htmlFor={`login-password-${member.id}`}>Password</Label>
-            <Input
-              id={`login-password-${member.id}`}
-              name="password"
-              type="password"
-              required
-            />
+            <Input id={`login-password-${member.id}`} name="password" type="password" />
+            <p className="text-xs text-muted-foreground">
+              Only for a new account. If this phone or email already has an account, it is linked and they keep their own password.
+            </p>
           </div>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Creating…" : "Create login"}
           </Button>
@@ -278,6 +287,7 @@ function ResetPasswordDialog({ member }: { member: Member }) {
             Tell {member.name} the new password. They are signed out on every phone.
           </p>
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
+          {state?.message && <p className="text-sm text-muted-foreground">{state.message}</p>}
           <Button type="submit" disabled={pending} className="w-full">
             {pending ? "Saving…" : "Save new password"}
           </Button>
@@ -416,7 +426,7 @@ export function MembersManager({
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
   const shown = q
-    ? members.filter((m) => m.name.toLowerCase().includes(q) || (m.phone ?? "").includes(q))
+    ? members.filter((m) => m.name.toLowerCase().includes(q) || (m.phone ?? "").includes(q) || displayPhone(m.phone).replace(/\s/g, "").includes(q.replace(/\s/g, "")))
     : members;
   const groupTotal = members.reduce((sum, m) => sum + totalSavings(m), 0);
 
@@ -457,7 +467,7 @@ export function MembersManager({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-lg font-semibold">{m.name}</p>
-                    <p className="text-sm text-muted-foreground">{m.phone ?? "No phone"}</p>
+                    <p className="text-sm text-muted-foreground">{m.phone ? displayPhone(m.phone) : "No phone"}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-bold tabular-nums">{ksh(totalSavings(m))}</p>

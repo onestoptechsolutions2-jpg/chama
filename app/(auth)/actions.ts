@@ -1,12 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { eq, or } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { users } from "@/lib/db/schema";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, destroySession, startSessionForUser } from "@/lib/auth/session";
 import { registerSchema, loginSchema } from "@/lib/validation/auth";
+import { isEmailIdentifier, normalizeEmail, normalizePhone } from "@/lib/domain/identity";
+import { createUserIfNew } from "@/lib/identity/people";
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60 * 1000;
@@ -32,33 +34,21 @@ export async function registerAction(
 ): Promise<AuthActionState> {
   const parsed = registerSchema.safeParse({
     name: formData.get("name"),
-    email: formData.get("email"),
-    phone: formData.get("phone"),
+    email: formData.get("email") ?? undefined,
+    phone: formData.get("phone") ?? undefined,
     password: formData.get("password"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { name, phone, password } = parsed.data;
-  const email = parsed.data.email ? parsed.data.email.toLowerCase() : parsed.data.email;
+  const { name, phone, email, password } = parsed.data;
 
-  const existing = email
-    ? await db.query.users.findFirst({ where: eq(users.email, email) })
-    : null;
-  if (existing) {
-    return { error: "An account with that email already exists" };
+  const result = await createUserIfNew({ name, phone, email, passwordHash: await hashPassword(password) });
+  if ("error" in result) return { error: result.error };
+  if ("existing" in result) {
+    return { error: "An account with this phone or email already exists. Sign in instead." };
   }
-
-  const passwordHash = await hashPassword(password);
-  const [user] = await db
-    .insert(users)
-    .values({
-      name,
-      email: email || null,
-      phone: phone || null,
-      passwordHash,
-    })
-    .returning();
+  const user = result.created;
 
   await createSession(user.id, null);
   redirect(safeNext(formData));
@@ -75,14 +65,13 @@ export async function loginAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { password } = parsed.data;
-  const identifier = parsed.data.identifier.includes("@")
-    ? parsed.data.identifier.toLowerCase()
-    : parsed.data.identifier;
-
-  const user = await db.query.users.findFirst({
-    where: or(eq(users.email, identifier), eq(users.phone, identifier)),
-  });
+  const { password, identifier } = parsed.data;
+  // Phones are stored canonical (lib/domain/identity.ts), so "0712…" and
+  // "+254712…" both find the same account.
+  const where = isEmailIdentifier(identifier)
+    ? sql`lower(${users.email}) = ${normalizeEmail(identifier)}`
+    : eq(users.phone, normalizePhone(identifier) ?? identifier);
+  const user = await db.query.users.findFirst({ where });
 
   if (user?.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
     return { error: "Too many wrong tries. Please wait 15 minutes and try again." };

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { and, eq, ne } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
 import { withTenant, withPlatformAdmin } from "@/lib/db/rls";
-import { members, groupMemberships } from "@/lib/db/schema";
+import { db } from "@/lib/db/client";
+import { members, groupMemberships, users } from "@/lib/db/schema";
 import { updateKycSchema } from "@/lib/validation/profile";
 import { isKycComplete, type MembershipRole } from "@/lib/domain/officials";
 
@@ -78,7 +79,16 @@ export async function updateMyKycAction(
     }
   });
 
+  // A Google/email-only account adopts the KYC phone as its sign-in phone,
+  // unless another account already owns it (then support merges them).
+  let note: string | null = null;
+  if (phone && !session.user.phone) {
+    const owner = await db.query.users.findFirst({ where: eq(users.phone, phone) });
+    if (!owner) await db.update(users).set({ phone, updatedAt: new Date() }).where(eq(users.id, session.user.id));
+    else if (owner.id !== session.user.id) note = "That phone is already used by another account. Contact support to merge them.";
+  }
+
   revalidatePath("/dashboard/profile");
   revalidatePath("/dashboard/members");
-  return { ok: true };
+  return note ? { error: note } : { ok: true };
 }

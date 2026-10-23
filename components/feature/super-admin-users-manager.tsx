@@ -1,5 +1,6 @@
 "use client";
 
+import { displayPhone } from "@/lib/domain/identity";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -224,7 +225,7 @@ export function SuperAdminUsersManager({
                   <TableRow key={user.id}>
                     <TableCell className="font-medium">{user.name}</TableCell>
                     <TableCell>{user.email ?? "—"}</TableCell>
-                    <TableCell>{user.phone ?? "—"}</TableCell>
+                    <TableCell>{displayPhone(user.phone) || "—"}</TableCell>
                     <TableCell>
                       <Badge variant={user.platformRole === "owner" ? "default" : "secondary"}>
                         {platformRoleLabel(user.platformRole as PlatformRole | null)}

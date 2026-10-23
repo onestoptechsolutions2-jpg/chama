@@ -43,7 +43,7 @@ function LoginForm({ googleEnabled }: { googleEnabled: boolean }) {
           <form action={formAction} className="space-y-4" autoComplete="on">
             {next && <input type="hidden" name="next" value={next} />}
             <div className="space-y-2">
-              <Label htmlFor="identifier">Email or phone</Label>
+              <Label htmlFor="identifier">Phone or email</Label>
               <Input
                 id="identifier"
                 name="identifier"

@@ -76,6 +76,7 @@ export const PLATFORM_PERMISSIONS = {
   "platform.groups.manage": { roles: ["owner", "support"], label: "Edit and (de)activate groups" },
   "platform.users.manage": { roles: ["owner", "support"], label: "Reset passwords, merge duplicate users" },
   "platform.roles.grant": { roles: ["owner"], label: "Grant or remove platform roles" },
+  "platform.users.merge": { roles: ["owner"], label: "Merge two accounts that belong to one person" },
   "support.view": { roles: ["owner", "support"], label: "Open a group as a user, read-only" },
   "support.act": { roles: ["owner", "support"], label: "Make changes in a group on a user's behalf" },
   "support.money": { roles: ["owner"], label: "Move money (payouts, disbursements) on a user's behalf" },

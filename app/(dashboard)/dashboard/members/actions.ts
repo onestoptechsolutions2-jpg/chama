@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, or, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser, type Tx } from "@/lib/db/rls";
@@ -14,11 +14,14 @@ import {
 import { validateContributionAmount, CONTRIBUTION_BALANCE_FIELD } from "@/lib/domain/contributions";
 import { computeRegistrationComplete, type MembershipRole } from "@/lib/domain/officials";
 import { hashPassword } from "@/lib/auth/password";
+import { normalizeEmail, normalizePhone } from "@/lib/domain/identity";
+import { findPerson } from "@/lib/identity/people";
 import { releaseMemberFromRotation } from "@/app/(dashboard)/dashboard/mgr/rotation-data";
 import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
 import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 
-export type MemberActionState = { error: string } | null;
+/** `message` carries a success summary (e.g. what a CSV import did). */
+export type MemberActionState = { error?: string; message?: string } | null;
 
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
@@ -59,7 +62,8 @@ export async function importMembersAction(
   if (missing.length) return { error: `Missing columns: ${missing.join(", ")}` };
   if (lines.length > 501) return { error: "CSV cannot contain more than 500 members" };
 
-  let rows: { name: string; phone: string | null; email: string | null; capital: string; security: string; personalSavings: string; welfareBalance: string }[];
+  type Row = { name: string; phone: string | null; email: string | null; capital: string; security: string; personalSavings: string; welfareBalance: string };
+  let rows: Row[];
   try {
     rows = lines.slice(1).map((line, index) => {
       const values = parseCsvLine(line);
@@ -68,19 +72,47 @@ export async function importMembersAction(
       if (!get("name") || amounts.some((amount) => !Number.isFinite(amount) || amount < 0)) {
         throw new Error(`Invalid member or balance on CSV row ${index + 2}`);
       }
-      return { name: get("name"), phone: get("phone") || null, email: get("email") || null, capital: String(amounts[0]), security: String(amounts[1]), personalSavings: String(amounts[2]), welfareBalance: String(amounts[3]) };
+      const phone = get("phone") ? normalizePhone(get("phone")) : null;
+      if (get("phone") && !phone) throw new Error(`Row ${index + 2}: "${get("phone")}" is not a Kenyan mobile number`);
+      return { name: get("name"), phone, email: normalizeEmail(get("email")), capital: String(amounts[0]), security: String(amounts[1]), personalSavings: String(amounts[2]), welfareBalance: String(amounts[3]) };
     });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Invalid CSV row" };
   }
 
+  // One row per person: skip anyone already on the roster (same phone or
+  // email) or repeated within the file, so re-uploading a CSV is safe.
+  const groupId = session.activeMembership.groupId;
+  let skipped: string[];
+  let added: number;
   try {
-    await withTenant(session.activeMembership.groupId, (tx) => tx.insert(members).values(rows.map((row) => ({ ...row, groupId: session.activeMembership.groupId }))));
+    ({ skipped, added } = await withTenant(groupId, async (tx) => {
+      const existing = await tx
+        .select({ phone: members.phone, email: members.email })
+        .from(members)
+        .where(eq(members.groupId, groupId));
+      const seen = new Set(existing.flatMap((m) => [normalizePhone(m.phone), normalizeEmail(m.email)]).filter(Boolean));
+      const fresh: Row[] = [];
+      const skipped: string[] = [];
+      for (const row of rows) {
+        const keys = [row.phone, row.email].filter(Boolean) as string[];
+        if (keys.some((k) => seen.has(k))) {
+          skipped.push(row.name);
+          continue;
+        }
+        keys.forEach((k) => seen.add(k));
+        fresh.push(row);
+      }
+      if (fresh.length) await tx.insert(members).values(fresh.map((row) => ({ ...row, groupId })));
+      return { skipped, added: fresh.length };
+    }));
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to import members" };
   }
   revalidatePath("/dashboard/members");
-  return null;
+  return {
+    message: `${added} added${skipped.length ? `, ${skipped.length} already on the list (skipped: ${skipped.slice(0, 5).join(", ")}${skipped.length > 5 ? "…" : ""})` : ""}.`,
+  };
 }
 
 /**
@@ -121,17 +153,28 @@ export async function createMemberAction(
   const { name, phone, email, idNumber, capital, security } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, (tx) =>
-    tx.insert(members).values({
+  const duplicate = await withTenant(groupId, async (tx) => {
+    if (phone || email) {
+      const clash = await tx.query.members.findFirst({
+        where: and(
+          eq(members.groupId, groupId),
+          or(...(phone ? [eq(members.phone, phone)] : []), ...(email ? [sql`lower(${members.email}) = ${email}`] : [])),
+        ),
+      });
+      if (clash) return clash.name;
+    }
+    await tx.insert(members).values({
       groupId,
       name,
-      phone: phone || null,
-      email: email || null,
+      phone: phone ?? null,
+      email: email ?? null,
       idNumber: idNumber || null,
       capital: String(capital),
       security: String(security),
-    }),
-  );
+    });
+    return null;
+  });
+  if (duplicate) return { error: `${duplicate} already has that phone or email on this group's list.` };
 
   revalidatePath("/dashboard/members");
   return null;
@@ -233,6 +276,7 @@ export async function createLoginForMemberAction(
   }
   const { email, phone, password } = parsed.data;
   const groupId = session.activeMembership.groupId;
+  let linkedExisting = false;
 
   const result = await withTenant(groupId, async (tx): Promise<{ error: string } | { ok: true }> => {
     const member = await tx.query.members.findFirst({
@@ -241,35 +285,39 @@ export async function createLoginForMemberAction(
     if (!member) return { error: "Member not found" };
     if (member.userId) return { error: "This member already has a login" };
 
-    if (email) {
-      const existing = await tx.query.users.findFirst({ where: eq(users.email, email) });
-      if (existing) return { error: "An account with that email already exists" };
+    // Same person already has an account (another group, or they
+    // registered themselves) → link it; never create a second one.
+    const found = await findPerson({ phone, email });
+    if ("error" in found) return { error: found.error };
+    let user = found.user;
+    if (user) {
+      const taken = await tx.query.members.findFirst({
+        where: and(eq(members.groupId, groupId), eq(members.userId, user.id)),
+      });
+      if (taken) return { error: `That account already belongs to ${taken.name} in this group.` };
+    } else {
+      if (!password) return { error: "Set a password (at least 8 characters) for the new login" };
+      [user] = await tx
+        .insert(users)
+        .values({ name: member.name, email: email ?? null, phone: phone ?? null, passwordHash: await hashPassword(password) })
+        .returning();
     }
-
-    const passwordHash = await hashPassword(password);
-    const [user] = await tx
-      .insert(users)
-      .values({
-        name: member.name,
-        email: email || null,
-        phone: phone || null,
-        passwordHash,
-      })
-      .returning();
+    linkedExisting = found.user !== null;
 
     await tx.update(members).set({ userId: user.id }).where(eq(members.id, memberId));
 
-    await tx.insert(groupMemberships).values({
-      userId: user.id,
-      groupId,
-      role: "member",
-      status: "active",
-      // Automatic, same reasoning as approveMembershipAction — this
-      // membership goes straight to active without a separate approval
-      // step (staff are creating it directly), but rule acceptance still
-      // applies the moment it exists.
-      rulesAcceptedAt: new Date(),
-    });
+    // Automatic, same reasoning as approveMembershipAction — this
+    // membership goes straight to active without a separate approval
+    // step (staff are creating it directly), but rule acceptance still
+    // applies the moment it exists. An existing pending/rejected request
+    // from the same person is turned into the active membership.
+    await tx
+      .insert(groupMemberships)
+      .values({ userId: user.id, groupId, role: "member", status: "active", rulesAcceptedAt: new Date() })
+      .onConflictDoUpdate({
+        target: [groupMemberships.userId, groupMemberships.groupId],
+        set: { status: "active", rulesAcceptedAt: new Date(), updatedAt: new Date() },
+      });
     await refreshRegistrationStatus(tx, groupId);
 
     return { ok: true };
@@ -277,7 +325,9 @@ export async function createLoginForMemberAction(
 
   if ("error" in result) return { error: result.error };
   revalidatePath("/dashboard/members");
-  return null;
+  return linkedExisting
+    ? { message: "Linked to the account they already have. They sign in with their own password." }
+    : null;
 }
 
 /**

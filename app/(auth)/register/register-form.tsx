@@ -47,17 +47,20 @@ function RegisterForm({ googleEnabled }: { googleEnabled: boolean }) {
               <Input id="name" name="name" autoComplete="name" required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" name="email" type="email" autoComplete="email" />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">Phone number</Label>
               <Input
                 id="phone"
                 name="phone"
-                placeholder="0712345678"
+                type="tel"
+                inputMode="tel"
+                placeholder="0712 345 678"
                 autoComplete="tel"
               />
+              <p className="text-xs text-muted-foreground">Your phone is your account. Use the number your group knows.</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email (optional)</Label>
+              <Input id="email" name="email" type="email" autoComplete="email" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>

@@ -1,9 +1,10 @@
 import { z } from "zod";
+import { optionalEmail, optionalPhone } from "./identity";
 
 export const createMemberSchema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  phone: z.string().trim().optional().or(z.literal("")),
-  email: z.string().trim().email().optional().or(z.literal("")),
+  phone: optionalPhone,
+  email: optionalEmail,
   idNumber: z.string().trim().optional().or(z.literal("")),
   capital: z.coerce.number().nonnegative().default(0),
   security: z.coerce.number().nonnegative().default(0),
@@ -26,14 +27,14 @@ export const recordContributionSchema = z.object({
 
 export const createLoginSchema = z
   .object({
-    email: z.string().trim().email().optional().or(z.literal("")),
-    phone: z
+    email: optionalEmail,
+    phone: optionalPhone,
+    // Only needed when a new account is created; an existing account is linked as-is.
+    password: z
       .string()
-      .trim()
-      .regex(/^0\d{9}$/, "Phone must be a 10-digit number starting with 0")
       .optional()
-      .or(z.literal("")),
-    password: z.string().min(8, "Password must be at least 8 characters"),
+      .transform((v) => v || undefined)
+      .refine((v) => v === undefined || v.length >= 8, "Password must be at least 8 characters"),
   })
   .refine((data) => data.email || data.phone, {
     message: "Email or phone is required",

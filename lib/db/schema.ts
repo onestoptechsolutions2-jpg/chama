@@ -454,9 +454,17 @@ export const users = pgTable("users", {
   // Deliberately distinct from group_memberships.role, which is the per-group source of truth.
   platformRole: platformRoleEnum("platform_role"),
   active: boolean("active").notNull().default(true),
+  // Set when support merged this duplicate account into another one; the
+  // row stays (deactivated) so history that points at it still resolves.
+  mergedIntoUserId: integer("merged_into_user_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [
+  // One person = one phone/email (lib/domain/identity.ts). Phones are
+  // stored canonical ("2547…"); emails compared lowercased.
+  uniqueIndex("users_phone_unique").on(t.phone).where(sql`${t.phone} is not null`),
+  uniqueIndex("users_email_lower_unique").on(sql`lower(${t.email})`).where(sql`${t.email} is not null`),
+]);
 
 export const platformUserAuditLogs = pgTable(
   "platform_user_audit_logs",
@@ -555,6 +563,8 @@ export const members = pgTable(
   (t) => [
     unique("members_user_group_unique").on(t.userId, t.groupId),
     index("members_group_id_idx").on(t.groupId),
+    // One roster row per phone per group (canonical phone, see users above).
+    uniqueIndex("members_group_phone_unique").on(t.groupId, t.phone).where(sql`${t.phone} is not null`),
   ],
 );
 

@@ -1,15 +1,11 @@
 import { z } from "zod";
+import { optionalEmail, optionalPhone } from "./identity";
 
 export const registerSchema = z
   .object({
     name: z.string().trim().min(1, "Name is required"),
-    email: z.string().trim().email().optional().or(z.literal("")),
-    phone: z
-      .string()
-      .trim()
-      .regex(/^0\d{9}$/, "Phone must be a 10-digit number starting with 0")
-      .optional()
-      .or(z.literal("")),
+    email: optionalEmail,
+    phone: optionalPhone,
     password: z.string().min(8, "Password must be at least 8 characters"),
   })
   .refine((data) => data.email || data.phone, {

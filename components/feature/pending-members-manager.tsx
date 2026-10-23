@@ -1,5 +1,6 @@
 "use client";
 
+import { displayPhone } from "@/lib/domain/identity";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import type { groupMemberships as groupMembershipsTable, users as usersTable } from "@/lib/db/schema";
@@ -27,7 +28,7 @@ function Row({ membership }: { membership: Membership }) {
   return (
     <TableRow>
       <TableCell className="font-medium">{membership.user.name}</TableCell>
-      <TableCell>{membership.user.email ?? membership.user.phone ?? "—"}</TableCell>
+      <TableCell>{membership.user.email ?? (displayPhone(membership.user.phone) || "—")}</TableCell>
       <TableCell className="max-w-xs truncate text-muted-foreground">
         {membership.joinMessage || "—"}
       </TableCell>

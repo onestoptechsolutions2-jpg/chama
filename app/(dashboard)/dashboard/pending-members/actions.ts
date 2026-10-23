@@ -10,6 +10,7 @@ import { isKycComplete } from "@/lib/domain/officials";
 import { insertNotification } from "@/lib/db/notifications";
 import { buildMembershipNotification } from "@/lib/domain/notifications";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
+import { linkOrCreateMemberRow } from "@/lib/identity/people";
 
 export type PendingMemberActionState = { error: string } | null;
 
@@ -67,30 +68,32 @@ export async function approveMembershipAction(
       })
       .where(eq(groupMemberships.id, membershipId));
 
-    const existingMember = await tx.query.members.findFirst({
-      where: and(eq(members.groupId, groupId), eq(members.userId, membership.userId)),
-    });
-    if (!existingMember) {
-      const kycFields = {
-        idType: existingKyc?.idType ?? null,
-        idNumber: existingKyc?.idNumber ?? null,
-        idDocumentUrl: existingKyc?.idDocumentUrl ?? null,
-        photoUrl: existingKyc?.photoUrl ?? null,
-        signatureUrl: existingKyc?.signatureUrl ?? null,
-        address: existingKyc?.address ?? null,
-      };
-      await tx.insert(members).values({
-        groupId,
-        userId: membership.userId,
+    // Links the roster row staff may already have added for this person
+    // (same phone/email, no login yet) instead of creating a second one.
+    const kycFields = {
+      idType: existingKyc?.idType ?? null,
+      idNumber: existingKyc?.idNumber ?? null,
+      idDocumentUrl: existingKyc?.idDocumentUrl ?? null,
+      photoUrl: existingKyc?.photoUrl ?? null,
+      signatureUrl: existingKyc?.signatureUrl ?? null,
+      address: existingKyc?.address ?? null,
+    };
+    await linkOrCreateMemberRow(
+      tx,
+      groupId,
+      {
+        id: membership.userId,
         name: membership.user.name,
         phone: existingKyc?.phone ?? membership.user.phone,
         email: membership.user.email,
+      },
+      {
         ...kycFields,
         // A newly-approved join request always lands as role "member"
         // (see requestToJoinAction) — offices are assigned separately.
         kycCompletedAt: isKycComplete("member", kycFields) ? new Date() : null,
-      });
-    }
+      },
+    );
 
     await insertNotification(tx, {
       groupId,
