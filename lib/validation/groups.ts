@@ -33,14 +33,11 @@ export const createGroupSchema = z.object({
 
 export const onboardingGroupSchema = z.object({
   name: z.string().trim().min(1, "Group name is required").max(200),
-  type: z.enum(groupTypes),
+  segment: z.enum(["table_banking", "boda_boda", "welfare_funeral", "employee_welfare", "other"], {
+    message: "Choose what kind of group you are",
+  }),
   description: z.string().trim().max(1000).optional().or(z.literal("")),
-  contactPersonPhone: z.string().trim().max(40).optional().or(z.literal("")),
   contactPersonRole: z.string().trim().max(100).optional().or(z.literal("")),
-  loansEnabled: z.literal("on").optional(),
-  mgrEnabled: z.literal("on").optional(),
-  welfareEnabled: z.literal("on").optional(),
-  projectsEnabled: z.literal("on").optional(),
 });
 
 export type JoinRequestInput = z.infer<typeof joinRequestSchema>;

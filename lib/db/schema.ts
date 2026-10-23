@@ -305,6 +305,8 @@ export const groups = pgTable("groups", {
   // public discoverability and new-member approval; existing operations
   // for the founding admin are NOT blocked by this (see docs/architecture.md).
   registrationComplete: boolean("registration_complete").notNull().default(false),
+  /** Which ready-made setup the group started from (lib/domain/segments.ts); null for older groups. */
+  segment: text("segment"),
 
   // Product entitlements — a group's access to loans/MGR/welfare/projects
   // is an explicit, independently toggleable flag (Settings > Products),
