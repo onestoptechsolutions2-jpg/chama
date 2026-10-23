@@ -53,7 +53,7 @@ export default async function RegistrationPackPage({ searchParams }: { searchPar
 
   const today = nairobiToday();
   return (
-    <main className="mx-auto max-w-[210mm] bg-white p-8 text-[13px] leading-relaxed text-black print:p-0">
+    <main className="mx-auto w-full min-w-0 max-w-[210mm] bg-white p-4 text-[13px] leading-relaxed text-black sm:p-8 print:p-0">
       <nav className="mb-6 flex flex-wrap items-center gap-2 print:hidden">
         <Link href="/dashboard/governance" className="text-sm underline">
           ← Back
@@ -172,7 +172,8 @@ function Signatures({ people, date }: { people: string[]; date: string | null })
 function Table({ head, rows, empty }: { head: string[]; rows: string[][]; empty: string }) {
   if (rows.length === 0) return <p>{empty}</p>;
   return (
-    <table className="w-full border-collapse">
+    <div className="overflow-x-auto print:overflow-visible">
+    <table className="w-full min-w-[520px] border-collapse print:min-w-0">
       <thead>
         <tr>
           {head.map((h) => (
@@ -194,5 +195,6 @@ function Table({ head, rows, empty }: { head: string[]; rows: string[][]; empty:
         ))}
       </tbody>
     </table>
+    </div>
   );
 }

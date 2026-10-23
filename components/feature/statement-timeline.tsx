@@ -119,7 +119,7 @@ export function StatementTimeline({
         <Metric label="Active loans" value={String(activeLoanCount)} />
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         {(["all", "contribution", "repayment", "fine", "loan"] as const).map((t) => (
           <Button
             key={t}
