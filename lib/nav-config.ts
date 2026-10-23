@@ -22,6 +22,7 @@ import {
   Webhook,
   ShieldCheck,
   History,
+  Banknote,
 } from "lucide-react";
 import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
@@ -83,6 +84,15 @@ export const navItems: NavItem[] = [
     icon: Lightbulb,
     guide:
       "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in. Admins/treasurers/secretaries also get graphical group-performance reports here (contributions, balances, loan and fine exposure) with CSV export.",
+  },
+  {
+    href: "/dashboard/collect",
+    permission: "money.record",
+    section: "money",
+    label: "Record Money",
+    icon: Banknote,
+    guide:
+      "Meeting day on one screen: type what each member paid (shares, savings, welfare, loan repayment), then save once. If one line is wrong nothing is saved, so you can fix it. Every member with a phone gets an SMS receipt.",
   },
   {
     href: "/dashboard/members",

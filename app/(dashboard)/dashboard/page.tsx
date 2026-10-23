@@ -76,7 +76,7 @@ export default async function DashboardPage() {
   // Tiles follow permissions, so nobody sees a button for something they can't do.
   const m = session.activeMembership;
   const tiles: Tile[] = [
-    ...(can(m, "money.record") ? [{ href: "/dashboard/members", label: "Add Money", hint: "Record a payment", icon: Wallet }] : []),
+    ...(can(m, "money.record") ? [{ href: "/dashboard/collect", label: "Add Money", hint: "Record today's payments", icon: Wallet }] : []),
     ...(can(m, "meetings.manage") ? [{ href: "/dashboard/meetings", label: "Meetings", hint: "Who came today", icon: CalendarDays }] : []),
     ...(can(m, "loans.manage") ? [{ href: "/dashboard/loans", label: "Loans", hint: "Requests and repayments", icon: Landmark }] : []),
     ...(can(m, "fines.issue") ? [{ href: "/dashboard/fines", label: "Fines", hint: "Who owes what", icon: Gavel }] : []),

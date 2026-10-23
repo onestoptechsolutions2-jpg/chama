@@ -12,7 +12,7 @@ import { defineCommand, done, fail, type Actor, type CommandResult } from "./typ
 
 export const CONTRIBUTION_TYPES = ["capital", "security", "personal_savings", "welfare", "mgr", "project", "other"] as const;
 
-const entrySchema = z.object({
+export const entrySchema = z.object({
   memberId: z.coerce.number().int().positive(),
   type: z.enum(CONTRIBUTION_TYPES),
   amount: z.coerce.number().positive("Amount must be greater than 0"),
@@ -35,7 +35,7 @@ export type RecordedContribution = {
  * (atomic increment) or, for welfare, the group's welfare fund split by
  * policy. Shared by every door — UI, meeting recorder, API, M-Pesa.
  */
-async function applyContribution(
+export async function applyContribution(
   tx: Tx,
   actor: Actor,
   group: typeof groups.$inferSelect,
@@ -99,11 +99,11 @@ async function applyContribution(
   });
 }
 
-async function loadGroup(tx: Tx, groupId: number) {
+export async function loadGroup(tx: Tx, groupId: number) {
   return tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
 }
 
-async function announce(actor: Actor, recorded: RecordedContribution[]) {
+export async function announce(actor: Actor, recorded: RecordedContribution[]) {
   for (const c of recorded) {
     void dispatchWebhookEvent(actor.groupId, "contribution.recorded", {
       contributionId: c.contributionId,
