@@ -17,13 +17,24 @@ registration and back to the join form). Your request sits **pending**
 until a group admin or treasurer approves it; you'll see a notification
 when they do (or don't).
 
-**If you're starting a new group**: register, then from your (empty)
-dashboard choose **Create your group**. You become the group's admin
-immediately, but the group starts **private** and stays that way — invisible
-on Discover and unable to approve new join requests — until it has a
-Treasurer and a Secretary assigned in addition to you, its founding admin.
-Add members (Members page → Add member) and assign roles there to clear
-that requirement.
+**If someone invited you**: open the link from your SMS or WhatsApp. Create
+your account with the same phone number (or sign in if you already have
+one) and tap **Join the group**. If you sign up first, the invite waits for
+you on your Home page.
+
+**If you're starting a new group**: register with your phone number, then
+choose **Start a group** and pick what kind of group you are — **women's
+table banking**, **boda-boda group**, **welfare / funeral group**,
+**employee welfare**, or **something else**. That sets up the right money
+rules and a starter rule book; you can change anything later in Settings.
+You become the group's Chair (admin). The group stays **private** and can't
+approve join requests until it also has a Treasurer and a Secretary:
+**invite** them from Members → Add Member (type their phone and pick the
+role). **Next steps** on your Home page walks you through the rest.
+
+**Your phone number is your account.** One phone, one account — "0712…" and
+"+254712…" are the same number. You never need a second account for a
+second group.
 
 **Signing in**: use your email or phone and password — or, if your group's
 platform has it switched on, **Continue with Google**. After 5 wrong
@@ -44,6 +55,14 @@ available from the sidebar too. Your KYC details (ID, photo, phone) are
 filled in once and reused automatically everywhere else you're a member.
 
 ## Home (Dashboard)
+
+**Next steps** at the top lists what needs doing, for you, right now — a new
+group's setup (invite officials, add members, connect M-Pesa, write rules,
+first collection), work waiting for officials (payments to match, join or
+loan requests, overdue loans), and your own reminders (a loan due, someone
+asking you to guarantee, a Mzunguko turn to choose, fines, finishing your
+profile). Each item has a button that takes you to the right page. It
+follows fixed rules — the same records always give the same list.
 
 A few big buttons for the everyday jobs (staff: Add Money, Meetings, Loans,
 Fines; members: My Money, Ask for Loan, Get Help, Mzunguko), one line with
@@ -74,13 +93,16 @@ group's own records — not a static report.
 ## Members (staff)
 
 The roster and each member's financial profile — capital, security,
-personal savings, fines. Admins and treasurers can add members directly
-(they don't need a login to exist in the roster — a financial profile can
-be created for someone and a login added for them later), record
-contributions, and change a member's role (subject to always keeping at
-least one active admin in the group). A member's role here is what
-`registrationComplete` and every permission check actually reads — not
-anything on their personal account.
+personal savings, fines — with each member's **member number** (the account
+they type when paying by M-Pesa). **Add Member** takes a name, phone and
+role: tick *Invite them to log in* (or choose an office) and they get a link
+by SMS/WhatsApp to join with their own account — you never set their
+password. Members who will never log in can still be added without an
+invite; they get SMS receipts. Treasurers can invite members; only the
+admin can invite officials or change roles (there is always at least one
+admin). A rows without a login has a **Send invite** button. Pending
+invites are listed under *Waiting to join*. Adding the same phone twice is
+refused, and a CSV import skips people already on the list.
 
 Admins also have, under **More details** on each member:
 
@@ -181,6 +203,49 @@ longer be reassigned or un-paid, so payouts stay accountable.
 A member who is removed from the group drops out of the draw and their
 unpaid turns become open again.
 
+## Record Money (admin/treasurer)
+
+Meeting day on one screen: a line per member with **Shares**, **Savings**,
+**Welfare** and **Loan** (for members with a loan). *Fill usual amounts*
+puts in the share price and welfare amount for everyone; change what's
+different and tap **Save all**. Everything is saved together — if one line
+is wrong, nothing is saved, so you can fix it. Every member with a phone
+gets an SMS receipt with their new savings and a link to their statement.
+You can't enter a repayment on your own loan — another official does.
+
+## Payments (admin/treasurer)
+
+Members pay the group's **own** M-Pesa paybill or till, typing their member
+number as the account — `12` for shares, or `12 welfare`, `12 loan`,
+`12 savings`. Those payments are recorded and receipted automatically. Ones
+we can't tell (wrong account number) wait under **Needs matching**: pick the
+member and what it's for. **Not ours** sets a payment aside. You can also
+import a **bank statement** or a **payroll check-off** file (CSV); uploading
+the same file twice is safe. The admin sets the paybill number and gets the
+two links to register with Safaricom under *M-Pesa setup*.
+
+## Share-out (when loans are on)
+
+The year-end share-out: each member's savings plus their share of what the
+group earned (loan interest, fines paid, other income you type in, less
+expenses), less any loan or fines they still owe. Share by **savings × time
+saved** (money saved in January earns more than money saved in November) or
+by savings at the end. Officials see everyone; members see their own line.
+It's a preview from the records — print it for the meeting, pay outside the
+app.
+
+## Activity (officials)
+
+Every recorded change — payments, fines, repayments, matching — with who did
+it and how: in the app, by M-Pesa, through the API, or by platform support
+on your behalf (with their reason). It can't be edited or deleted.
+
+## Roles & access
+
+What each role can do in your group, in plain words, and who holds each
+office. Nobody approves, pays out, waives or repays money for themselves —
+another official must.
+
 ## Welfare
 
 Submit and review welfare requests — medical, bereavement, emergency,
@@ -194,6 +259,12 @@ decision, mid-size ones need two officials, and the largest need all three
 per group at Settings → Welfare. You can also request a **welfare
 advance** — a short-term draw against the fund with its own fee, similar
 in shape to a loan.
+
+**Benefit table**: funeral and employee-welfare groups usually pay fixed
+amounts — "member dies: Ksh 50,000; spouse: 30,000…". The admin sets this
+table on the Welfare page; members then pick *what happened* and the amount
+is fixed by the table. Funeral and employee-welfare groups start with a
+ready table to edit.
 
 ## Projects
 
@@ -216,7 +287,10 @@ deployment strays too far from it.
 ## Statement
 
 One merged timeline of your own contributions, fines, and loan activity —
-the closest thing to a bank statement for your standing in the group.
+the closest thing to a bank statement for your standing in the group. It also shows how to pay by M-Pesa (paybill and your
+account number). Members who don't log in get the same statement from the
+link in their SMS receipt — no password, only their own record, valid for
+90 days.
 
 ## Rules
 
@@ -240,11 +314,12 @@ fresh M-Pesa push per event.
 
 ## Billing (admin/treasurer)
 
-What the group owes the platform — computed live from member count, which
-vehicles (Table Banking, Welfare, Investment) are active, and real
-financial activity over the last 12 months, not a flat fee. Generate this
-period's invoice and charge it, either instantly from the prepaid Wallet
-or via a fresh M-Pesa prompt.
+Your plan, by active members: **Free** up to 10 members; **Group** up to 50
+(Ksh 400 a month, or 4,000 a year); **Large group** up to 300 (Ksh 900 a
+month, or 9,000 a year); **Employee welfare** Ksh 30 per member per month,
+paid by the employer. Every plan has every feature, with a monthly SMS
+allowance. Generate this period's invoice and pay it from the prepaid Wallet
+or by M-Pesa.
 
 ## Settings (admin)
 
@@ -270,6 +345,11 @@ The group's configurable business rules, organized into tabs:
   the drift alerts on Capital Position.
 
 ## Governance (admin/secretary)
+
+**Registration pack** (button at the top): your constitution — written from
+your own settings and rules — the officials list, the member register and
+resolution minutes naming the account signatories, ready to print and sign
+or save as PDF, for registration, a bank account or an M-Pesa Chama account.
 
 Basic administrative housekeeping, not tied to any financial product —
 available to every group regardless of which vehicles are active.

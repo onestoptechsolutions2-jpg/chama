@@ -143,12 +143,20 @@ carefully the policies are written. The app never connects as that role:
 - **Browser headers** (`next.config.ts`): HSTS, `X-Frame-Options: DENY`,
   `nosniff`, `Referrer-Policy`, and a `Permissions-Policy` that blocks
   camera/microphone/geolocation. There is no CSP yet.
-- Real enforcement is `requireSession()` / `requireRole(...roles)` /
-  `requireActiveGroup()` / `requireProduct(product, ...roles)` /
-  `requirePlatformAdmin()` at the top of every protected surface — same
-  "coarse gate + RLS as the real net" pattern RLS itself uses. All of these
-  redirect to `/login` (unauthenticated) or `/dashboard` (authenticated but
-  not permitted) on failure.
+- Real enforcement is `requirePermission("<permission>")` /
+  `requirePlatformPermission(...)` (plus `requireSession()` /
+  `requireActiveGroup()`) at the top of every protected surface, reading
+  one matrix in `lib/auth/permissions.ts` — see [`iam.md`](./iam.md). Same
+  "coarse gate + RLS as the real net" pattern RLS itself uses. They
+  redirect to `/login` (unauthenticated) or `/dashboard` (not permitted).
+- **Identity**: one person = one phone (canonical `2547…`) — every
+  find-or-create goes through `lib/identity/people.ts`; unique indexes on
+  phone/email back it up. Officials and members join by **invite**
+  (`group_invites`, `/invite/[token]`).
+- **Support mode**: `sessions.support_session_id` → `support_sessions`;
+  `getSession()` then returns the group as the chosen member sees it, plus
+  `session.support`. Writes are checked by `lib/auth/support-rules.ts` and
+  audited. See [`iam.md`](./iam.md#7-support-mode-act-as).
 
 ## Data model
 
@@ -219,6 +227,20 @@ dates, annual returns, or custom deadlines — `upcoming`/`due`/`overdue`/
 Known Gap; see [`api.md`](./api.md) and the [Cron jobs](#cron-jobs-vercel-cron)
 section below for the daily reminder job.
 
+**Identity, access & audit** — `group_invites` (invite by phone/email +
+role, secret token, one live invite per person), `group_audit_log`
+(append-only: SELECT/INSERT policies only), `support_sessions`
+(platform-only RLS), `users.merged_into_user_id`, `sessions.support_session_id`.
+
+**Incoming payments** — `incoming_payments` (M-Pesa C2B, bank and payroll
+check-off; unique per group + source + external id), `members.member_number`
+(the paybill account number; a trigger numbers new members per group),
+`groups.paybill_number` / `c2b_token` / `payment_default_type`. Matching
+rules: `lib/domain/payment-matching.ts`.
+
+**Messaging** — `sms_messages` (every SMS per group; Africa's Talking via
+`lib/notify/sms.ts`, optional, with each plan's monthly allowance).
+
 **Platform / super-admin** — `cron_runs` (audit log), `group_account_activities`
 + CRM-ish columns on `groups` (onboarding stage, account tier/owner,
 follow-up date), `platform_user_audit_logs` (audit trail for platform-role
@@ -240,8 +262,13 @@ app/
       members/, loans/, mgr/, welfare/, projects/, fines/, meetings/,
       rules/, settings/, capital/, billing/, wallet/, statement/,
       profile/, notifications/, pending-members/, onboarding/, guide/,
-      developer/                 # per-group API keys + webhook endpoints UI
+      developer/                 # per-group API keys + webhook endpoints UI (parked from the menu)
       governance/                # group documents + compliance obligations UI
+      collect/                   # meeting-day recorder (Record Money)
+      payments/                  # M-Pesa/bank/payroll matching inbox + setup
+      share-out/                 # year-end share-out
+      activity/                  # group audit log
+      access/                    # roles & access (the permission matrix)
   super-admin/                  # literal URL segment (not a route group —
     layout.tsx                  # would collide with (dashboard)'s own routes)
     groups/, groups/[id]/, users/, stats/, integrations/
@@ -252,10 +279,23 @@ app/
     upload/
     v1/{group,members,contributions,loans,fines,meetings,mgr/cycles,
         welfare/requests,welfare/policy,capital-position}/  # public developer API — see api.md
+    mpesa/c2b/[token]/[kind]/   # the group's own paybill/till notifications
+    internal/commands/          # the backend agent's door
+  invite/[token]/               # accept an invite
+  s/[token]/                    # a member's no-password statement
+  print/registration-pack/      # printable registration papers
 lib/
   db/{schema.ts, client.ts, rls.ts}
-  domain/{..., governance.ts}  # pure, DB-free, unit-tested business logic
-  auth/{session.ts, google.ts, api-keys.ts, api-session.ts, api-response.ts}
+  domain/{..., identity.ts, payment-matching.ts, share-out.ts, segments.ts,
+          next-steps.ts, welfare-benefits.ts, registration-pack.ts, dates.ts}
+                    # pure, DB-free, unit-tested business logic
+  commands/         # one rule for every door: types, run, actor, registry, …
+  identity/people.ts  # the only find-or-create-person path
+  invites/, next-steps/  # server data loaders
+  notify/{sms.ts, receipts.ts}
+  statement-link.ts # signed no-password statement links
+  auth/{session.ts, permissions.ts, support.ts, support-rules.ts, google.ts,
+        api-keys.ts, api-session.ts, api-response.ts}
   webhooks/dispatch.ts  # outbound webhook signing + delivery + logging
   nav-config.ts    # single source of truth for the sidebar + role/product gating
   validation/      # zod schemas
@@ -281,6 +321,27 @@ everything triggered from the app's own UI, colocated per feature (one
 maintain. Route Handlers reserved for things a *third party* calls: the
 IntaSend webhook, Vercel Cron triggers, and file upload (a plain HTTP POST
 from a form, not a Server Action, so it can carry `FormData` with a File).
+
+## Commands (`lib/commands/*`) — one rule for every door
+
+Money-moving and record-changing rules that more than one caller needs
+live in **commands**: `defineCommand({ name, permission, input (zod), run,
+afterCommit })`, run by `runCommand(actor, command, input, { dryRun })`.
+`runCommand` checks the permission matrix (plus support/agent rules),
+validates input, runs the rule inside the group's `withTenant` transaction
+(any failure rolls back everything), writes an append-only
+`group_audit_log` row, then fires webhooks/SMS after commit. The **actor**
+says who and through which door (`ui`, `api`, `mpesa`, `cron`, `support`,
+`agent`) — `actorFromSession(session)` or `systemActor(groupId, via)`.
+
+Commands today: `contributions.record`, `contributions.recordBatch`,
+`collections.recordMeeting`, `fines.issue`, `fines.settle`,
+`loans.recordRepayment`, `payments.receive`, `payments.import`,
+`payments.assign`, `payments.ignore`. A Server Action using one is three
+lines (permission → `runCommand` → `revalidatePath`); the public API, the
+M-Pesa callback and the agent endpoint call the same commands. Older
+actions still hold their logic inline; move one into a command when another
+door needs it (and add it to `lib/commands/registry.ts` for the agent).
 
 ## Domain logic convention (`lib/domain/*`)
 

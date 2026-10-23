@@ -191,6 +191,48 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, and the full test suite (252 tests) clean at each step.
 
+## Lean v1: IAM, identity, payments and the assistant (Oct 2026)
+
+Driven by `docs/audit-2026-10.md` and `docs/product-plan.md` (segments:
+women's table banking, boda-boda, welfare/funeral, employee welfare; money
+in the group's own paybill/till or bank; groups pay a subscription).
+
+- **IAM** — one permission matrix (`lib/auth/permissions.ts`, documented in
+  `iam.md`) for group and platform roles; every page/action/route and the
+  menu use it. New `agent` platform role. Maker–checker on loans, repayments,
+  MGR payouts and fine waivers.
+- **Identity** — one person = one phone (canonical `2547…`), one
+  find-or-create path (`lib/identity/people.ts`), Google links instead of
+  duplicating, join approval links hand-added roster rows, CSV import skips
+  existing people, unique indexes (added only where no duplicates remain),
+  owner merge tool with a "Possible duplicates" list.
+- **Invites** replace admin-typed passwords and work before registration is
+  complete — this fixes the new-group dead end (no way to get a Treasurer
+  and Secretary in).
+- **Commands + audit log** — `lib/commands` runs a rule the same way for UI,
+  API, M-Pesa, support and the agent, with an append-only
+  `group_audit_log` and an Activity page. Fixed the API contribution drift
+  (skipped the welfare fund; lost-update balance write).
+- **Meeting-day recorder**, **SMS receipts** (Africa's Talking, optional)
+  and a **no-password statement link**.
+- **Segment templates** at Start a group.
+- **Payment matching** — the group's own paybill/till via Daraja C2B,
+  bank statement and payroll check-off CSVs; member numbers; an inbox for
+  the rest.
+- **Share-out calculator** and a **welfare benefit table**.
+- **Plans** — Free / Group / Large group / Employer, with SMS allowances;
+  Developer and Wallet parked from the menu.
+- **Registration pack** — printable constitution, officials, register, minutes.
+- **Support "act as"** — time-boxed, reasoned, view-only by default,
+  audited, admins notified. **Agent endpoint** — dry-run by default, never
+  moves money out.
+- **Next steps** — deterministic assistant on Home.
+- Fixes: `/discover` was static (new groups invisible until a deploy);
+  Nairobi dates on Home, loans and welfare; `npm ci` lockfile; a secretary
+  was shown "Add Money"; officials couldn't find "My Loan".
+- Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
+  agent read `groups` outside a tenant context, so RLS hid it — fixed.
+
 ## Known gaps
 
 Carried forward from the phases above, still true as of the last update to this file:
@@ -202,11 +244,15 @@ Carried forward from the phases above, still true as of the last update to this 
 - **IntaSend live payments** — blocked externally on IntaSend completing the account's business/KYC verification in their own dashboard, not on this codebase.
 - **`groups` has no DELETE policy** — flagged, low priority, nothing in the app deletes a group.
 - **`announcements`** — has a schema + RLS policy, no UI was ever built.
-- **`groups.sharesPerMember`** — fully wired (schema, validation, Settings UI) but never actually consulted anywhere in business logic; a dead setting, not a bug, flagged rather than fixed since wiring it in requires a product decision about what it should enforce.
+- **Only some actions are commands.** Contributions, meeting collections, fines, loan repayments and payment matching run through `lib/commands` (audited, reachable by the agent and API). Loan approval/disbursement, MGR, welfare, meetings, settings and member management still keep their logic in Server Actions — in support mode those are audited at permission level (which action, by whom, why), not with their inputs. Move each into a command when another door needs it.
+- **Unique contact indexes may be pending.** Migration 0051 skips any unique index whose data still has duplicates; merge them at /super-admin/users, then run `npm run db:enforce-unique-contacts`.
+- **M-Pesa C2B needs setup per group** (Daraja app on the group's own shortcode, or its provider forwarding notifications). Safaricom masks the payer's phone, so matching relies on the account number. Not tested against Safaricom's sandbox from this environment.
+- **Share-out is a preview** — it doesn't record the payouts or reset balances for the new year.
+- **Prices and the legal position are untested decisions** — the plans in `lib/domain/billing.ts` are to be validated with groups; holding member money is deliberately avoided, but SASRA/CBK applicability (especially for registered boda-boda SACCOs) needs a Kenyan lawyer's view.
 - **Outbound webhook delivery has no retry queue** — single attempt, logged regardless of outcome (`lib/webhooks/dispatch.ts`). This app is fully serverless with no background job runner, so retry-with-backoff is out of scope for now; a subscriber should treat the API as its own reconciliation backstop for anything it can't afford to miss. See `api.md`'s Outbound webhooks section.
 - **Public API v1 write scope is intentionally minimal** — one write endpoint (`POST /api/v1/contributions`), chosen after confirming the intended scope directly rather than guessing on a financial app. Loan approval, membership approval, and welfare-request submission are exposed as read + webhook-notify only; extending write scope further needs the same explicit confirmation, not a default assumption.
 - **KYC documents are stored with public blob URLs** (unguessable, but not access-controlled). The fix is a *private* Vercel Blob store plus an authenticated proxy route that checks the viewer may see that member's document — it needs a second store provisioned by the account owner, so it is not built.
-- **No SMS channel.** Novu is wired in (`lib/notify/novu.ts`) but no SMS provider is connected, so there is no phone-based password reset and no reminders for members who have no login. Admin-assisted reset is the interim answer.
+- **SMS is receipts and invites only.** Africa's Talking (optional) sends invites and payment receipts within each plan's monthly allowance; there is no phone-based password reset (OTP), no due-date reminder SMS, and no way to buy extra SMS yet.
 - **Login throttling is per account only** — it does not slow one attacker trying a single password across many accounts; shared rate limiting (e.g. Upstash) would. No Content-Security-Policy yet, and no "sign out everywhere" or expired-session cleanup.
 - **MGR: mid-rotation joiners need a schedule rebuild** ("Generate / rebuild schedule" keeps every claimed or paid turn and only redraws open ones). `groups.mgr_cycle_day` is stored but never read.
 - **Governance has no public API or webhook coverage** — a deliberate exclusion when the module was built (no third-party integration need was named for it, and folding a 4th area into that session's API/webhook work would have blurred an already large change), not an oversight.

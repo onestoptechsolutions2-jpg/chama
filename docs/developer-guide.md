@@ -25,7 +25,7 @@ an existing one (e.g. `app/(dashboard)/dashboard/loans/actions.ts`):
 ```ts
 "use server";
 export async function myAction(_prev: State, formData: FormData): Promise<State> {
-  const session = await requireRole("admin", "treasurer"); // or requireProduct(...), requireActiveGroup()
+  const session = await requirePermission("money.record"); // a permission from lib/auth/permissions.ts
   const parsed = myActionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
@@ -50,6 +50,46 @@ export async function myAction(_prev: State, formData: FormData): Promise<State>
 - A business-rule threshold (fee %, minimum amount, cap) reads from the
   fetched `group`/`policy` row, never a hardcoded literal — see
   [Adding a group setting](#adding-a-group-setting) below.
+
+### Who may do it: a permission, never a role list
+
+Add or reuse a permission in `lib/auth/permissions.ts` (`GROUP_PERMISSIONS`
+with its roles, optional product and a plain-language label) and call
+`requirePermission("<it>")` in the page/action. For a menu item, set
+`permission` on it in `lib/nav-config.ts`. For a button inside a page, use
+`can(session.activeMembership, "<it>")`. Never compare `role === "admin"`
+for access. If the action pays out to a member, also check
+`selfDealingError(actor.memberId, beneficiaryMemberId, "…")`. Docs:
+[`iam.md`](./iam.md).
+
+### A command (when more than one door needs the rule)
+
+If the API, M-Pesa, the agent or support should be able to do it too, put
+the rule in `lib/commands/<area>.ts`:
+
+```ts
+export const doThing = defineCommand({
+  name: "area.doThing",
+  description: "One line the agent and support read.",
+  permission: "money.record",
+  input: z.object({ ... }),
+  run: async (tx, actor, input) => { /* all writes on tx */ return done({ ... }); },
+  afterCommit: async (actor, input, data) => { /* webhooks, SMS */ },
+});
+```
+
+Return `fail("…")` to refuse — every write in `run` is rolled back. The
+Server Action becomes `runCommand(actorFromSession(session), doThing, input)`.
+Add it to `lib/commands/registry.ts` to expose it to the agent; mark
+`movesMoney: true` if it pays money out.
+
+### Finding or creating a person
+
+Only through `lib/identity/people.ts` (`createUserIfNew`, `findPerson`,
+`linkOrCreateMemberRow`). Validate phones/emails with
+`lib/validation/identity.ts` (`optionalPhone`, `requiredPhone`,
+`optionalEmail`) so they're stored canonical. Show phones with
+`displayPhone()`.
 
 ### A Route Handler
 
@@ -186,6 +226,24 @@ more than once. Worth internalizing rather than rediscovering.
   applied. Migrations in this repo are additive; generate with
   `npx drizzle-kit generate --name <what>`, review the SQL, migrate, then
   run the tests.
+
+## Running against a local Postgres
+
+The app's Neon driver talks over websockets, so a plain local Postgres
+needs a small websocket→TCP proxy. With Postgres on `localhost:54329`:
+
+1. Apply migrations (as the owner role) — `npm run db:migrate`, or psql each
+   file in `drizzle/meta/_journal.json` order split on `--> statement-breakpoint`.
+2. Create the app role: `create role chama_app login nobypassrls;` and grant
+   it select/insert/update/delete on all tables and usage on sequences.
+3. Run a websocket proxy that forwards `?address=host:port` to TCP (any
+   ~20-line `ws` + `net` script) on e.g. port 54330.
+4. `.env.local`: `APP_DATABASE_URL=postgres://chama_app@localhost:54329/<db>`,
+   `DATABASE_URL=postgres://postgres@localhost:54329/<db>`,
+   `NEON_LOCAL_WS_PROXY=localhost:54330`.
+
+Then `npm test` runs the DB-backed suites too, and `npm run dev` works
+end to end. Never set `NEON_LOCAL_WS_PROXY` in production.
 
 ## Running & smoke-testing
 
