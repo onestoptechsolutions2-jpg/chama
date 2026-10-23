@@ -16,6 +16,7 @@ export async function updateMyKycAction(
   formData: FormData,
 ): Promise<ProfileActionState> {
   const session = await requireActiveGroup();
+  if (session.support) return { error: "Support can't change a member's personal details." };
   const memberId = session.activeMembership.memberId;
   if (!memberId) {
     return { error: "No financial profile linked to your account in this group" };

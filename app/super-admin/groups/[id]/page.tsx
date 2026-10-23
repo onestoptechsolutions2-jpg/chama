@@ -20,6 +20,9 @@ import { computeNextMgrEvent } from "@/lib/domain/insights";
 import { getOrCreateWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 import { PageHeader } from "@/components/feature/page-header";
 import { GroupProfileView } from "@/components/feature/group-profile-view";
+import { SupportStartForm } from "@/components/feature/support-start-form";
+import { requirePlatformPermission } from "@/lib/auth/session";
+import { canPlatform } from "@/lib/auth/permissions";
 
 const OUTSTANDING_LOAN_STATUSES = ["pending", "active", "extended", "overdue"] as const;
 const MONTHS_BACK = 6;
@@ -35,6 +38,15 @@ export default async function GroupProfilePage({
 
   const group = await withPlatformAdmin((tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) }));
   if (!group) notFound();
+
+  const session = await requirePlatformPermission("platform.console");
+  const supportPeople = await withPlatformAdmin((tx) =>
+    tx
+      .select({ userId: groupMemberships.userId, role: groupMemberships.role, name: users.name })
+      .from(groupMemberships)
+      .innerJoin(users, eq(users.id, groupMemberships.userId))
+      .where(and(eq(groupMemberships.groupId, groupId), eq(groupMemberships.status, "active"))),
+  );
 
   // Independent withPlatformAdmin calls, run concurrently via this outer
   // Promise.all — NOT one withPlatformAdmin wrapping an inner Promise.all.
@@ -184,6 +196,11 @@ export default async function GroupProfilePage({
   return (
     <div className="space-y-6">
       <PageHeader title={group.name} description={`${group.type} · created ${new Date(group.createdAt).toLocaleDateString()}`} />
+      <SupportStartForm
+        groupId={groupId}
+        canAct={canPlatform(session.user.platformRole, "support.act")}
+        people={supportPeople.map((p) => ({ userId: p.userId, name: p.name, role: p.role }))}
+      />
       <GroupProfileView
         group={group}
         activeMemberCount={membershipStats.active}

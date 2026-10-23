@@ -756,8 +756,36 @@ export const sessions = pgTable("sessions", {
     onDelete: "set null",
   }),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** Set while platform support has this session open inside a group (lib/auth/support.ts). */
+  supportSessionId: integer("support_session_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── Support sessions — platform staff helping inside a group ───────────
+// Time-boxed (30 min), with a reason, view-only unless "act" was chosen,
+// and every change made is in the group's audit log with via = support.
+// The group's admins are notified when one starts.
+export const supportSessions = pgTable(
+  "support_sessions",
+  {
+    id: serial("id").primaryKey(),
+    staffUserId: integer("staff_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** The member whose view support takes; null = the group's admin view. */
+    asUserId: integer("as_user_id").references(() => users.id, { onDelete: "set null" }),
+    /** view | act */
+    mode: text("mode").notNull(),
+    reason: text("reason").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("support_sessions_group_idx").on(t.groupId, t.createdAt)],
+);
 
 // ── Rules (group bylaws) ────────────────────────────────────────────────
 export const rules = pgTable(

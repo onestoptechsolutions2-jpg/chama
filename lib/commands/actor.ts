@@ -16,7 +16,9 @@ export function actorFromSession(session: SessionWithGroup): Actor {
     groupName: m.groupName,
     role: m.role,
     products: m.products,
-    memberId: support ? null : m.memberId,
+    // In support mode this is the member support acts as, so maker–checker
+    // still stops "their" own loan being approved.
+    memberId: m.memberId,
     via: support ? "support" : "ui",
     platformRole: session.user.platformRole,
     onBehalfOfUserId: support?.asUserId ?? null,

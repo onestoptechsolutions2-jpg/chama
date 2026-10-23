@@ -1,12 +1,14 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { cache } from "react";
 import { randomBytes } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
-import { withUser } from "@/lib/db/rls";
-import { sessions, groupMemberships, members } from "@/lib/db/schema";
+import { withTenant, withUser } from "@/lib/db/rls";
+import { sessions, groupMemberships, members, groupAuditLog } from "@/lib/db/schema";
+import { loadSupportContext } from "@/lib/auth/support";
+import { supportWriteError } from "@/lib/auth/support-rules";
 import type { ProductFlags } from "@/lib/domain/products";
 import {
   can,
@@ -180,12 +182,24 @@ export const getSession = cache(async (): Promise<Session | null> => {
       },
     }));
 
-  const activeMembership =
+  let activeMembership =
     activeMemberships.find((m) => m.groupId === row.activeGroupId) ?? null;
+
+  // Support mode: platform staff inside a group, seeing it as a member does.
+  let support: SupportContext | null = null;
+  let activeGroupId = row.activeGroupId;
+  if (row.supportSessionId) {
+    const ctx = await loadSupportContext(row.supportSessionId, { id: row.user.id, platformRole: row.user.platformRole });
+    if (ctx) {
+      support = ctx.support;
+      activeMembership = ctx.membership;
+      activeGroupId = ctx.membership.groupId;
+    }
+  }
 
   return {
     sessionId: row.id,
-    support: null,
+    support,
     user: {
       id: row.user.id,
       name: row.user.name,
@@ -193,7 +207,7 @@ export const getSession = cache(async (): Promise<Session | null> => {
       phone: row.user.phone,
       platformRole: row.user.platformRole,
     },
-    activeGroupId: row.activeGroupId,
+    activeGroupId,
     activeMembership,
     memberships: activeMemberships,
   };
@@ -253,7 +267,34 @@ export async function requireProduct(
 export async function requirePermission(permission: GroupPermission): Promise<SessionWithGroup> {
   const session = await requireActiveGroup();
   if (!can(session.activeMembership, permission)) redirect("/dashboard");
+  if (session.support) await guardSupportWrite(session as SessionWithGroup, permission);
   return session;
+}
+
+/**
+ * In support mode every Server Action (a write — the request carries a
+ * Next-Action header) is checked against the support rules and written to
+ * the group's audit log with the reason, whether or not the action itself
+ * runs through lib/commands. Page loads (reads) pass through.
+ */
+async function guardSupportWrite(session: SessionWithGroup, permission: GroupPermission): Promise<void> {
+  const isWrite = (await headers()).has("next-action");
+  if (!isWrite || !session.support) return;
+  const refused = supportWriteError(session.support, session.user.platformRole, permission);
+  await withTenant(session.activeMembership.groupId, (tx) =>
+    tx.insert(groupAuditLog).values({
+      groupId: session.activeMembership.groupId,
+      command: `action:${permission}`,
+      actorUserId: session.user.id,
+      via: "support",
+      onBehalfOfUserId: session.support!.asUserId,
+      reason: session.support!.reason,
+      input: {},
+      ok: !refused,
+      error: refused,
+    }),
+  ).catch(() => {});
+  if (refused) throw new Error(refused);
 }
 
 /** Like requirePermission, for platform (super-admin/support/agent) permissions. */

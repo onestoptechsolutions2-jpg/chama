@@ -186,6 +186,7 @@ export async function resetMemberPasswordAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const session = await requirePermission("members.manage");
+  if (session.support) return { error: "Support can't set member passwords. Use the platform reset if the member asks." };
   const groupId = session.activeMembership.groupId;
 
   const password = String(formData.get("password") ?? "");
