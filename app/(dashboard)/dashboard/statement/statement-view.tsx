@@ -6,7 +6,7 @@ import type { loadStatement } from "./data";
 type Data = Awaited<ReturnType<typeof loadStatement>> & { member: NonNullable<Awaited<ReturnType<typeof loadStatement>>["member"]> };
 
 export function StatementView({ title, description, data }: { title: string; description: string; data: Data }) {
-  const { member, contribs, memberLoans, repayments, memberFines } = data;
+  const { member, contribs, memberLoans, repayments, memberFines, paybillNumber } = data;
   const saved = Number(member.capital) + Number(member.security) + Number(member.personalSavings);
   const owedFines = memberFines
     .filter((f) => f.status === "pending")
@@ -32,6 +32,17 @@ export function StatementView({ title, description, data }: { title: string; des
           </CardContent>
         </Card>
       </div>
+      {paybillNumber && member.memberNumber && (
+        <Card>
+          <CardContent className="pt-6 text-base">
+            <p className="text-muted-foreground">How to pay by M-Pesa</p>
+            <p>
+              Paybill <strong>{paybillNumber}</strong> · Account <strong>{member.memberNumber}</strong>
+              <span className="text-sm text-muted-foreground"> (add “welfare” or “loan” after the number for those)</span>
+            </p>
+          </CardContent>
+        </Card>
+      )}
       <h2 className="text-xl font-semibold">History</h2>
       <StatementTimeline
         contributions={contribs}

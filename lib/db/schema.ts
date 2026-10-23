@@ -307,6 +307,13 @@ export const groups = pgTable("groups", {
   registrationComplete: boolean("registration_complete").notNull().default(false),
   /** Which ready-made setup the group started from (lib/domain/segments.ts); null for older groups. */
   segment: text("segment"),
+  // ── Incoming payments (lib/domain/payment-matching.ts) ──
+  /** The group's own M-Pesa paybill or till number, shown to members. */
+  paybillNumber: text("paybill_number"),
+  /** Secret path segment of this group's M-Pesa confirmation URL. */
+  c2bToken: text("c2b_token").unique(),
+  /** What an M-Pesa/bank payment counts as when the account reference doesn't say. */
+  paymentDefaultType: text("payment_default_type").notNull().default("capital"),
 
   // Product entitlements — a group's access to loans/MGR/welfare/projects
   // is an explicit, independently toggleable flag (Settings > Products),
@@ -555,6 +562,12 @@ export const members = pgTable(
       .notNull()
       .default("0"),
     limitReduced: boolean("limit_reduced").notNull().default(false),
+    /**
+     * The account number this member types when paying the group's paybill
+     * (or their payroll number for check-off). Short and per group — e.g.
+     * "12" — or anything the group chooses, like a boda plate number.
+     */
+    memberNumber: text("member_number"),
 
     active: boolean("active").notNull().default(true),
     notes: text("notes"),
@@ -567,6 +580,7 @@ export const members = pgTable(
     index("members_group_id_idx").on(t.groupId),
     // One roster row per phone per group (canonical phone, see users above).
     uniqueIndex("members_group_phone_unique").on(t.groupId, t.phone).where(sql`${t.phone} is not null`),
+    uniqueIndex("members_group_number_unique").on(t.groupId, t.memberNumber).where(sql`${t.memberNumber} is not null`),
   ],
 );
 
@@ -690,6 +704,46 @@ export const groupAuditLog = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("group_audit_log_group_created_idx").on(t.groupId, t.createdAt)],
+);
+
+// ── Incoming payments — M-Pesa, bank and payroll check-off ─────────────
+// Every payment that reaches the group's own paybill/till or bank account
+// (or a payroll deduction file) lands here once (unique per source + id),
+// is matched to a member by account number or phone, and — when matched —
+// recorded as a contribution or loan repayment by the same commands the
+// treasurer uses. Unmatched ones wait in the Payments inbox.
+export const incomingPayments = pgTable(
+  "incoming_payments",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** mpesa | bank | checkoff */
+    source: text("source").notNull(),
+    /** M-Pesa TransID, bank reference, or "<file>:<row>" for check-off. */
+    externalId: text("external_id").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    payerPhone: text("payer_phone"),
+    payerName: text("payer_name"),
+    /** What the payer typed as the account (BillRefNumber) or the bank narration. */
+    accountRef: text("account_ref"),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    /** matched | unmatched | ignored */
+    status: text("status").notNull().default("unmatched"),
+    memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
+    /** capital | personal_savings | welfare | ... | loan */
+    appliedAs: text("applied_as"),
+    contributionId: integer("contribution_id").references(() => contributions.id, { onDelete: "set null" }),
+    loanId: integer("loan_id").references(() => loans.id, { onDelete: "set null" }),
+    matchedBy: integer("matched_by").references(() => users.id, { onDelete: "set null" }),
+    raw: jsonb("raw"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique("incoming_payments_source_external_unique").on(t.groupId, t.source, t.externalId),
+    index("incoming_payments_group_status_idx").on(t.groupId, t.status),
+  ],
 );
 
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────

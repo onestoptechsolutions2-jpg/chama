@@ -465,7 +465,10 @@ export function MembersManager({
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="truncate text-lg font-semibold">{m.name}</p>
-                    <p className="text-sm text-muted-foreground">{m.phone ? displayPhone(m.phone) : "No phone"}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {m.memberNumber ? `#${m.memberNumber} · ` : ""}
+                      {m.phone ? displayPhone(m.phone) : "No phone"}
+                    </p>
                   </div>
                   <div className="text-right">
                     <p className="text-xl font-bold tabular-nums">{ksh(totalSavings(m))}</p>

@@ -3,6 +3,7 @@ import { recordContribution, recordContributionBatch } from "./contributions";
 import { issueFine, settleFine } from "./fines";
 import { recordLoanRepayment } from "./loans";
 import { recordMeetingCollections } from "./meeting";
+import { assignPayment, ignorePayment, importPayments, receivePayment } from "./payments";
 import type { Command } from "./types";
 
 /**
@@ -12,7 +13,7 @@ import type { Command } from "./types";
  * dry-run come for free.
  */
 export const COMMANDS: Record<string, Command<any, any>> = Object.fromEntries(
-  [recordContribution, recordContributionBatch, recordMeetingCollections, issueFine, settleFine, recordLoanRepayment].map((c) => [c.name, c]),
+  [recordContribution, recordContributionBatch, recordMeetingCollections, issueFine, settleFine, recordLoanRepayment, receivePayment, importPayments, assignPayment, ignorePayment].map((c) => [c.name, c]),
 );
 
 export function listCommands() {

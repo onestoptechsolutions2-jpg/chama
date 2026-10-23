@@ -26,7 +26,8 @@ export default async function StatementPage({
     );
   }
 
-  const { member, contribs, memberLoans, repayments, memberFines } = await loadStatement(groupId, targetId);
+  const data = await loadStatement(groupId, targetId);
+  const { member } = data;
 
   if (!member) return null;
 
@@ -35,7 +36,7 @@ export default async function StatementPage({
     <StatementView
       title={isSelf ? "My Money" : `Money — ${member.name}`}
       description={isSelf ? "What you have put in and what you owe." : "Full financial history."}
-      data={{ member, contribs, memberLoans, repayments, memberFines }}
+      data={{ ...data, member }}
     />
   );
 }

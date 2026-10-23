@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   History,
   Banknote,
+  Smartphone,
 } from "lucide-react";
 import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
@@ -93,6 +94,15 @@ export const navItems: NavItem[] = [
     icon: Banknote,
     guide:
       "Meeting day on one screen: type what each member paid (shares, savings, welfare, loan repayment), then save once. If one line is wrong nothing is saved, so you can fix it. Every member with a phone gets an SMS receipt.",
+  },
+  {
+    href: "/dashboard/payments",
+    permission: "money.record",
+    section: "money",
+    label: "Payments",
+    icon: Smartphone,
+    guide:
+      "Money paid to your group's own paybill/till, bank or payroll. Members use their member number as the account (\"12\", \"12 welfare\", \"12 loan\"); matched payments are recorded and receipted automatically. Anything we can't match waits here for you. Bank statements and payroll check-off files are imported here too.",
   },
   {
     href: "/dashboard/members",

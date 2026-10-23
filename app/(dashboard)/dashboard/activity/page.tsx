@@ -13,7 +13,11 @@ const COMMAND_LABELS: Record<string, string> = {
   "fines.issue": "Issued a fine",
   "fines.settle": "Settled a fine",
   "loans.recordRepayment": "Recorded a loan repayment",
-  "payments.match": "Matched an M-Pesa/bank payment",
+  "collections.recordMeeting": "Recorded meeting collections",
+  "payments.receive": "Received a payment",
+  "payments.import": "Imported a bank/payroll file",
+  "payments.assign": "Matched a payment to a member",
+  "payments.ignore": "Set aside a payment",
 };
 const VIA_LABELS: Record<string, string> = {
   ui: "in the app",
