@@ -5,6 +5,17 @@ import * as schema from "./schema";
 
 neonConfig.webSocketConstructor = ws;
 
+// Local development/tests against a plain Postgres: point the Neon driver at
+// a websocket-to-TCP proxy (e.g. NEON_LOCAL_WS_PROXY=localhost:54330). Never
+// set in production, where the driver talks to Neon directly.
+if (process.env.NEON_LOCAL_WS_PROXY) {
+  const proxy = process.env.NEON_LOCAL_WS_PROXY;
+  neonConfig.wsProxy = (host, port) => `${proxy}/v1?address=${host}:${port}`;
+  neonConfig.useSecureWebSocket = false;
+  neonConfig.pipelineTLS = false;
+  neonConfig.pipelineConnect = false;
+}
+
 const globalForDb = globalThis as unknown as { pool?: Pool };
 
 function getAppDatabaseUrl(): string {

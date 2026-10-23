@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/lib/db/client";
+import { withTenant } from "@/lib/db/rls";
 import { groupMemberships, groups, members, users } from "@/lib/db/schema";
 import { canPlatform } from "@/lib/auth/permissions";
 import { COMMANDS, listCommands } from "@/lib/commands/registry";
@@ -67,7 +68,7 @@ export async function POST(req: Request) {
   const command = COMMANDS[name];
   if (!command) return NextResponse.json({ error: `Unknown command ${name}`, commands: Object.keys(COMMANDS) }, { status: 404 });
 
-  const group = await db.query.groups.findFirst({ where: eq(groups.id, groupId) });
+  const group = await withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) }));
   if (!group || !group.active) return NextResponse.json({ error: "Group not found" }, { status: 404 });
 
   let role: Actor["role"] = "admin";
@@ -78,10 +79,12 @@ export async function POST(req: Request) {
     });
     if (!membership) return NextResponse.json({ error: "asUserId is not an active member of this group" }, { status: 400 });
     role = membership.role;
-    const member = await db.query.members.findFirst({
-      where: and(eq(members.userId, asUserId), eq(members.groupId, groupId)),
-      columns: { id: true },
-    });
+    const member = await withTenant(groupId, (tx) =>
+      tx.query.members.findFirst({
+        where: and(eq(members.userId, asUserId), eq(members.groupId, groupId)),
+        columns: { id: true },
+      }),
+    );
     memberId = member?.id ?? null;
   }
 

@@ -294,7 +294,7 @@ async function guardSupportWrite(session: SessionWithGroup, permission: GroupPer
       error: refused,
     }),
   ).catch(() => {});
-  if (refused) throw new Error(refused);
+  if (refused) redirect(`/dashboard?support_blocked=${encodeURIComponent(refused)}`);
 }
 
 /** Like requirePermission, for platform (super-admin/support/agent) permissions. */

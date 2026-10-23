@@ -20,10 +20,11 @@ function ksh(n: string | number) {
 
 type Tile = { href: string; label: string; hint: string; icon: LucideIcon };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ support_blocked?: string }> }) {
   const session = await requireSession();
 
   const myInvites = await listMyInvites(session.user);
+  const { support_blocked: supportBlocked } = await searchParams;
 
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
@@ -90,6 +91,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {session.support && supportBlocked && (
+        <Card className="border-red-500/50 bg-red-500/5">
+          <CardContent className="pt-6 text-sm">Not done: {supportBlocked}</CardContent>
+        </Card>
+      )}
       <MyInvites invites={myInvites} />
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Hello, {session.user.name.split(" ")[0]}</h1>

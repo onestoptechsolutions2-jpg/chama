@@ -1,6 +1,6 @@
 import "server-only";
 import { eq } from "drizzle-orm";
-import { db } from "@/lib/db/client";
+import { withTenant } from "@/lib/db/rls";
 import { groups } from "@/lib/db/schema";
 import type { SessionWithGroup } from "@/lib/auth/session";
 import type { Actor } from "./types";
@@ -32,7 +32,8 @@ export function actorFromSession(session: SessionWithGroup): Actor {
  * decided by the caller (the public API exposes one write).
  */
 export async function systemActor(groupId: number, via: "api" | "mpesa" | "cron", name: string): Promise<Actor | null> {
-  const group = await db.query.groups.findFirst({ where: eq(groups.id, groupId) });
+  // groups is RLS-protected: read it inside this group's tenant context.
+  const group = await withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId) }));
   if (!group) return null;
   return {
     userId: null,
