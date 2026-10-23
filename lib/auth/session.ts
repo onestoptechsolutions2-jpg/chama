@@ -8,6 +8,13 @@ import { db } from "@/lib/db/client";
 import { withUser } from "@/lib/db/rls";
 import { sessions, groupMemberships, members } from "@/lib/db/schema";
 import type { ProductFlags } from "@/lib/domain/products";
+import {
+  can,
+  canPlatform,
+  type GroupPermission,
+  type PlatformPermission,
+  type PlatformRole,
+} from "@/lib/auth/permissions";
 
 const SESSION_COOKIE = "chama_session";
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -20,7 +27,7 @@ export type SessionUser = {
   name: string;
   email: string | null;
   phone: string | null;
-  platformRole: "owner" | "support" | null;
+  platformRole: PlatformRole | null;
 };
 
 export type ActiveMembership = {
@@ -224,11 +231,27 @@ export async function requireProduct(
   return session;
 }
 
-/** Redirects to /dashboard unless the user has a platform-level (super-admin) role. */
-export async function requirePlatformAdmin(): Promise<Session> {
-  const session = await requireSession();
-  if (!session.user.platformRole) redirect("/dashboard");
+/**
+ * The standard gate for anything inside a group: redirects to /login when
+ * signed out, to /dashboard when the active group's role or product switch
+ * doesn't grant `permission` (see lib/auth/permissions.ts for the matrix).
+ */
+export async function requirePermission(permission: GroupPermission): Promise<SessionWithGroup> {
+  const session = await requireActiveGroup();
+  if (!can(session.activeMembership, permission)) redirect("/dashboard");
   return session;
+}
+
+/** Like requirePermission, for platform (super-admin/support/agent) permissions. */
+export async function requirePlatformPermission(permission: PlatformPermission): Promise<Session> {
+  const session = await requireSession();
+  if (!canPlatform(session.user.platformRole, permission)) redirect("/dashboard");
+  return session;
+}
+
+/** Redirects to /dashboard unless the user may open the super-admin console. */
+export async function requirePlatformAdmin(): Promise<Session> {
+  return requirePlatformPermission("platform.console");
 }
 
 /**

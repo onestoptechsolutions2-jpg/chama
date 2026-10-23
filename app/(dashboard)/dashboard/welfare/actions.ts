@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   welfareRequests,
@@ -50,7 +51,7 @@ export async function submitWelfareRequestAction(
   _prev: WelfareActionState,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireProduct("welfare");
+  const session = await requirePermission("welfare.use");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 
@@ -189,7 +190,7 @@ export async function reviewWelfareRequestAction(
   requestId: number,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireProduct("welfare", "admin", "treasurer");
+  const session = await requirePermission("welfare.manage");
   const parsed = reviewWelfareRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -297,7 +298,7 @@ export async function respondToWelfareApprovalAction(
   approvalRowId: number,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireProduct("welfare");
+  const session = await requirePermission("welfare.use");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 
@@ -435,9 +436,9 @@ export async function respondToWelfareApprovalAction(
 
 // ── Member/staff: cancel a still-pending request ─────────────────────────
 export async function cancelWelfareRequestAction(requestId: number): Promise<void> {
-  const session = await requireProduct("welfare");
+  const session = await requirePermission("welfare.use");
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "welfare.manage");
 
   await withTenant(groupId, async (tx) => {
     const request = await tx.query.welfareRequests.findFirst({
@@ -461,7 +462,7 @@ export async function recordAdvanceRepaymentAction(
   advanceId: number,
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireProduct("welfare", "admin", "treasurer");
+  const session = await requirePermission("welfare.manage");
   const parsed = recordAdvanceRepaymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -530,7 +531,7 @@ export async function recordAdvanceRepaymentAction(
 export async function allocateToWelfareFundAction(
   formData: FormData,
 ): Promise<WelfareActionState> {
-  const session = await requireProduct("welfare", "admin", "treasurer");
+  const session = await requirePermission("welfare.manage");
   const parsed = allocateToWelfareFundSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

@@ -14,7 +14,7 @@ import {
   users,
   rules,
 } from "@/lib/db/schema";
-import { requirePlatformAdmin, requireSession } from "@/lib/auth/session";
+import { requirePlatformPermission, requireSession } from "@/lib/auth/session";
 import { createGroupSchema, groupTypes, onboardingGroupSchema } from "@/lib/validation/groups";
 import { updateLoanSettingsSchema } from "@/lib/validation/settings";
 import { isKycComplete } from "@/lib/domain/officials";
@@ -115,7 +115,7 @@ export async function updateGroupAccountAction(
     activityNote: string;
   },
 ): Promise<AccountManagementState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.groups.manage");
   if (!ONBOARDING_STAGES.includes(input.onboardingStage as (typeof ONBOARDING_STAGES)[number])) {
     return { error: "Invalid onboarding stage" };
   }
@@ -180,7 +180,7 @@ export async function updateGroupAction(
     maxMembers: number | null;
   },
 ): Promise<UpdateGroupState> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission("platform.groups.manage");
   const name = input.name.trim();
   if (!name || !groupTypes.includes(input.type as (typeof groupTypes)[number])) {
     return { error: "A valid group name and type are required" };
@@ -216,7 +216,7 @@ export async function setGroupActiveAction(
   groupId: number,
   active: boolean,
 ): Promise<UpdateGroupState> {
-  await requirePlatformAdmin();
+  await requirePlatformPermission("platform.groups.manage");
   const result = await withPlatformAdmin(async (tx) => {
     const [updated] = await tx
       .update(groups)
@@ -245,7 +245,7 @@ export async function createGroupAction(
   _prev: CreateGroupState,
   formData: FormData,
 ): Promise<CreateGroupState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.groups.manage");
   const parsed = createGroupSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };

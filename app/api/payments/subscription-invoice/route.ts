@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { subscriptionInvoices, platformPayments } from "@/lib/db/schema";
 import { triggerSubscriptionInvoiceSchema } from "@/lib/validation/payments";
@@ -13,7 +13,7 @@ import { triggerMpesaStkPush } from "@/lib/payments/intasend";
  * subscription_invoices row via M-Pesa STK push.
  */
 export async function POST(req: Request) {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("billing.pay");
   const groupId = session.activeMembership.groupId;
 
   const body = await req.json().catch(() => null);

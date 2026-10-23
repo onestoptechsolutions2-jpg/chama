@@ -1,5 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, loans, projects, groups } from "@/lib/db/schema";
 import { computeCapitalPosition, computeAllocationDrift } from "@/lib/domain/capital";
@@ -14,7 +15,7 @@ const OPEN_PROJECT_STATUSES = ["planning", "active", "on_hold"] as const;
 export default async function CapitalPositionPage() {
   const session = await requireActiveGroup();
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "reports.view");
   const { products } = session.activeMembership;
 
   // Independent withTenant calls run concurrently, not one Promise.all

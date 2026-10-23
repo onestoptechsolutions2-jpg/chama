@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { meetings, members, attendance } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
@@ -13,7 +13,7 @@ export default async function MeetingAttendancePage({
 }) {
   const { id } = await params;
   const meetingId = Number(id);
-  const session = await requireRole("admin", "secretary", "treasurer");
+  const session = await requirePermission("meetings.manage");
   const groupId = session.activeMembership.groupId;
 
   // Independent withTenant calls, not one Promise.all sharing a transaction

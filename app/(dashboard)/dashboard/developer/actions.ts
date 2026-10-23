@@ -3,7 +3,7 @@
 import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { apiKeys, webhookEndpoints, type webhookEventTypeEnum } from "@/lib/db/schema";
 import { generateApiKey } from "@/lib/auth/api-keys";
@@ -20,7 +20,7 @@ export async function createApiKeyAction(
   _prev: CreateApiKeyResult | null,
   formData: FormData,
 ): Promise<CreateApiKeyResult> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Give this key a name so you can recognize it later" };
 
@@ -42,7 +42,7 @@ export async function createApiKeyAction(
 }
 
 export async function revokeApiKeyAction(keyId: number): Promise<DeveloperActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>
@@ -62,7 +62,7 @@ export async function createWebhookEndpointAction(
   _prev: CreateWebhookResult | null,
   formData: FormData,
 ): Promise<CreateWebhookResult> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const parsed = createWebhookEndpointSchema.safeParse({
     url: formData.get("url"),
     description: formData.get("description") || undefined,
@@ -94,7 +94,7 @@ export async function toggleWebhookEndpointAction(
   endpointId: number,
   active: boolean,
 ): Promise<DeveloperActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>
@@ -109,7 +109,7 @@ export async function toggleWebhookEndpointAction(
 }
 
 export async function deleteWebhookEndpointAction(endpointId: number): Promise<DeveloperActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, (tx) =>

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { meetings, attendance, members, fines, groups } from "@/lib/db/schema";
 import { createMeetingSchema, saveAttendanceSchema } from "@/lib/validation/meetings";
@@ -14,7 +14,7 @@ export async function createMeetingAction(
   _prev: MeetingActionState,
   formData: FormData,
 ): Promise<MeetingActionState> {
-  const session = await requireRole("admin", "secretary", "treasurer");
+  const session = await requirePermission("meetings.manage");
 
   const parsed = createMeetingSchema.safeParse({
     meetingDate: formData.get("meetingDate"),
@@ -55,7 +55,7 @@ export async function saveAttendanceAction(
   meetingId: number,
   records: { memberId: number; status: string }[],
 ): Promise<{ error: string } | { ok: true }> {
-  const session = await requireRole("admin", "secretary", "treasurer");
+  const session = await requirePermission("meetings.manage");
   const parsed = saveAttendanceSchema.safeParse(records);
   if (!parsed.success) {
     return { error: "Invalid attendance data" };

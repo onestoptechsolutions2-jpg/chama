@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   loans,
@@ -47,7 +48,7 @@ export async function createLoanAction(
   _prev: LoanActionState,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireProduct("loans", "admin", "treasurer");
+  const session = await requirePermission("loans.manage");
   const parsed = createLoanSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -144,7 +145,7 @@ export async function recordRepaymentAction(
   loanId: number,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireProduct("loans", "admin", "treasurer");
+  const session = await requirePermission("loans.manage");
   const parsed = recordRepaymentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -190,7 +191,7 @@ export async function applyForLoanAction(
   _prev: LoanActionState,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireProduct("loans");
+  const session = await requirePermission("loans.use");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 
@@ -295,9 +296,9 @@ export async function applyForLoanAction(
 }
 
 export async function cancelLoanApplicationAction(applicationId: number): Promise<void> {
-  const session = await requireProduct("loans");
+  const session = await requirePermission("loans.use");
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "loans.manage");
 
   await withTenant(groupId, async (tx) => {
     const app = await tx.query.loanApplications.findFirst({
@@ -320,7 +321,7 @@ export async function reviewApplicationAction(
   applicationId: number,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireProduct("loans", "admin", "treasurer");
+  const session = await requirePermission("loans.manage");
   const parsed = reviewApplicationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -436,7 +437,7 @@ export async function reviewApplicationAction(
 export async function chargeLoanFeeFromWalletAction(
   loanId: number,
 ): Promise<{ error: string } | { ok: true; fee: number }> {
-  const session = await requireProduct("loans", "admin", "treasurer");
+  const session = await requirePermission("loans.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx) => {
@@ -508,7 +509,7 @@ export async function respondToGuaranteeRequestAction(
   guarantorRowId: number,
   formData: FormData,
 ): Promise<LoanActionState> {
-  const session = await requireProduct("loans");
+  const session = await requirePermission("loans.use");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
 

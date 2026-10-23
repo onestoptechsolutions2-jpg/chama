@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { apiKeys, webhookEndpoints, webhookDeliveries } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
@@ -8,7 +8,7 @@ import { DeveloperManager } from "@/components/feature/developer-manager";
 const RECENT_DELIVERIES_LIMIT = 20;
 
 export default async function DeveloperPage() {
-  const session = await requireRole("admin");
+  const session = await requirePermission("developer.manage");
   const groupId = session.activeMembership.groupId;
 
   // Independent withTenant calls, not one shared transaction — see

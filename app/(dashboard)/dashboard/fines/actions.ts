@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { fines, members } from "@/lib/db/schema";
 import { createFineSchema } from "@/lib/validation/fines";
@@ -13,7 +13,7 @@ export async function createFineAction(
   _prev: FineActionState,
   formData: FormData,
 ): Promise<FineActionState> {
-  const session = await requireRole("admin", "treasurer", "secretary");
+  const session = await requirePermission("fines.issue");
 
   const parsed = createFineSchema.safeParse({
     memberId: formData.get("memberId"),
@@ -55,7 +55,7 @@ export async function resolveFineAction(
   fineId: number,
   status: "paid" | "waived",
 ): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("fines.settle");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {

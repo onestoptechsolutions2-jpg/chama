@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser, type Tx } from "@/lib/db/rls";
 import { members, contributions, users, groupMemberships, groups, sessions, loans, mgrMemberTurns } from "@/lib/db/schema";
@@ -46,7 +46,7 @@ export async function importMembersAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.add");
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a CSV file" };
   if (file.size > 2_000_000) return { error: "CSV file must be smaller than 2 MB" };
@@ -105,7 +105,7 @@ export async function createMemberAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.add");
 
   // Object.fromEntries (not formData.get(...) per field) so fields with no
   // matching <input> in the form are simply absent from the object — and
@@ -141,7 +141,7 @@ export async function recordContributionAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("money.record");
 
   // Same Object.fromEntries reasoning as createMemberAction above — the
   // RecordContributionDialog form has no "notes" input, so formData.get()
@@ -226,7 +226,7 @@ export async function createLoginForMemberAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("members.manage");
   const parsed = createLoginSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -292,7 +292,7 @@ export async function resetMemberPasswordAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("members.manage");
   const groupId = session.activeMembership.groupId;
 
   const password = String(formData.get("password") ?? "");
@@ -342,7 +342,7 @@ export async function resetMemberPasswordAction(
  * for admins (demote first) or yourself, so a group can't lock itself out.
  */
 export async function deactivateMemberAction(memberId: number): Promise<MemberActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("members.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<MemberActionState> => {
@@ -402,7 +402,7 @@ export async function deactivateMemberAction(memberId: number): Promise<MemberAc
  * the group when they left stay open — the admin re-assigns one if wanted.
  */
 export async function reinstateMemberAction(memberId: number): Promise<MemberActionState> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("members.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<MemberActionState> => {
@@ -452,7 +452,7 @@ export async function updateMemberRoleAction(
   membershipId: number,
   role: string,
 ): Promise<{ error: string } | null> {
-  const session = await requireRole("admin");
+  const session = await requirePermission("members.manage");
   const groupId = session.activeMembership.groupId;
 
   if (!ASSIGNABLE_ROLES.includes(role as MembershipRole)) {

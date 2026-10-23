@@ -36,8 +36,8 @@ type UserRow = typeof usersTable.$inferSelect;
 type AuditLogRow = {
   id: number;
   eventType: string;
-  fromPlatformRole: "owner" | "support" | null;
-  toPlatformRole: "owner" | "support" | null;
+  fromPlatformRole: "owner" | "support" | "agent" | null;
+  toPlatformRole: "owner" | "support" | "agent" | null;
   note: string | null;
   createdAt: Date;
 };
@@ -51,6 +51,7 @@ const ROLE_OPTIONS: RoleOption[] = [
   { value: "none", label: "None" },
   { value: "support", label: "Support" },
   { value: "owner", label: "Owner" },
+  { value: "agent", label: "Agent (service account)" },
 ];
 
 export function SuperAdminUsersManager({

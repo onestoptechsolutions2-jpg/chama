@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, contributions, loans, fines } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
@@ -13,7 +14,7 @@ export default async function StatementPage({
 }) {
   const session = await requireActiveGroup();
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "reports.view");
   const { member_id } = await searchParams;
 
   const targetId = isStaff && member_id ? Number(member_id) : session.activeMembership.memberId;

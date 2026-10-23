@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { requireActiveGroup } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, loans, contributions } from "@/lib/db/schema";
 import type { Report } from "@/components/feature/insights-view";
@@ -10,7 +11,7 @@ import { InsightsView } from "@/components/feature/insights-view";
 export default async function InsightsPage() {
   const session = await requireActiveGroup();
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer", "secretary"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "reports.view");
   const { products } = session.activeMembership;
 
   // Independent withTenant calls run concurrently, not one Promise.all

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requirePlatformAdmin } from "@/lib/auth/session";
+import { requirePlatformPermission } from "@/lib/auth/session";
 import { logoutAction } from "@/app/(auth)/actions";
 import { Button, buttonVariants } from "@/components/ui/button";
 
@@ -8,7 +8,7 @@ export default async function SuperAdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.console");
 
   return (
     <div className="min-h-screen">

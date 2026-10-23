@@ -22,8 +22,7 @@ import {
   Webhook,
   ShieldCheck,
 } from "lucide-react";
-import type { MembershipRole } from "@/lib/auth/session";
-import type { ProductFlags } from "@/lib/domain/products";
+import { can, type GroupPermission, type MembershipLike } from "@/lib/auth/permissions";
 
 export type NavSection = "main" | "money" | "group" | "account";
 
@@ -39,15 +38,13 @@ export type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** Roles that can see this item. Omit to allow every role. */
-  roles?: MembershipRole[];
   /**
-   * Which product this item belongs to — gated on the group's
-   * Settings > Products toggle (lib/domain/products.ts), independent of
-   * `groupType` now. Omit for items every group always has (dashboard,
-   * members, statement, rules, wallet, etc).
+   * The permission needed to see this item (lib/auth/permissions.ts) — the
+   * same one the page itself enforces with requirePermission(), so the menu
+   * and the page can't disagree. It covers both role and product switch.
+   * Omit for items every member of every group sees.
    */
-  product?: keyof ProductFlags;
+  permission?: GroupPermission;
   /**
    * Short (1-2 sentence) explanation of what this page is for and how to
    * use it — the single source both the sidebar's tooltip-free nav and
@@ -63,7 +60,7 @@ export type NavItem = {
 /**
  * Single source of truth for the authenticated nav — consumed by both the
  * server-rendered sidebar ((dashboard)/layout.tsx) and each page's own
- * requireRole()/group-type check, so role/group-type gating can't drift
+ * requirePermission() check, so role/product gating can't drift
  * between "what's in the menu" and "what the page actually allows" the way
  * it did in the old App.jsx/Layout.jsx split.
  *
@@ -88,84 +85,82 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/members",
+    permission: "members.view",
     section: "main",
     label: "Members",
     icon: Users,
-    roles: ["admin", "treasurer", "secretary"],
     guide:
       "The member roster and each member's financial profile — capital, security, savings, fines. Admins and treasurers can add members and record contributions directly here; admins can also create a login for a member who doesn't have one yet.",
   },
   {
     href: "/dashboard/pending-members",
+    permission: "members.approve",
     section: "main",
     label: "New Requests",
     icon: UserCheck,
-    roles: ["admin", "treasurer"],
     guide:
       "Join requests from people who found this group via public discovery (/discover). Approving one activates their membership and automatically creates their member financial-profile row — rejecting just declines the request, nothing is created.",
   },
   {
     href: "/dashboard/fines",
+    permission: "fines.issue",
     section: "money",
     label: "Fines",
     icon: Gavel,
-    roles: ["admin", "treasurer", "secretary"],
     guide:
       "Every fine issued to a member — lateness, absence, rule violations, loan defaults — and whether it's been paid. Meetings auto-generate attendance fines; this is where you record manual ones and mark any of them paid.",
   },
   {
     href: "/dashboard/meetings",
+    permission: "meetings.manage",
     section: "group",
     label: "Meetings",
     icon: CalendarDays,
-    roles: ["admin", "treasurer", "secretary"],
     guide:
       "Schedule meetings and record attendance. Marking someone absent or late automatically creates the corresponding fine — you don't need to also go add it in Fines.",
   },
   {
     href: "/dashboard/loans",
+    permission: "loans.manage",
     section: "money",
     label: "Loans",
     icon: Landmark,
-    roles: ["admin", "treasurer"],
-    product: "loans",
     guide:
       "Approve or reject member-submitted loan applications, disburse and track active loans, and record repayments. A member's loan limit is a multiple of their total savings (configurable in Settings), enforced automatically — you can't approve past it.",
   },
   {
     href: "/dashboard/loans/apply",
+    permission: "loans.use",
     section: "money",
     label: "My Loan",
     icon: Wallet,
-    roles: ["member"],
-    product: "loans",
     guide:
       "Apply for a loan up to your current limit (shown on this page), track your active loan's balance and due date, or cancel a pending application before staff review it.",
   },
   {
     href: "/dashboard/mgr",
+    permission: "mgr.use",
     section: "money",
     label: "Mzunguko",
     icon: RefreshCw,
-    product: "mgr",
     guide:
       "The rotating-payout schedule. You'll be asked to sign a one-time agreement before you can claim a slot in the active cycle. Members claim open slots themselves (or staff can auto-assign/reassign); staff mark a slot paid once the actual payout has happened outside the app — that action is permanently logged against their account and can't be edited or deleted later, specifically so payouts stay accountable.",
   },
   {
     href: "/dashboard/welfare",
+    permission: "welfare.use",
     section: "money",
     label: "Welfare",
     icon: HeartHandshake,
-    product: "welfare",
     guide:
       "Submit and review welfare claims (medical, bereavement, emergency, etc.) against the group's welfare fund, and see the fund's running balance.",
   },
   {
     href: "/dashboard/projects",
+    permission: "projects.view",
     section: "money",
     label: "Projects",
     icon: Hammer,
-    product: "projects",
     guide:
       "Table-banking style projects the group is funding together — track each project's target vs. collected amount and who's contributed.",
   },
@@ -194,46 +189,46 @@ export const navItems: NavItem[] = [
   },
   {
     href: "/dashboard/wallet",
+    permission: "billing.view",
     section: "money",
     label: "Prepaid Wallet",
     icon: WalletCards,
-    roles: ["admin", "treasurer"],
     guide:
       "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
   },
   {
     href: "/dashboard/billing",
+    permission: "billing.view",
     section: "money",
     label: "Platform Bill",
     icon: Receipt,
-    roles: ["admin", "treasurer"],
     guide:
       "What this group owes the platform — computed live from your member count, which vehicles (Table Banking, Welfare, Investment) are active, and your real financial activity over the last 12 months, not a flat fee. Admins can generate this period's invoice and charge it, either instantly from the prepaid Wallet or via an M-Pesa STK push.",
   },
   {
     href: "/dashboard/developer",
+    permission: "developer.manage",
     section: "account",
     label: "Developer",
     icon: Webhook,
-    roles: ["admin"],
     guide:
       "API keys and webhook endpoints for integrating other systems with this group's data — an accounting sync, a custom dashboard, an SMS gateway. See docs/api.md for the full contract. Not needed unless you're setting up an integration.",
   },
   {
     href: "/dashboard/governance",
+    permission: "governance.manage",
     section: "group",
     label: "Group Papers",
     icon: ShieldCheck,
-    roles: ["admin", "secretary"],
     guide:
       "Group documents (constitution, bank details, registration certificate) and compliance obligations like AGM dates and annual returns — with reminders as they come due. Basic administrative housekeeping, not tied to any financial product.",
   },
   {
     href: "/dashboard/settings",
+    permission: "settings.view",
     section: "account",
     label: "Settings",
     icon: Settings,
-    roles: ["admin", "treasurer", "secretary"],
     guide:
       "The group's configurable business rules — share price, contribution day, loan interest/limit multiplier, fine amounts, meeting defaults. Changing these here is what actually takes effect; nothing else overrides them.",
   },
@@ -261,20 +256,9 @@ export const navItems: NavItem[] = [
  * Session type) so this has no dependency on server-only code and is safe
  * to call from a Client Component.
  */
-export function getVisibleNavItems(
-  activeMembership: { role: MembershipRole; products: ProductFlags } | null,
-): NavItem[] {
+export function getVisibleNavItems(activeMembership: MembershipLike | null): NavItem[] {
   return navItems.filter((item) => {
-    if (item.roles) {
-      if (!activeMembership || !item.roles.includes(activeMembership.role)) {
-        return false;
-      }
-    }
-    if (item.product) {
-      if (!activeMembership || !activeMembership.products[item.product]) {
-        return false;
-      }
-    }
-    return true;
+    if (!item.permission) return true;
+    return can(activeMembership, item.permission);
   });
 }

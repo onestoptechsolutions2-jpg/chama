@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { groups } from "@/lib/db/schema";
 import { getOrCreateWelfarePolicy } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
@@ -7,9 +8,9 @@ import { PageHeader } from "@/components/feature/page-header";
 import { SettingsManager } from "@/components/feature/settings-manager";
 
 export default async function SettingsPage() {
-  const session = await requireRole("admin", "treasurer", "secretary");
+  const session = await requirePermission("settings.view");
   const groupId = session.activeMembership.groupId;
-  const isAdmin = session.activeMembership.role === "admin";
+  const isAdmin = can(session.activeMembership, "settings.manage");
   const products = session.activeMembership.products;
 
   const group = await withTenant(groupId, (tx) =>

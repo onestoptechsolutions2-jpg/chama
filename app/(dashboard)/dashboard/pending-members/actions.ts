@@ -5,7 +5,7 @@ import { and, eq, isNotNull } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { withTenant, withPlatformAdmin } from "@/lib/db/rls";
 import { groupMemberships, members, groups } from "@/lib/db/schema";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { isKycComplete } from "@/lib/domain/officials";
 import { insertNotification } from "@/lib/db/notifications";
 import { buildMembershipNotification } from "@/lib/domain/notifications";
@@ -16,7 +16,7 @@ export type PendingMemberActionState = { error: string } | null;
 export async function approveMembershipAction(
   membershipId: number,
 ): Promise<{ error: string } | null> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.approve");
   const groupId = session.activeMembership.groupId;
 
   // group_memberships isn't RLS-protected (see drizzle/0001_rls_policies.sql),
@@ -118,7 +118,7 @@ export async function approveMembershipAction(
 }
 
 export async function rejectMembershipAction(membershipId: number): Promise<void> {
-  const session = await requireRole("admin", "treasurer");
+  const session = await requirePermission("members.approve");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {

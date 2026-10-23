@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { and, eq, gte, sql } from "drizzle-orm";
 import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type LucideIcon } from "lucide-react";
 import { requireSession } from "@/lib/auth/session";
+import { canPlatform } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, meetings, groups } from "@/lib/db/schema";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,7 +20,7 @@ export default async function DashboardPage() {
 
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
-    if (session.user.platformRole) redirect("/super-admin");
+    if (canPlatform(session.user.platformRole, "platform.console")) redirect("/super-admin");
     return (
       <Card>
         <CardHeader>

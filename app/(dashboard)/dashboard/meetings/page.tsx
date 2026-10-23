@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { requireRole } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
 import { meetings } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { MeetingsManager } from "@/components/feature/meetings-manager";
 
 export default async function MeetingsPage() {
-  const session = await requireRole("admin", "secretary", "treasurer");
+  const session = await requirePermission("meetings.manage");
   const groupId = session.activeMembership.groupId;
 
   const groupMeetings = await withTenant(groupId, (tx) =>

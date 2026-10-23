@@ -5,7 +5,7 @@ import { randomBytes } from "crypto";
 import { eq, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
-import { requirePlatformAdmin } from "@/lib/auth/session";
+import { requirePlatformPermission } from "@/lib/auth/session";
 import { withPlatformAdmin, type Tx } from "@/lib/db/rls";
 import { hashPassword } from "@/lib/auth/password";
 import {
@@ -43,7 +43,7 @@ function recordPlatformUserAudit(
 export async function invitePlatformUserAction(
   input: { name: string; email: string; phone?: string | null },
 ): Promise<PlatformUserInviteResult> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
   const name = input.name.trim();
   const email = input.email.trim().toLowerCase();
   const phone = input.phone?.trim() || null;
@@ -107,7 +107,7 @@ export async function setPlatformUserActiveAction(
   userId: number,
   active: boolean,
 ): Promise<{ error?: string; ok?: true } | null> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
 
   const targetUser = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!targetUser) {
@@ -146,7 +146,7 @@ export async function resetUserPasswordAction(
   userId: number,
   password: string,
 ): Promise<{ error?: string; ok?: true }> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
 
   if (password.length < 8) return { error: "Password must be at least 8 characters" };
   if (userId === session.user.id) return { error: "Use your profile to change your own password" };
@@ -185,7 +185,7 @@ export async function updatePlatformRoleAction(
   userId: number,
   rawRole: string,
 ): Promise<UpdatePlatformRoleState> {
-  const session = await requirePlatformAdmin();
+  const session = await requirePlatformPermission("platform.users.manage");
   const callerRole = session.user.platformRole;
   const nextRole = rawRole === "none" ? null : normalizePlatformRole(rawRole);
 

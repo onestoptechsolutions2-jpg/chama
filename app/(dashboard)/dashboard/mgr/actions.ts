@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { and, eq, gt, inArray, isNotNull, notInArray, sql } from "drizzle-orm";
-import { requireProduct } from "@/lib/auth/session";
+import { requirePermission } from "@/lib/auth/session";
+import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import {
   groups,
@@ -83,7 +84,7 @@ export async function updateMgrConfigAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const parsed = updateMgrConfigSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -116,14 +117,14 @@ export async function setTurnsAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireProduct("mgr");
+  const session = await requirePermission("mgr.use");
   const parsed = setTurnsSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { memberId, turnsTotal } = parsed.data;
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "mgr.manage");
 
   if (!isStaff && session.activeMembership.memberId !== memberId) {
     return { error: "You can only update your own turns" };
@@ -163,7 +164,7 @@ async function rotationBase(tx: Tx, groupId: number): Promise<number> {
 
 // ── Schedule generation ──────────────────────────────────────────────────
 export async function generateScheduleAction(): Promise<MgrActionState> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -286,7 +287,7 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
 
 // ── Slot claiming (member) ──────────────────────────────────────────────
 export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
-  const session = await requireProduct("mgr");
+  const session = await requirePermission("mgr.use");
   const memberId = session.activeMembership.memberId;
   if (!memberId) return { error: "No member profile linked to your account" };
   const groupId = session.activeMembership.groupId;
@@ -354,7 +355,7 @@ export async function adminUpdateSlotAction(
     note?: string | null;
   },
 ): Promise<MgrActionState> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   let blocked: string | null = null;
@@ -435,7 +436,7 @@ export async function adminUpdateSlotAction(
 export async function chargeFeeFromWalletAction(
   mgrSlotId: number,
 ): Promise<{ error: string } | { ok: true; fee: number }> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx) => {
@@ -498,7 +499,7 @@ export async function chargeFeeFromWalletAction(
 
 /** `draw: true` shuffles who goes first within each round (a fair random draw); otherwise join order. */
 export async function autoAssignAction(draw = false): Promise<{ assigned: number }> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const assigned = await withTenant(groupId, async (tx) => {
@@ -565,7 +566,7 @@ export async function autoAssignAction(draw = false): Promise<{ assigned: number
 
 // ── Cycles ───────────────────────────────────────────────────────────────
 export async function createCycleAction(scheduledDate?: string): Promise<void> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
@@ -656,7 +657,7 @@ async function autoCloseCycleIfSettled(tx: Tx, groupId: number, cycleId: number 
 }
 
 export async function closeCycleAction(cycleId: number): Promise<MgrActionState> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
@@ -685,9 +686,9 @@ export async function setTurnPreferencesAction(
   memberId: number,
   cycleNumbers: number[],
 ): Promise<MgrActionState> {
-  const session = await requireProduct("mgr");
+  const session = await requirePermission("mgr.use");
   const groupId = session.activeMembership.groupId;
-  const isStaff = ["admin", "treasurer"].includes(session.activeMembership.role);
+  const isStaff = can(session.activeMembership, "mgr.manage");
 
   if (!isStaff && session.activeMembership.memberId !== memberId) {
     return { error: "You can only choose your own turns" };
@@ -734,7 +735,7 @@ export async function setTurnPreferencesAction(
  * "Reshuffle" never takes it back; drawn turns are "auto_assigned".
  */
 export async function fillByPreferencesAction(): Promise<{ assigned: number; byChoice: number }> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const out = await withTenant(groupId, async (tx) => {
@@ -807,7 +808,7 @@ export async function fillByPreferencesAction(): Promise<{ assigned: number; byC
  * under "Past rotations", and stop counting against anyone's turns.
  */
 export async function archiveRotationAction(): Promise<MgrActionState> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
@@ -850,7 +851,7 @@ export async function startNewRotationAction(draw: boolean): Promise<MgrActionSt
  * never touched. Every turn that moves is written to the activity log.
  */
 export async function reshuffleUnpaidAction(): Promise<{ reshuffled: number }> {
-  const session = await requireProduct("mgr", "admin", "treasurer");
+  const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const reshuffled = await withTenant(groupId, async (tx) => {
@@ -893,7 +894,7 @@ export async function signAgreementAction(
   _prev: MgrActionState,
   formData: FormData,
 ): Promise<MgrActionState> {
-  const session = await requireProduct("mgr");
+  const session = await requirePermission("mgr.use");
   const parsed = signAgreementSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "All four fields are required" };

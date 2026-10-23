@@ -37,7 +37,8 @@ export const membershipStatusEnum = pgEnum("membership_status", [
   "suspended",
 ]);
 
-export const platformRoleEnum = pgEnum("platform_role", ["owner", "support"]);
+// agent = a service account for the internal command endpoint (lib/auth/permissions.ts).
+export const platformRoleEnum = pgEnum("platform_role", ["owner", "support", "agent"]);
 
 export const onboardingStageEnum = pgEnum("onboarding_stage", [
   "lead",
