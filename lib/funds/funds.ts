@@ -329,3 +329,16 @@ export async function convertFund(groupId: number, people: { name: string; phone
   }
   return { groupId, status: "converted" as const, invites: results };
 }
+
+/** New signing secret for the fund's partner webhook; the old one stops working immediately. */
+export async function rotateFundWebhookSecret(groupId: number): Promise<{ webhookSecret: string } | Fail> {
+  const secret = randomBytes(32).toString("hex");
+  const updated = await withTenant(groupId, (tx) =>
+    tx
+      .update(webhookEndpoints)
+      .set({ secret })
+      .where(and(eq(webhookEndpoints.groupId, groupId), sql`${webhookEndpoints.events} && array['fund.gift.paid']::webhook_event_type[]`))
+      .returning({ id: webhookEndpoints.id }),
+  );
+  return updated.length ? { webhookSecret: secret } : fail("This fund has no webhook (no webhookUrl was given)", 409);
+}

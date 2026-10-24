@@ -253,6 +253,13 @@ describe("summarizeRotation", () => {
       percent: 67,
     });
   });
+  it("counts the position within the rotation, not the group-wide cycle number", () => {
+    const summary = summarizeRotation([
+      { cycleNumber: 7, status: "active", slots: [{ status: "claimed" }] },
+      { cycleNumber: 6, status: "completed", slots: [{ status: "paid" }] },
+    ]);
+    expect(summary.currentCycle).toBe(2);
+  });
   it("handles an empty schedule", () => {
     expect(summarizeRotation([])).toMatchObject({ currentCycle: null, totalSlots: 0, percent: 0 });
   });

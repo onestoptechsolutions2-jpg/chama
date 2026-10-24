@@ -30,6 +30,7 @@ import {
   groups,
   members,
   mgrCycles,
+  mgrRotations,
   mgrSlots,
   mgrMemberTurns,
   mgrSlotEvents,
@@ -133,7 +134,28 @@ export async function backfillRound1(): Promise<{ done: boolean; reason?: string
     }
 
     // Insert round 1 as completed cycles 1-9, each with its sole slot
-    // already paid out to that cycle's recipient.
+    // already paid out to that cycle's recipient — an archived rotation.
+    const [{ lastNumber }] = await tx
+      .select({ lastNumber: sql<number>`coalesce(max(${mgrRotations.number}), 0)::int` })
+      .from(mgrRotations)
+      .where(eq(mgrRotations.groupId, group.id));
+    const [rotation] = await tx
+      .insert(mgrRotations)
+      .values({
+        groupId: group.id,
+        number: lastNumber + 1,
+        status: "archived",
+        startDate: ROUND1[0].date,
+        endDate: ROUND1[ROUND1.length - 1].date,
+        frequency: "biweekly",
+        contributionAmount: String(poolTotal / ROUND1.length),
+        totalCycles: ROUND1.length,
+        totalSlots: ROUND1.length,
+        payoutPerSlot: String(poolTotal),
+        completedAt: new Date(`${ROUND1[ROUND1.length - 1].date}T00:00:00Z`),
+        archivedAt: new Date(),
+      })
+      .returning();
     for (let i = 0; i < ROUND1.length; i++) {
       const entry = ROUND1[i];
       const cycleNumber = i + 1;
@@ -143,6 +165,7 @@ export async function backfillRound1(): Promise<{ done: boolean; reason?: string
         .insert(mgrCycles)
         .values({
           groupId: group.id,
+          rotationId: rotation.id,
           cycleNumber,
           status: "completed",
           scheduledDate: entry.date,
@@ -157,6 +180,7 @@ export async function backfillRound1(): Promise<{ done: boolean; reason?: string
         .values({
           groupId: group.id,
           cycleId: cycle.id,
+          rotationId: rotation.id,
           cycleNumber,
           slotNumber: 1,
           memberId: member.id,

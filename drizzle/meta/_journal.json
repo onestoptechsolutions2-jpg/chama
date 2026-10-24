@@ -435,6 +435,13 @@
       "when": 1792857704818,
       "tag": "0061_fund_target",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1792861887527,
+      "tag": "0062_mgr_rotations",
+      "breakpoints": true
     }
   ]
 }

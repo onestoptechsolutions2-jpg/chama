@@ -159,7 +159,7 @@ export function cycleCloseBlocker(slotStatuses: string[]): string | null {
 }
 
 export type RotationSummary = {
-  /** The active cycle's number, or null when none is active (not started, or all done). */
+  /** The active cycle's position in this rotation (1-based), or null when none is active. */
   currentCycle: number | null;
   totalCycles: number;
   paidSlots: number;
@@ -174,9 +174,11 @@ export function summarizeRotation(
   const slots = cycles.flatMap((c) => c.slots);
   const settled = slots.filter((s) => s.status === "paid" || s.status === "skipped").length;
   const paid = slots.filter((s) => s.status === "paid").length;
-  const active = cycles.find((c) => c.status === "active");
+  // Cycle numbers run on across rotations; show the position within this one.
+  const ordered = [...cycles].sort((a, b) => a.cycleNumber - b.cycleNumber);
+  const activeIndex = ordered.findIndex((c) => c.status === "active");
   return {
-    currentCycle: active?.cycleNumber ?? null,
+    currentCycle: activeIndex === -1 ? null : activeIndex + 1,
     totalCycles: cycles.length,
     paidSlots: paid,
     totalSlots: slots.length,
@@ -250,6 +252,81 @@ export function assignByPreferences(input: {
     out.push({ slotId: slot.id, memberId, reason: "draw" });
   }
   return out;
+}
+
+// ── Rotation dates ───────────────────────────────────────────────────────
+// A rotation is one full round in which every member gets their turns. Its
+// start date is chosen by the officials; its end date never is — it is the
+// date of the last cycle, which follows from the group's design.
+
+const toDate = (ymd: string) => new Date(`${ymd}T00:00:00Z`);
+
+/** Date of the `index`-th cycle counted from `start` (YYYY-MM-DD in, YYYY-MM-DD out). */
+export function cycleDateFrom(start: string, frequency: MgrFrequency, index: number): string {
+  return cycleDate(toDate(start), frequency, index);
+}
+
+/** How many cycles a rotation needs: every turn paid once, `recipientsPerCycle` per cycle. */
+export function cyclesNeeded(totalTurns: number, recipientsPerCycle: number): number {
+  if (totalTurns <= 0 || recipientsPerCycle < 1) return 0;
+  return Math.ceil(totalTurns / recipientsPerCycle);
+}
+
+/** The automatic end date: the last cycle's date. A rotation with no cycles ends where it starts. */
+export function rotationEndDate(start: string, frequency: MgrFrequency, totalCycles: number): string {
+  return cycleDateFrom(start, frequency, Math.max(0, totalCycles - 1));
+}
+
+/** Suggested start of the next rotation: one period after the last one ended. */
+export function nextRotationStart(previousEnd: string, frequency: MgrFrequency): string {
+  return cycleDateFrom(previousEnd, frequency, 1);
+}
+
+/**
+ * Where a new rotation starts unless the officials pick a date: the
+ * configured first-payout date if still ahead, else one period after the
+ * previous rotation ended, else today.
+ */
+export function suggestRotationStart(input: {
+  configuredStart: string | null;
+  previous: { endDate: string; frequency: MgrFrequency } | null;
+  today: string;
+}): string {
+  const { configuredStart, previous, today } = input;
+  if (configuredStart && configuredStart >= today) return configuredStart;
+  const next = previous ? nextRotationStart(previous.endDate, previous.frequency) : null;
+  return next && next >= today ? next : today;
+}
+
+export type RotationCycle = { id: number; cycleNumber: number; status: string; scheduledDate: string | null };
+
+/**
+ * Moving the dates. `newDate` becomes the date of the first cycle not yet
+ * completed; every later cycle follows at the rotation's frequency. Before
+ * any payout that simply moves the start date; after, it postpones (or
+ * brings forward) what is left. Completed cycles keep their dates.
+ */
+export function rescheduleRotation(
+  cycles: RotationCycle[],
+  newDate: string,
+  frequency: MgrFrequency,
+  today: string,
+): { error: string } | { dates: { id: number; date: string }[]; startDate: string | null; endDate: string } {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate) || Number.isNaN(Date.parse(newDate))) return { error: "Pick a date" };
+  const ordered = [...cycles].sort((a, b) => a.cycleNumber - b.cycleNumber);
+  const done = ordered.filter((c) => c.status === "completed");
+  const left = ordered.filter((c) => c.status !== "completed");
+  if (left.length === 0) return { error: "Every cycle in this rotation is already finished" };
+  const lastDone = done.at(-1)?.scheduledDate ?? null;
+  if (lastDone && newDate <= lastDone) return { error: `Pick a date after the last payout (${lastDone})` };
+  if (!lastDone && newDate < today) return { error: "The start date can't be in the past" };
+  const dates = left.map((c, i) => ({ id: c.id, date: cycleDateFrom(newDate, frequency, i) }));
+  return { dates, startDate: done.length === 0 ? newDate : null, endDate: dates.at(-1)!.date };
+}
+
+/** A rotation is finished when it has cycles and every one is completed. */
+export function rotationFinished(cycleStatuses: string[]): boolean {
+  return cycleStatuses.length > 0 && cycleStatuses.every((s) => s === "completed");
 }
 
 /**

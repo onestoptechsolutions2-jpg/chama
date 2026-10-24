@@ -28,6 +28,7 @@ import {
   members,
   groupMemberships,
   mgrCycles,
+  mgrRotations,
   mgrSlots,
   mgrMemberTurns,
   mgrSlotEvents,
@@ -147,7 +148,23 @@ export async function seedGreatMinds(): Promise<SeedGreatMindsResult> {
 
     // One table-banking cycle per payout date, sole slot pre-claimed by
     // that member — see generateScheduleAction for the "open, unassigned"
-    // counterpart this mirrors.
+    // counterpart this mirrors. All of it is the group's first rotation.
+    const [rotation] = await tx
+      .insert(mgrRotations)
+      .values({
+        groupId: group.id,
+        number: 1,
+        status: "active",
+        startDate: SEED_MEMBERS[0].date,
+        endDate: SEED_MEMBERS[SEED_MEMBERS.length - 1].date,
+        frequency: "biweekly",
+        recipientsPerCycle: RECIPIENTS_PER_CYCLE,
+        contributionAmount: String(contribPerCycle / SEED_MEMBERS.length),
+        totalCycles: SEED_MEMBERS.length,
+        totalSlots: SEED_MEMBERS.length,
+        payoutPerSlot: String(payoutPerSlot),
+      })
+      .returning();
     for (let i = 0; i < SEED_MEMBERS.length; i++) {
       const sm = SEED_MEMBERS[i];
       const cycleNumber = i + 1;
@@ -157,6 +174,7 @@ export async function seedGreatMinds(): Promise<SeedGreatMindsResult> {
         .insert(mgrCycles)
         .values({
           groupId: group.id,
+          rotationId: rotation.id,
           cycleNumber,
           status: cycleNumber === 1 ? "active" : "planned",
           scheduledDate: sm.date,
@@ -171,6 +189,7 @@ export async function seedGreatMinds(): Promise<SeedGreatMindsResult> {
         .values({
           groupId: group.id,
           cycleId: cycle.id,
+          rotationId: rotation.id,
           cycleNumber,
           slotNumber: 1,
           memberId: memberRow.id,

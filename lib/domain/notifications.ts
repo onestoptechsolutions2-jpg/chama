@@ -193,7 +193,9 @@ export function buildLoanNotification(event: LoanNotificationEvent): Notificatio
 export type MgrNotificationEvent =
   | { type: "contribution_due_tomorrow"; cycleNumber: number; date: string }
   | { type: "payout_tomorrow"; cycleNumber: number; amount: number | null }
-  | { type: "cycle_closed"; cycleNumber: number; nextCycleNumber: number | null };
+  | { type: "cycle_closed"; cycleNumber: number; nextCycleNumber: number | null }
+  | { type: "rotation_finished"; rotationNumber: number; endDate: string; nextStart: string }
+  | { type: "rotation_rescheduled"; rotationNumber: number; nextDate: string; endDate: string };
 
 export function buildMgrNotification(event: MgrNotificationEvent): NotificationTemplate {
   switch (event.type) {
@@ -218,6 +220,18 @@ export function buildMgrNotification(event: MgrNotificationEvent): NotificationT
         body: event.nextCycleNumber
           ? `Everyone is paid. Cycle ${event.nextCycleNumber} is now open.`
           : "Everyone is paid. That was the last cycle in the schedule.",
+      };
+    case "rotation_finished":
+      return {
+        category: "success",
+        title: `Rotation ${event.rotationNumber} is complete`,
+        body: `Every turn is settled and the rotation (ended ${event.endDate}) is archived. The next one could start on ${event.nextStart}.`,
+      };
+    case "rotation_rescheduled":
+      return {
+        category: "info",
+        title: "Mzunguko dates have moved",
+        body: `The next payout is now on ${event.nextDate}. Rotation ${event.rotationNumber} now ends on ${event.endDate}.`,
       };
   }
 }
