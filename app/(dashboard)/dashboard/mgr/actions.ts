@@ -9,6 +9,7 @@ import {
   groups,
   members,
   mgrCycles,
+  mgrRotations,
   mgrSlots,
   mgrMemberTurns,
   mgrAgreements,
@@ -30,7 +31,12 @@ import {
   cycleCloseBlocker,
   assignByPreferences,
   choicesAreOpen,
+  cycleDateFrom,
   nairobiToday,
+  nextRotationStart,
+  rescheduleRotation,
+  rotationFinished,
+  suggestRotationStart,
 } from "@/lib/domain/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
@@ -149,37 +155,148 @@ export async function setTurnsAction(
   return null;
 }
 
-/**
- * Archived ("closed") cycles are earlier rotations. A new rotation continues
- * numbering after them, and everything that counts turns only looks at
- * cycles numbered above this, so an old rotation never uses up anyone's turns.
- */
-async function rotationBase(tx: Tx, groupId: number): Promise<number> {
-  const [row] = await tx
-    .select({ base: sql<number>`coalesce(max(${mgrCycles.cycleNumber}), 0)::int` })
+type Rotation = typeof mgrRotations.$inferSelect;
+type GroupRow = typeof groups.$inferSelect;
+
+/** The group's live rotation (at most one — a unique index guarantees it). */
+async function activeRotation(tx: Tx, groupId: number): Promise<Rotation | undefined> {
+  return tx.query.mgrRotations.findFirst({
+    where: and(eq(mgrRotations.groupId, groupId), eq(mgrRotations.status, "active")),
+  });
+}
+
+/** Opens the next rotation with a copy of the group's current settings. */
+async function openRotation(tx: Tx, group: GroupRow, startDate: string, createdBy: number): Promise<Rotation> {
+  const [{ lastNumber, lastCycle }] = await tx
+    .select({
+      lastNumber: sql<number>`coalesce((select max(number) from mgr_rotations where group_id = ${group.id}), 0)::int`,
+      lastCycle: sql<number>`coalesce((select max(cycle_number) from mgr_cycles where group_id = ${group.id}), 0)::int`,
+    })
+    .from(groups)
+    .where(eq(groups.id, group.id));
+  const [rotation] = await tx
+    .insert(mgrRotations)
+    .values({
+      groupId: group.id,
+      number: lastNumber + 1,
+      status: "active",
+      startDate,
+      endDate: startDate,
+      frequency: group.mgrFrequency,
+      recipientsPerCycle: group.mgrRecipientsPerCycle ?? 1,
+      contributionAmount: String(group.mgrContributionAmount ?? group.sharePrice),
+      choicesCloseDate: group.mgrChoicesCloseDate,
+      cycleOffset: lastCycle,
+      createdBy,
+    })
+    .returning();
+  // Wish lists name cycles of the old rotation; start the new one clean.
+  await tx.update(mgrMemberTurns).set({ preferredCycles: null }).where(eq(mgrMemberTurns.groupId, group.id));
+  return rotation;
+}
+
+/** Recomputes a rotation's automatic end date and totals from its cycles. */
+async function refreshRotationTotals(tx: Tx, rotationId: number) {
+  const [t] = await tx
+    .select({
+      cycles: sql<number>`count(*)::int`,
+      end: sql<string | null>`max(${mgrCycles.scheduledDate})::text`,
+      slots: sql<number>`(select count(*)::int from mgr_slots where rotation_id = ${rotationId})`,
+    })
     .from(mgrCycles)
-    .where(and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "closed")));
-  return row?.base ?? 0;
+    .where(eq(mgrCycles.rotationId, rotationId));
+  await tx
+    .update(mgrRotations)
+    .set({ totalCycles: t.cycles, totalSlots: t.slots, ...(t.end ? { endDate: t.end } : {}), updatedAt: new Date() })
+    .where(eq(mgrRotations.id, rotationId));
+}
+
+/**
+ * Settles a rotation whose every cycle is completed: it is archived on the
+ * spot (it leaves the main schedule, stays readable under Past rotations,
+ * and stops counting against anyone's turns), and the officials are told
+ * when the next one could start.
+ */
+async function finishRotation(tx: Tx, groupId: number, rotationId: number) {
+  const now = new Date();
+  const [rotation] = await tx
+    .update(mgrRotations)
+    .set({ status: "archived", completedAt: now, archivedAt: now, updatedAt: now })
+    .where(and(eq(mgrRotations.id, rotationId), eq(mgrRotations.status, "active")))
+    .returning();
+  if (!rotation) return;
+  const template = buildMgrNotification({
+    type: "rotation_finished",
+    rotationNumber: rotation.number,
+    endDate: rotation.endDate,
+    nextStart: nextRotationStart(rotation.endDate, rotation.frequency),
+  });
+  for (const userId of await listActiveStaffUserIds(tx, groupId, ["admin", "treasurer"])) {
+    await insertNotification(tx, { groupId, userId, template, link: "/dashboard/mgr", sourceType: "mgr_rotation", sourceId: rotation.id });
+  }
 }
 
 // ── Schedule generation ──────────────────────────────────────────────────
-export async function generateScheduleAction(): Promise<MgrActionState> {
+/**
+ * Plans the live rotation — or opens a new one (starting `startDate`, or the
+ * default start) when none is live. The number of cycles, and so the end
+ * date, follows from members × turns ÷ recipients per cycle. Until the first
+ * payout the rotation takes the group's current settings; after that its
+ * settings are fixed and only the remaining turns are re-planned (members
+ * joining, leaving or changing turns). Completed cycles keep their dates; the
+ * rest continue from the next unfinished cycle's date. Regenerating never
+ * discards a claimed, assigned or paid turn.
+ */
+export async function generateScheduleAction(startDate?: string): Promise<MgrActionState> {
   const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
-  await withTenant(groupId, async (tx) => {
+  const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
     const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
-    if (!group) return;
-    const base = await rotationBase(tx, groupId);
-
-    const baseContribution = Number(group.mgrContributionAmount ?? group.sharePrice);
-    const startDate = group.mgrStartDate ? new Date(group.mgrStartDate) : new Date();
+    if (!group) return { error: "Group not found" };
+    const today = nairobiToday();
 
     const activeMembers = await tx.query.members.findMany({
       where: and(eq(members.groupId, groupId), eq(members.active, true)),
       orderBy: (m, { asc }) => [asc(m.joinedDate), asc(m.id)],
     });
-    if (activeMembers.length === 0) return;
+    if (activeMembers.length === 0) return { error: "Add members first" };
+
+    let rotation = await activeRotation(tx, groupId);
+    if (!rotation) {
+      const previous = await tx.query.mgrRotations.findFirst({
+        where: eq(mgrRotations.groupId, groupId),
+        orderBy: (r, { desc }) => [desc(r.number)],
+      });
+      const start = startDate || suggestRotationStart({ configuredStart: group.mgrStartDate, previous: previous ?? null, today });
+      if (start < today) return { error: "The start date can't be in the past" };
+      rotation = await openRotation(tx, group, start, session.user.id);
+    }
+
+    const rotationCycles = await tx.query.mgrCycles.findMany({
+      where: eq(mgrCycles.rotationId, rotation.id),
+      orderBy: (c, { asc }) => [asc(c.cycleNumber)],
+    });
+    const completed = rotationCycles.filter((c) => c.status === "completed");
+    const [{ settled }] = await tx
+      .select({ settled: sql<number>`count(*)::int` })
+      .from(mgrSlots)
+      .where(and(eq(mgrSlots.rotationId, rotation.id), inArray(mgrSlots.status, ["paid", "skipped"])));
+    const started = completed.length > 0 || settled > 0;
+
+    if (!started) {
+      [rotation] = await tx
+        .update(mgrRotations)
+        .set({
+          frequency: group.mgrFrequency,
+          recipientsPerCycle: group.mgrRecipientsPerCycle ?? 1,
+          contributionAmount: String(group.mgrContributionAmount ?? group.sharePrice),
+          choicesCloseDate: group.mgrChoicesCloseDate,
+          updatedAt: new Date(),
+        })
+        .where(eq(mgrRotations.id, rotation.id))
+        .returning();
+    }
 
     const existingTurns = await tx.query.mgrMemberTurns.findMany({
       where: eq(mgrMemberTurns.groupId, groupId),
@@ -196,51 +313,59 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
       }
     }
 
-    const memberInputs = activeMembers.map((m) => {
-      const t = turnsByMember.get(m.id);
-      return {
-        memberId: m.id,
-        turnsTotal: t?.turnsTotal ?? 1,
-        multiplier: t ? Number(t.contributionMultiplier) : 1,
-      };
-    });
-
     const schedule = generateMgrSchedule({
-      frequency: group.mgrFrequency,
-      recipientsPerCycle: group.mgrRecipientsPerCycle ?? 1,
-      baseContribution,
-      startDate,
-      members: memberInputs,
+      frequency: rotation.frequency,
+      recipientsPerCycle: rotation.recipientsPerCycle,
+      baseContribution: Number(rotation.contributionAmount),
+      startDate: new Date(`${rotation.startDate}T00:00:00Z`),
+      members: activeMembers.map((m) => {
+        const t = turnsByMember.get(m.id);
+        return { memberId: m.id, turnsTotal: t?.turnsTotal ?? 1, multiplier: t ? Number(t.contributionMultiplier) : 1 };
+      }),
     });
 
-    // Remove not-yet-claimed slots and the now-empty planned cycles they
-    // belonged to — claimed/auto_assigned/paid/skipped slots are left
-    // untouched so regenerating the schedule never discards a real claim.
-    await tx.delete(mgrSlots).where(and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)));
+    // Dates: completed cycles keep theirs; the rest follow on from the first
+    // unfinished cycle (or from the start date if nothing is paid yet).
+    const existingDate = new Map(rotationCycles.map((c) => [c.cycleNumber, c.scheduledDate]));
+    const firstOpen = rotationCycles.find((c) => c.status !== "completed");
+    const anchor = !started
+      ? rotation.startDate
+      : (firstOpen?.scheduledDate ??
+        (completed.at(-1)?.scheduledDate ? nextRotationStart(completed.at(-1)!.scheduledDate!, rotation.frequency) : rotation.startDate));
+    const dateFor = (n: number) =>
+      n <= completed.length
+        ? (existingDate.get(rotation!.cycleOffset + n) ?? cycleDateFrom(rotation!.startDate, rotation!.frequency, n - 1))
+        : cycleDateFrom(anchor, rotation!.frequency, n - 1 - completed.length);
 
+    // Remove not-yet-claimed turns and the planned cycles left empty.
+    await tx.delete(mgrSlots).where(and(eq(mgrSlots.rotationId, rotation.id), eq(mgrSlots.status, "open")));
     const remainingCycleIds = await tx
       .select({ id: mgrSlots.cycleId })
       .from(mgrSlots)
-      .where(and(eq(mgrSlots.groupId, groupId), isNotNull(mgrSlots.cycleId)));
+      .where(and(eq(mgrSlots.rotationId, rotation.id), isNotNull(mgrSlots.cycleId)));
     const keepIds = remainingCycleIds.map((r) => r.id!).filter(Boolean);
     await tx.delete(mgrCycles).where(
       keepIds.length > 0
-        ? and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "planned"), notInArray(mgrCycles.id, keepIds))
-        : and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "planned")),
+        ? and(eq(mgrCycles.rotationId, rotation.id), eq(mgrCycles.status, "planned"), notInArray(mgrCycles.id, keepIds))
+        : and(eq(mgrCycles.rotationId, rotation.id), eq(mgrCycles.status, "planned")),
     );
 
     const hasActiveCycle = await tx.query.mgrCycles.findFirst({
-      where: and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "active")),
+      where: and(eq(mgrCycles.rotationId, rotation.id), eq(mgrCycles.status, "active")),
     });
 
     for (const cycle of schedule.cycles) {
+      const cycleNumber = rotation.cycleOffset + cycle.cycleNumber;
+      const scheduledDate = dateFor(cycle.cycleNumber);
+      const opensNow = !hasActiveCycle && cycle.cycleNumber === completed.length + 1;
       const [cycleRow] = await tx
         .insert(mgrCycles)
         .values({
           groupId,
-          cycleNumber: base + cycle.cycleNumber,
-          status: !hasActiveCycle && cycle.cycleNumber === 1 ? "active" : "planned",
-          scheduledDate: cycle.scheduledDate,
+          rotationId: rotation.id,
+          cycleNumber,
+          status: opensNow ? "active" : "planned",
+          scheduledDate,
           slotCount: cycle.slotCount,
           payoutPerSlot: String(cycle.payoutPerSlot),
           totalContributions: String(cycle.totalContributions),
@@ -248,10 +373,11 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
         .onConflictDoUpdate({
           target: [mgrCycles.groupId, mgrCycles.cycleNumber],
           set: {
-            scheduledDate: cycle.scheduledDate,
+            scheduledDate,
             slotCount: cycle.slotCount,
             payoutPerSlot: String(cycle.payoutPerSlot),
             totalContributions: String(cycle.totalContributions),
+            ...(opensNow ? { status: "active" as const } : {}),
             updatedAt: new Date(),
           },
         })
@@ -263,26 +389,68 @@ export async function generateScheduleAction(): Promise<MgrActionState> {
           .values({
             groupId,
             cycleId: cycleRow.id,
-            cycleNumber: base + cycle.cycleNumber,
+            rotationId: rotation.id,
+            cycleNumber,
             slotNumber: slot.slotNumber,
             status: "open",
             payoutAmount: String(cycle.payoutPerSlot),
-            scheduledDate: cycle.scheduledDate,
+            scheduledDate,
           })
           .onConflictDoUpdate({
             target: [mgrSlots.groupId, mgrSlots.cycleNumber, mgrSlots.slotNumber],
-            set: {
-              cycleId: cycleRow.id,
-              payoutAmount: String(cycle.payoutPerSlot),
-              scheduledDate: cycle.scheduledDate,
-            },
+            set: { cycleId: cycleRow.id, payoutAmount: String(cycle.payoutPerSlot), scheduledDate },
           });
       }
     }
+
+    await tx.update(mgrRotations).set({ payoutPerSlot: String(schedule.payoutPerSlot) }).where(eq(mgrRotations.id, rotation.id));
+    await refreshRotationTotals(tx, rotation.id);
+    return null;
   });
 
   revalidatePath("/dashboard/mgr");
-  return null;
+  return result;
+}
+
+/**
+ * Moves the live rotation's dates. Before the first payout this sets a new
+ * start date; afterwards it moves the next payout and everything after it.
+ * The end date follows automatically. Officials are told.
+ */
+export async function rescheduleRotationAction(newDate: string): Promise<MgrActionState> {
+  const session = await requirePermission("mgr.manage");
+  const groupId = session.activeMembership.groupId;
+
+  const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return { error: "There is no rotation running" };
+    const cycles = await tx.query.mgrCycles.findMany({ where: eq(mgrCycles.rotationId, rotation.id) });
+    const plan = rescheduleRotation(cycles, newDate, rotation.frequency, nairobiToday());
+    if ("error" in plan) return plan;
+
+    for (const d of plan.dates) {
+      await tx.update(mgrCycles).set({ scheduledDate: d.date, updatedAt: new Date() }).where(eq(mgrCycles.id, d.id));
+      await tx.update(mgrSlots).set({ scheduledDate: d.date }).where(eq(mgrSlots.cycleId, d.id));
+    }
+    await tx
+      .update(mgrRotations)
+      .set({ ...(plan.startDate ? { startDate: plan.startDate } : {}), endDate: plan.endDate, updatedAt: new Date() })
+      .where(eq(mgrRotations.id, rotation.id));
+
+    const template = buildMgrNotification({
+      type: "rotation_rescheduled",
+      rotationNumber: rotation.number,
+      nextDate: plan.dates[0].date,
+      endDate: plan.endDate,
+    });
+    for (const userId of await listActiveStaffUserIds(tx, groupId, ["admin", "treasurer", "secretary"])) {
+      await insertNotification(tx, { groupId, userId, template, link: "/dashboard/mgr", sourceType: "mgr_rotation", sourceId: rotation.id });
+    }
+    return null;
+  });
+
+  revalidatePath("/dashboard/mgr");
+  return result;
 }
 
 // ── Slot claiming (member) ──────────────────────────────────────────────
@@ -300,6 +468,8 @@ export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
       .for("update");
     if (!slot) return { error: "Slot not found" };
     if (slot.status !== "open") return { error: `Slot is already ${slot.status}` };
+    const live = await activeRotation(tx, groupId);
+    if (slot.rotationId !== live?.id) return { error: "That turn belongs to a finished rotation" };
 
     const turns = await tx.query.mgrMemberTurns.findFirst({
       where: and(eq(mgrMemberTurns.groupId, groupId), eq(mgrMemberTurns.memberId, memberId)),
@@ -314,7 +484,7 @@ export async function claimSlotAction(slotId: number): Promise<MgrActionState> {
           eq(mgrSlots.groupId, groupId),
           eq(mgrSlots.memberId, memberId),
           inArray(mgrSlots.status, CLAIMED_STATUSES),
-          gt(mgrSlots.cycleNumber, await rotationBase(tx, groupId)),
+          eq(mgrSlots.rotationId, slot.rotationId),
         ),
       );
     if (taken >= maxTurns) {
@@ -512,9 +682,10 @@ export async function autoAssignAction(draw = false): Promise<{ assigned: number
   const groupId = session.activeMembership.groupId;
 
   const assigned = await withTenant(groupId, async (tx) => {
-    const base = await rotationBase(tx, groupId);
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return 0;
     const openSlots = await tx.query.mgrSlots.findMany({
-      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)),
+      where: and(eq(mgrSlots.rotationId, rotation.id), eq(mgrSlots.status, "open")),
       orderBy: (s, { asc }) => [asc(s.cycleNumber), asc(s.slotNumber)],
     });
     if (openSlots.length === 0) return 0;
@@ -530,7 +701,7 @@ export async function autoAssignAction(draw = false): Promise<{ assigned: number
         and(
           eq(mgrSlots.groupId, groupId),
           inArray(mgrSlots.status, CLAIMED_STATUSES),
-          gt(mgrSlots.cycleNumber, base),
+          eq(mgrSlots.rotationId, rotation.id),
         ),
       )
       .groupBy(mgrSlots.memberId);
@@ -579,16 +750,21 @@ export async function createCycleAction(scheduledDate?: string): Promise<void> {
   const groupId = session.activeMembership.groupId;
 
   await withTenant(groupId, async (tx) => {
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return;
     const [last] = await tx
-      .select({ max: sql<number>`coalesce(max(${mgrCycles.cycleNumber}), 0)` })
+      .select({ max: sql<number>`coalesce(max(${mgrCycles.cycleNumber}), 0)::int`, date: sql<string | null>`max(${mgrCycles.scheduledDate})::text` })
       .from(mgrCycles)
       .where(eq(mgrCycles.groupId, groupId));
     await tx.insert(mgrCycles).values({
       groupId,
+      rotationId: rotation.id,
       cycleNumber: (last?.max ?? 0) + 1,
       status: "planned",
-      scheduledDate: scheduledDate || null,
+      // Defaults to one period after the last cycle, so the end date moves with it.
+      scheduledDate: scheduledDate || (last?.date ? nextRotationStart(last.date, rotation.frequency) : rotation.startDate),
     });
+    await refreshRotationTotals(tx, rotation.id);
   });
 
   revalidatePath("/dashboard/mgr");
@@ -605,7 +781,7 @@ export async function createCycleAction(scheduledDate?: string): Promise<void> {
 async function completeCycleAndOpenNext(
   tx: Tx,
   groupId: number,
-  cycle: { id: number; cycleNumber: number },
+  cycle: { id: number; cycleNumber: number; rotationId: number },
 ): Promise<{ id: number; cycleNumber: number } | null> {
   await tx
     .update(mgrCycles)
@@ -614,13 +790,18 @@ async function completeCycleAndOpenNext(
 
   const next = await tx.query.mgrCycles.findFirst({
     where: and(
-      eq(mgrCycles.groupId, groupId),
+      eq(mgrCycles.rotationId, cycle.rotationId),
       eq(mgrCycles.status, "planned"),
       gt(mgrCycles.cycleNumber, cycle.cycleNumber),
     ),
     orderBy: (c, { asc }) => [asc(c.cycleNumber)],
   });
-  if (!next) return null;
+  if (!next) {
+    // That was the last cycle: the rotation is complete and archives itself.
+    const all = await tx.query.mgrCycles.findMany({ where: eq(mgrCycles.rotationId, cycle.rotationId), columns: { status: true } });
+    if (rotationFinished(all.map((c) => c.status))) await finishRotation(tx, groupId, cycle.rotationId);
+    return null;
+  }
 
   await tx
     .update(mgrCycles)
@@ -713,9 +894,11 @@ export async function setTurnPreferencesAction(
       }
     }
     if (wanted.length > 0) {
+      const rotation = await activeRotation(tx, groupId);
+      if (!rotation) return { error: "There is no rotation running" };
       const valid = await tx.query.mgrCycles.findMany({
         where: and(
-          eq(mgrCycles.groupId, groupId),
+          eq(mgrCycles.rotationId, rotation.id),
           inArray(mgrCycles.cycleNumber, wanted),
           inArray(mgrCycles.status, ["planned", "active"]),
         ),
@@ -748,9 +931,10 @@ export async function fillByPreferencesAction(): Promise<{ assigned: number; byC
   const groupId = session.activeMembership.groupId;
 
   const out = await withTenant(groupId, async (tx) => {
-    const base = await rotationBase(tx, groupId);
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return { assigned: 0, byChoice: 0 };
     const openSlots = await tx.query.mgrSlots.findMany({
-      where: and(eq(mgrSlots.groupId, groupId), eq(mgrSlots.status, "open"), gt(mgrSlots.cycleNumber, base)),
+      where: and(eq(mgrSlots.rotationId, rotation.id), eq(mgrSlots.status, "open")),
     });
     if (openSlots.length === 0) return { assigned: 0, byChoice: 0 };
 
@@ -764,7 +948,7 @@ export async function fillByPreferencesAction(): Promise<{ assigned: number; byC
         and(
           eq(mgrSlots.groupId, groupId),
           inArray(mgrSlots.status, CLAIMED_STATUSES),
-          gt(mgrSlots.cycleNumber, base),
+          eq(mgrSlots.rotationId, rotation.id),
         ),
       )
       .groupBy(mgrSlots.memberId);
@@ -812,31 +996,22 @@ export async function fillByPreferencesAction(): Promise<{ assigned: number; byC
 }
 
 /**
- * Files a finished rotation away: every cycle must be completed (none still
- * planned or running). Archived cycles leave the main schedule, stay readable
- * under "Past rotations", and stop counting against anyone's turns.
+ * Files away a rotation whose cycles are all completed. Normally a rotation
+ * archives itself when its last turn is settled; this covers one finished
+ * before that happened (e.g. moved over from before rotations were stored).
  */
 export async function archiveRotationAction(): Promise<MgrActionState> {
   const session = await requirePermission("mgr.manage");
   const groupId = session.activeMembership.groupId;
 
   const result = await withTenant(groupId, async (tx): Promise<MgrActionState> => {
-    const live = await tx.query.mgrCycles.findMany({
-      where: and(
-        eq(mgrCycles.groupId, groupId),
-        inArray(mgrCycles.status, ["planned", "active", "completed"]),
-      ),
-    });
-    const completed = live.filter((c) => c.status === "completed");
-    if (completed.length === 0) return { error: "There is no finished rotation to archive yet." };
-    if (live.length > completed.length) {
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return { error: "There is no rotation running." };
+    const cycles = await tx.query.mgrCycles.findMany({ where: eq(mgrCycles.rotationId, rotation.id), columns: { status: true } });
+    if (!rotationFinished(cycles.map((c) => c.status))) {
       return { error: "Some cycles are not finished yet. Finish or close them first." };
     }
-
-    await tx
-      .update(mgrCycles)
-      .set({ status: "closed", updatedAt: new Date() })
-      .where(and(eq(mgrCycles.groupId, groupId), eq(mgrCycles.status, "completed")));
+    await finishRotation(tx, groupId, rotation.id);
     return null;
   });
 
@@ -844,11 +1019,20 @@ export async function archiveRotationAction(): Promise<MgrActionState> {
   return result;
 }
 
-/** Archive the finished rotation, build a fresh schedule, and fill it (random draw or join order). */
-export async function startNewRotationAction(draw: boolean): Promise<MgrActionState> {
-  const archived = await archiveRotationAction();
-  if (archived?.error) return archived;
-  const generated = await generateScheduleAction();
+/**
+ * Starts the next rotation on `startDate` (default: one period after the
+ * last one ended), builds its schedule from today's members and turns, and
+ * fills it (random draw or join order). A finished rotation still marked
+ * live is archived first.
+ */
+export async function startNewRotationAction(draw: boolean, startDate?: string): Promise<MgrActionState> {
+  const session = await requirePermission("mgr.manage");
+  const live = await withTenant(session.activeMembership.groupId, (tx) => activeRotation(tx, session.activeMembership.groupId));
+  if (live) {
+    const archived = await archiveRotationAction();
+    if (archived?.error) return { error: "The current rotation isn't finished yet." };
+  }
+  const generated = await generateScheduleAction(startDate);
   if (generated?.error) return generated;
   await autoAssignAction(draw);
   return null;
@@ -864,13 +1048,10 @@ export async function reshuffleUnpaidAction(): Promise<{ reshuffled: number }> {
   const groupId = session.activeMembership.groupId;
 
   const reshuffled = await withTenant(groupId, async (tx) => {
-    const base = await rotationBase(tx, groupId);
+    const rotation = await activeRotation(tx, groupId);
+    if (!rotation) return 0;
     const handedOut = await tx.query.mgrSlots.findMany({
-      where: and(
-        eq(mgrSlots.groupId, groupId),
-        eq(mgrSlots.status, "auto_assigned"),
-        gt(mgrSlots.cycleNumber, base),
-      ),
+      where: and(eq(mgrSlots.rotationId, rotation.id), eq(mgrSlots.status, "auto_assigned")),
     });
     for (const slot of handedOut) {
       await tx

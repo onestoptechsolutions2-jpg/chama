@@ -191,6 +191,26 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, and the full test suite (252 tests) clean at each step.
 
+## Merry-go-round rotations (Oct 2026)
+
+- A **rotation** (one full round in which every member gets their turns) is
+  now stored (`mgr_rotations`) instead of inferred from cycle numbers. Each
+  keeps a copy of the settings it was planned with, so later changes never
+  rewrite history; cycles and turns belong to one rotation, and turns are
+  counted per rotation.
+- **End date is automatic**: members × turns ÷ recipients per cycle gives the
+  number of cycles, spaced by the frequency from the start date; recomputed
+  whenever the plan changes. The settings form previews it.
+- **Start date is adjustable**: before the first payout it moves the whole
+  rotation; after, it moves the next payout and everything after it
+  (completed cycles keep their dates). Officials are notified.
+- **Archives itself** when the last turn is paid or skipped, and officials
+  are told the suggested start of the next one (one period after the end).
+  Past rotations show their dates, turns paid and total paid out.
+- Migration 0062 backfills existing data: earlier archived cycles become one
+  archived rotation, the live cycles the current one; no slot or its history
+  is deleted.
+
 ## Funeral funds with Family Compass (Oct 2026)
 
 - Partner API (`/api/partner/v1/funds`) for Family Compass: a funeral

@@ -165,10 +165,18 @@ outside the app (MGR payouts are cash/M-Pesa between members, never routed
 through the platform) — that is permanently logged and a paid turn can no
 longer be reassigned or un-paid, so payouts stay accountable.
 
+A **rotation** is one full round in which every member gets their turns.
+Each rotation has a start date the officials choose and an **end date the
+system sets** from the group's design: members × turns ÷ recipients per
+cycle gives the number of cycles, one per week, two weeks or month from the
+start. When the last turn is paid, the rotation **archives itself** and
+moves under *Past rotations* with its dates and total paid out.
+
 **Every member**
 
-- The top of the Schedule tab shows progress: *Cycle 3 of 12 · 7 of 10
-  turns paid*.
+- The top of the Schedule tab shows the rotation (*Rotation 2 · started
+  2 Nov · ends 18 Jan*) and progress: *Cycle 3 of 12 · 7 of 10 turns
+  paid*.
 - On the **Turns** tab, *Which turn would you like?* lets you pick up to
   three cycles, best first. Choices are honoured fairly when turns are
   given out, and you can change them until the group's deadline (if one is
@@ -178,27 +186,35 @@ longer be reassigned or un-paid, so payouts stay accountable.
 
 **Admin and treasurer** (Admin tab)
 
-1. **Cycle configuration** — frequency, recipients per cycle, start date,
-   *Members can choose turns until*, contribution per cycle. Dates are
-   counted from the start date and a 31st-of-the-month start lands on the
-   last day of shorter months.
-2. **Generate / rebuild schedule** — builds cycles from each member's turn
-   count. Turns already claimed or paid are kept; only open ones are
-   redrawn. Run it again after members join.
-3. **Fill open slots** — three ways: *by members' choices* (everyone's
+1. **Rotation settings** — frequency, recipients per cycle, first payout
+   of the next rotation, *Members can choose turns until*, contribution per
+   cycle. The form shows the end date these give (*12 turns ÷ 1 per cycle
+   = 12 cycles, weekly. Starting 2 Nov, it ends on 18 Jan*). They apply to
+   the next rotation, and to the current one until its first payout. A
+   31st-of-the-month start lands on the last day of shorter months.
+2. **Change start date / Move remaining dates** (Schedule tab) — before
+   the first payout, moves the whole rotation; after, moves the next payout
+   and everything after it. Paid cycles keep their dates; the end date
+   follows; officials are notified.
+3. **Rebuild schedule** — re-plans the current rotation from each member's
+   turn count (run it after members join or turns change; the end date
+   updates). Turns already claimed or paid are kept; only open ones are
+   redrawn.
+4. **Fill open slots** — three ways: *by members' choices* (everyone's
    first choice before anyone's second; clashes settled by random order;
    nobody gets more turns than they have; the rest drawn at random),
    *by random draw*, or *in order*. Every assignment is written to the
    activity log with how it was decided.
-4. **Reshuffle turns not yet paid** — redraws only the turns the system
+5. **Reshuffle turns not yet paid** — redraws only the turns the system
    handed out. Turns members chose, and anything paid, never move.
-5. **Cycles close themselves** once every turn in the active cycle is paid
+6. **Cycles close themselves** once every turn in the active cycle is paid
    or skipped, and the next cycle opens (officials are notified). A cycle
-   can't be closed by hand while any turn is still owed.
-6. **When the whole rotation is done** — *Archive finished rotation* moves
-   it under **Past rotations**, or *Start new rotation (random order /
-   same order)* archives it, builds a fresh schedule and fills it in one
-   step. Archived turns no longer count against anyone's allowance.
+   can't be closed by hand while any turn is still owed. After the last
+   cycle the rotation archives itself.
+7. **Start the next rotation** — pick the first payout date (suggested:
+   one period after the last rotation ended) and *Start (random order /
+   join order)*, or *Plan only* to fill turns later. Members' turn wishes
+   start fresh; archived turns no longer count against anyone.
 
 A member who is removed from the group drops out of the draw and their
 unpaid turns become open again.

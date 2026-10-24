@@ -184,7 +184,9 @@ apply/review flow), `loan_guarantors` (real consent — `applicationId`/
 the same rows rather than creating fresh ones, so the acceptance record
 survives the application→loan transition).
 
-**MGR** — `mgr_cycles`, `mgr_slots`, `mgr_member_turns` (multi-turn
+**MGR** — `mgr_rotations` (one full round; settings snapshot, start and
+computed end date, active/archived), `mgr_cycles` and `mgr_slots` (each with
+`rotation_id`), `mgr_member_turns` (multi-turn
 members), `mgr_agreements` (a 4-field legal signature gating participation,
 scoped per (user, cycle) since terms can differ between cycles),
 `mgr_slot_events` (append-only audit log — see [RLS](#multi-tenancy--row-level-security) above).
@@ -393,11 +395,23 @@ Full request/response shape: [`api.md`](./api.md).
 
 ### MGR rotations (how cycles are numbered and counted)
 
-`mgr_cycles.status` is `planned → active → completed → closed`; **`closed`
-means archived**. A new rotation continues numbering after the archived ones
-(`rotationBase` in `mgr/actions.ts` = the highest closed `cycle_number`), and
-every query that counts a member's turns (claim limit, auto-assign, the Turns
-tab) only looks at cycles above that base. Closing is guarded
+A rotation (`mgr_rotations`) is one full round in which every member gets
+their turns; at most one per group is `active` (partial unique index), the
+rest `archived`. It stores the settings it was planned with (frequency,
+recipients per cycle, contribution), its start date and its **computed end
+date** — the last cycle's date (`rotationEndDate`; cycles =
+`cyclesNeeded(turns, recipientsPerCycle)`), refreshed whenever the schedule
+changes (`refreshRotationTotals`). Until the first payout a rebuild takes the
+group's current settings; after it the settings are fixed and only remaining
+turns are re-planned, with completed cycles keeping their dates
+(`generateScheduleAction`). `rescheduleRotation` moves the start (nothing
+paid yet) or the next payout and everything after it. Cycle numbers stay
+group-wide (a rotation numbers its cycles after `cycle_offset`); every query
+that counts a member's turns (claim limit, auto-assign, the Turns tab) is
+scoped by `rotation_id`. `mgr_cycles.status` is `planned → active →
+completed` (`closed` is legacy, pre-0062). When the last cycle completes,
+`finishRotation` archives the rotation and notifies officials with the
+suggested next start (`nextRotationStart`). Closing is guarded
 (`cycleCloseBlocker`): only the active cycle, only when every slot is paid or
 skipped — and it happens automatically when the last slot is settled. A paid
 slot can't be reassigned or un-paid. Fair-fill logic

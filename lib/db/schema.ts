@@ -1545,6 +1545,47 @@ export const projectContributions = pgTable(
   (t) => [index("project_contributions_group_id_idx").on(t.groupId)],
 );
 
+// ── MGR rotations — one full round in which every member gets their turns ──
+// Each rotation keeps its own copy of the settings it was planned with, so
+// changing the group's defaults later never rewrites a past rotation. The
+// end date is never typed in: it is the last cycle's date, worked out from
+// members × turns ÷ recipients per cycle at the chosen frequency
+// (lib/domain/mgr.ts rotationEndDate) and recomputed whenever the plan
+// changes. A rotation archives itself when its last turn is settled.
+export const mgrRotations = pgTable(
+  "mgr_rotations",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    number: integer("number").notNull(),
+    /** active | archived */
+    status: text("status").notNull().default("active"),
+    startDate: date("start_date").notNull(),
+    endDate: date("end_date").notNull(),
+    frequency: mgrFrequencyEnum("frequency").notNull(),
+    recipientsPerCycle: integer("recipients_per_cycle").notNull().default(1),
+    contributionAmount: numeric("contribution_amount", { precision: 12, scale: 2 }).notNull(),
+    choicesCloseDate: date("choices_close_date"),
+    /** Cycle numbers are group-wide; this rotation's cycles are numbered after this. */
+    cycleOffset: integer("cycle_offset").notNull().default(0),
+    totalCycles: integer("total_cycles").notNull().default(0),
+    totalSlots: integer("total_slots").notNull().default(0),
+    payoutPerSlot: numeric("payout_per_slot", { precision: 12, scale: 2 }),
+    createdBy: integer("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+  },
+  (t) => [
+    unique("mgr_rotations_group_number_unique").on(t.groupId, t.number),
+    // At most one live rotation per group.
+    uniqueIndex("mgr_rotations_one_active_idx").on(t.groupId).where(sql`${t.status} = 'active'`),
+  ],
+);
+
 // ── MGR cycles ───────────────────────────────────────────────────────────
 export const mgrCycles = pgTable(
   "mgr_cycles",
@@ -1553,7 +1594,11 @@ export const mgrCycles = pgTable(
     groupId: integer("group_id")
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
+    rotationId: integer("rotation_id")
+      .notNull()
+      .references(() => mgrRotations.id, { onDelete: "cascade" }),
     cycleNumber: integer("cycle_number").notNull(),
+    /** planned | active | completed ("closed" is legacy, from before rotations were stored). */
     status: mgrCycleStatusEnum("status").notNull().default("planned"),
     scheduledDate: date("scheduled_date"),
     slotCount: integer("slot_count").notNull().default(1),
@@ -1575,6 +1620,9 @@ export const mgrSlots = pgTable(
       .notNull()
       .references(() => groups.id, { onDelete: "cascade" }),
     cycleId: integer("cycle_id").references(() => mgrCycles.id, { onDelete: "set null" }),
+    rotationId: integer("rotation_id")
+      .notNull()
+      .references(() => mgrRotations.id, { onDelete: "cascade" }),
     cycleNumber: integer("cycle_number").notNull(),
     slotNumber: integer("slot_number").notNull(),
     memberId: integer("member_id").references(() => members.id, { onDelete: "set null" }),
@@ -2265,8 +2313,14 @@ export const projectContributionsRelations = relations(projectContributions, ({ 
   member: one(members, { fields: [projectContributions.memberId], references: [members.id] }),
 }));
 
+export const mgrRotationsRelations = relations(mgrRotations, ({ one, many }) => ({
+  group: one(groups, { fields: [mgrRotations.groupId], references: [groups.id] }),
+  cycles: many(mgrCycles),
+}));
+
 export const mgrCyclesRelations = relations(mgrCycles, ({ one, many }) => ({
   group: one(groups, { fields: [mgrCycles.groupId], references: [groups.id] }),
+  rotation: one(mgrRotations, { fields: [mgrCycles.rotationId], references: [mgrRotations.id] }),
   slots: many(mgrSlots),
   agreements: many(mgrAgreements),
 }));

@@ -528,14 +528,18 @@ Newest first, capped at 200 rows.
 
 ### `GET /api/v1/mgr/cycles`
 
-Merry-go-round cycles and slots for this group, only present if
-`mgrEnabled`.
+Merry-go-round rotations, cycles and slots for this group, only present if
+`mgrEnabled`. A rotation is one full round in which every member gets their
+turns; `endDate` is computed, and `status` is `active` (at most one) or
+`archived` (archives itself when its last turn is settled).
 
 ```json
 {
-  "cycles": [ { "id": 2, "cycleNumber": 2, "...": "..." } ],
+  "rotations": [ { "id": 3, "number": 2, "status": "active", "startDate": "2026-11-02",
+                   "endDate": "2027-01-18", "frequency": "weekly", "recipientsPerCycle": 1, "...": "..." } ],
+  "cycles": [ { "id": 2, "rotationId": 3, "cycleNumber": 2, "...": "..." } ],
   "slots": [
-    { "id": 14, "cycleNumber": 2, "slotNumber": 3, "memberId": 5,
+    { "id": 14, "rotationId": 3, "cycleNumber": 2, "slotNumber": 3, "memberId": 5,
       "status": "paid", "payoutAmount": "18000.00",
       "paidAt": "2026-08-10T00:00:00.000Z" }
   ]

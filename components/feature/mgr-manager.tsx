@@ -25,8 +25,9 @@ import {
   fillByPreferencesAction,
   archiveRotationAction,
   chargeFeeFromWalletAction,
+  rescheduleRotationAction,
 } from "@/app/(dashboard)/dashboard/mgr/actions";
-import { summarizeRotation } from "@/lib/domain/mgr";
+import { cyclesNeeded, rotationEndDate, summarizeRotation, type MgrFrequency } from "@/lib/domain/mgr";
 import { mgrFrequencies } from "@/lib/validation/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { Button } from "@/components/ui/button";
@@ -58,6 +59,26 @@ type Turn = typeof mgrMemberTurnsTable.$inferSelect & {
   slotsTaken: number;
 };
 type Member = typeof membersTable.$inferSelect;
+export type RotationView = {
+  id: number;
+  number: number;
+  status: string;
+  startDate: string;
+  endDate: string;
+  frequency: MgrFrequency;
+  recipientsPerCycle: number;
+  contributionAmount: string;
+  /** A payout has been made (or a cycle finished): the start date is fixed, later dates can still move. */
+  started: boolean;
+  finished: boolean;
+  paidOut: number;
+};
+
+const byNumber = <T extends { cycleNumber: number }>(cycles: T[]) => [...cycles].sort((a, b) => a.cycleNumber - b.cycleNumber);
+/** cycleNumber → position within the rotation, for labels. */
+const positions = (cycles: { cycleNumber: number }[]) => new Map(byNumber(cycles).map((c, i) => [c.cycleNumber, i + 1]));
+
+const FREQUENCY_LABEL: Record<string, string> = { weekly: "weekly", biweekly: "every 2 weeks", monthly: "monthly" };
 type SlotEvent = typeof mgrSlotEventsTable.$inferSelect & {
   actor: typeof usersTable.$inferSelect | null;
 };
@@ -70,7 +91,7 @@ const cycleStatusVariant = {
   planned: "secondary",
   active: "default",
   completed: "outline",
-  closed: "outline",
+  closed: "outline", // legacy
 } as const;
 
 const slotStatusVariant = {
@@ -344,6 +365,7 @@ function CycleCard({
   canClaim,
   feePct,
   walletBalance,
+  position,
 }: {
   cycle: CycleWithSlots;
   isStaff: boolean;
@@ -351,6 +373,8 @@ function CycleCard({
   canClaim: boolean;
   feePct: string;
   walletBalance: string;
+  /** 1-based position within its rotation (cycle numbers run on across rotations). */
+  position: number;
 }) {
   const [open, setOpen] = useState(cycle.status === "active");
   const [isPending, startTransition] = useTransition();
@@ -360,7 +384,7 @@ function CycleCard({
       <CardHeader className="cursor-pointer select-none" onClick={() => setOpen((o) => !o)}>
         <div className="flex items-center justify-between">
           <CardTitle className="text-base">
-            Cycle {cycle.cycleNumber}
+            Cycle {position}
             {cycle.scheduledDate && (
               <span className="ml-2 font-normal text-muted-foreground">{cycle.scheduledDate}</span>
             )}
@@ -379,7 +403,7 @@ function CycleCard({
                   startTransition(async () => {
                     const result = await closeCycleAction(cycle.id);
                     if (result?.error) toast.error(result.error);
-                    else toast.success(`Cycle ${cycle.cycleNumber} closed`);
+                    else toast.success(`Cycle ${position} closed`);
                   });
                 }}
               >
@@ -411,33 +435,92 @@ function CycleCard({
   );
 }
 
+/** The live rotation's dates. The end date is automatic; officials can move the start (or the remaining dates). */
+function RotationHeader({ rotation, isStaff, today }: { rotation: RotationView; isStaff: boolean; today: string }) {
+  const [editing, setEditing] = useState(false);
+  const [date, setDate] = useState(rotation.started ? "" : rotation.startDate);
+  const [isPending, startTransition] = useTransition();
+  function save() {
+    startTransition(async () => {
+      const result = await rescheduleRotationAction(date);
+      if (result?.error) toast.error(result.error);
+      else {
+        toast.success("Dates moved");
+        setEditing(false);
+      }
+    });
+  }
+  return (
+    <div className="space-y-2 rounded-xl border bg-card p-4">
+      <p className="text-base font-semibold">Rotation {rotation.number}</p>
+      <p className="text-sm text-muted-foreground">
+        {rotation.startDate > today ? "Starts" : "Started"} {rotation.startDate} · ends {rotation.endDate} — the end date is set by the
+        system from your members, their turns and the {FREQUENCY_LABEL[rotation.frequency] ?? rotation.frequency} schedule. It
+        archives itself when the last turn is paid.
+      </p>
+      {isStaff &&
+        (editing ? (
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="space-y-1">
+              <Label htmlFor="rotation-date">{rotation.started ? "Move the next payout to" : "New start date"}</Label>
+              <Input id="rotation-date" type="date" min={today} value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
+            </div>
+            <Button size="sm" disabled={isPending || !date} onClick={save}>
+              {isPending ? "Saving…" : "Save"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </Button>
+            <p className="basis-full text-xs text-muted-foreground">
+              {rotation.started
+                ? "Paid cycles keep their dates; the next payout and all after it move. The end date follows."
+                : "Every cycle moves with it. The end date follows."}
+            </p>
+          </div>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+            {rotation.started ? "Move remaining dates" : "Change start date"}
+          </Button>
+        ))}
+    </div>
+  );
+}
+
 function ScheduleTab({
   cycles,
+  rotations,
+  liveRotationId,
   isStaff,
   members,
   canClaim,
   feePct,
   walletBalance,
+  today,
 }: {
   cycles: CycleWithSlots[];
+  rotations: RotationView[];
+  liveRotationId: number | null;
   isStaff: boolean;
   members: Member[];
   canClaim: boolean;
   feePct: string;
   walletBalance: string;
+  today: string;
 }) {
-  if (cycles.length === 0) {
+  const live = rotations.find((r) => r.id === liveRotationId) ?? null;
+  const past = rotations.filter((r) => r.status === "archived");
+  if (!live && past.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No schedule generated yet.{isStaff && " Use the Admin tab to generate one."}
+        No rotation yet.{isStaff && " Use the Admin tab to plan the first one."}
       </p>
     );
   }
-  const current = cycles.filter((c) => c.status !== "closed");
-  const archived = cycles.filter((c) => c.status === "closed");
+  const current = cycles.filter((c) => c.rotationId === liveRotationId);
   const progress = summarizeRotation(current);
   return (
     <div className="space-y-3">
+      {live && <RotationHeader rotation={live} isStaff={isStaff} today={today} />}
       <div className="rounded-xl border bg-card p-4">
         <p className="text-base font-semibold">
           {progress.currentCycle
@@ -452,15 +535,16 @@ function ScheduleTab({
           <div className="h-full bg-primary" style={{ width: `${progress.percent}%` }} />
         </div>
       </div>
-      {current.length === 0 && (
+      {!live && (
         <p className="text-sm text-muted-foreground">
-          The last rotation is archived.{isStaff && " Use the Admin tab to start a new one."}
+          The last rotation finished and is archived.{isStaff && " Use the Admin tab to start the next one."}
         </p>
       )}
-      {current.map((c) => (
+      {byNumber(current).map((c, i) => (
         <CycleCard
           key={c.id}
           cycle={c}
+          position={i + 1}
           isStaff={isStaff}
           members={members}
           canClaim={canClaim}
@@ -468,26 +552,37 @@ function ScheduleTab({
           walletBalance={walletBalance}
         />
       ))}
-      {archived.length > 0 && (
-        <details className="rounded-xl border p-4">
-          <summary className="cursor-pointer text-base font-medium">
-            Past rotations ({archived.length} cycles)
-          </summary>
-          <div className="mt-3 space-y-3">
-            {archived.map((c) => (
-              <CycleCard
-                key={c.id}
-                cycle={c}
-                isStaff={false}
-                members={members}
-                canClaim={false}
-                feePct={feePct}
-                walletBalance={walletBalance}
-              />
-            ))}
-          </div>
-        </details>
-      )}
+      {past.length > 0 && <p className="pt-2 text-base font-semibold">Past rotations</p>}
+      {past.map((r) => {
+        const own = cycles.filter((c) => c.rotationId === r.id);
+        const slots = own.flatMap((c) => c.slots);
+        return (
+          <details key={r.id} className="rounded-xl border p-4">
+            <summary className="cursor-pointer text-sm">
+              <span className="font-medium">Rotation {r.number}</span>
+              <span className="text-muted-foreground">
+                {" "}
+                · {r.startDate} → {r.endDate} · {slots.filter((s) => s.status === "paid").length} of {slots.length} turns paid ·{" "}
+                {ksh(r.paidOut)} paid out
+              </span>
+            </summary>
+            <div className="mt-3 space-y-3">
+              {byNumber(own).map((c, i) => (
+                <CycleCard
+                  key={c.id}
+                  cycle={c}
+                  position={i + 1}
+                  isStaff={false}
+                  members={members}
+                  canClaim={false}
+                  feePct={feePct}
+                  walletBalance={walletBalance}
+                />
+              ))}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -550,7 +645,8 @@ function MyPreferences({
   choicesOpen: boolean;
   isStaff: boolean;
 }) {
-  const upcoming = cycles.filter((c) => c.status === "planned" || c.status === "active");
+  const pos = positions(cycles);
+  const upcoming = byNumber(cycles).filter((c) => c.status === "planned" || c.status === "active");
   const [choices, setChoices] = useState<string[]>([
     String(turn.preferredCycles?.[0] ?? ""),
     String(turn.preferredCycles?.[1] ?? ""),
@@ -593,7 +689,7 @@ function MyPreferences({
               <option value="">No preference</option>
               {upcoming.map((c) => (
                 <option key={c.id} value={c.cycleNumber}>
-                  Cycle {c.cycleNumber}
+                  Cycle {pos.get(c.cycleNumber)}
                   {c.scheduledDate ? ` · ${c.scheduledDate}` : ""}
                 </option>
               ))}
@@ -641,7 +737,7 @@ function TurnsTab({
               <TurnRow turn={t} editable={isStaff || t.memberId === myMemberId} />
               {isStaff && t.preferredCycles && t.preferredCycles.length > 0 && (
                 <p className="pb-2 text-xs text-muted-foreground">
-                  Would like: {t.preferredCycles.map((n) => `Cycle ${n}`).join(", ")}
+                  Would like: {t.preferredCycles.map((n) => `Cycle ${positions(cycles).get(n) ?? n}`).join(", ")}
                 </p>
               )}
             </div>
@@ -655,7 +751,11 @@ function TurnsTab({
 // ── Admin tab ────────────────────────────────────────────────────────────
 function ConfigForm({
   config,
+  totalTurns,
+  hasLiveRotation,
 }: {
+  totalTurns: number;
+  hasLiveRotation: boolean;
   config: {
     mgrFrequency: string;
     mgrRecipientsPerCycle: number | null;
@@ -674,10 +774,19 @@ function ConfigForm({
     },
     null,
   );
+  const [frequency, setFrequency] = useState(config.mgrFrequency);
+  const [recipients, setRecipients] = useState(String(config.mgrRecipientsPerCycle ?? 1));
+  const [start, setStart] = useState(config.mgrStartDate ?? "");
+  const cycles = cyclesNeeded(totalTurns, Number(recipients) || 1);
+  const preview = start && cycles > 0 ? rotationEndDate(start, frequency as MgrFrequency, cycles) : null;
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Cycle configuration</CardTitle>
+        <CardTitle className="text-base">Rotation settings</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Used for the next rotation{hasLiveRotation ? ", and for the current one until its first payout (press Rebuild schedule)" : ""}.
+          You choose the start; the end date is worked out for you.
+        </p>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -686,6 +795,7 @@ function ConfigForm({
             <Select
               name="mgrFrequency"
               defaultValue={config.mgrFrequency}
+              onValueChange={(v) => setFrequency(String(v ?? config.mgrFrequency))}
               items={Object.fromEntries(mgrFrequencies.map((f) => [f, f]))}
             >
               <SelectTrigger id="mgrFrequency" className="w-full">
@@ -707,16 +817,18 @@ function ConfigForm({
               name="mgrRecipientsPerCycle"
               type="number"
               min={1}
-              defaultValue={config.mgrRecipientsPerCycle ?? 1}
+              value={recipients}
+              onChange={(e) => setRecipients(e.target.value)}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mgrStartDate">Start date</Label>
+            <Label htmlFor="mgrStartDate">First payout of the next rotation</Label>
             <Input
               id="mgrStartDate"
               name="mgrStartDate"
               type="date"
-              defaultValue={config.mgrStartDate ?? ""}
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -738,6 +850,17 @@ function ConfigForm({
               defaultValue={config.mgrContributionAmount ?? config.sharePrice}
             />
           </div>
+          <p className="rounded-md bg-muted/50 p-3 text-sm sm:col-span-2 lg:col-span-4">
+            {totalTurns} turns ÷ {Number(recipients) || 1} per cycle = <strong>{cycles} cycles</strong>, {FREQUENCY_LABEL[frequency] ?? frequency}.
+            {preview ? (
+              <>
+                {" "}
+                Starting {start}, it ends on <strong>{preview}</strong>.
+              </>
+            ) : (
+              " Pick a start date to see the end date."
+            )}
+          </p>
           {state?.error && (
             <p className="lg:col-span-4 text-sm text-destructive">{state.error}</p>
           )}
@@ -750,14 +873,15 @@ function ConfigForm({
   );
 }
 
-function AdminActions() {
+function AdminActions({ live, suggestedStart, today }: { live: RotationView | null; suggestedStart: string | null; today: string }) {
   const [isPending, startTransition] = useTransition();
+  const [startDate, setStartDate] = useState(suggestedStart ?? today);
 
   function generate() {
     startTransition(async () => {
-      const result = await generateScheduleAction();
+      const result = await generateScheduleAction(live ? undefined : startDate);
       if (result?.error) toast.error(result.error);
-      else toast.success("Schedule generated");
+      else toast.success(live ? "Schedule rebuilt" : "Rotation planned");
     });
   }
 
@@ -800,7 +924,7 @@ function AdminActions() {
 
   function startNew(draw: boolean) {
     startTransition(async () => {
-      const result = await startNewRotationAction(draw);
+      const result = await startNewRotationAction(draw, startDate);
       if (result?.error) toast.error(result.error);
       else toast.success("New rotation started");
     });
@@ -816,8 +940,30 @@ function AdminActions() {
         <CardTitle className="text-base">Actions</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
+        {!live && (
+          <div className="basis-full space-y-3 rounded-md border p-3">
+            <p className="text-sm font-medium">Start the next rotation</p>
+            <div className="space-y-1">
+              <Label htmlFor="next-start">First payout</Label>
+              <Input id="next-start" type="date" min={today} value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-44" />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button disabled={isPending || !startDate} onClick={() => startNew(true)}>
+                Start (random order)
+              </Button>
+              <Button variant="outline" disabled={isPending || !startDate} onClick={() => startNew(false)}>
+                Start (join order)
+              </Button>
+              <Button variant="outline" disabled={isPending || !startDate} onClick={generate}>
+                Plan only, fill turns later
+              </Button>
+            </div>
+          </div>
+        )}
+        {live && (
+        <>
         <Button disabled={isPending} onClick={generate}>
-          {isPending ? "Working…" : "Generate / rebuild schedule"}
+          {isPending ? "Working…" : "Rebuild schedule"}
         </Button>
         <Button variant="outline" disabled={isPending} onClick={() => autoAssign(false)}>
           Fill open slots in order
@@ -834,18 +980,16 @@ function AdminActions() {
         <Button variant="outline" disabled={isPending} onClick={addCycle}>
           Add cycle manually
         </Button>
-        <div className="basis-full border-t pt-3 text-sm text-muted-foreground">
-          When every cycle is done: archive it, or archive and start a fresh rotation in one step.
-        </div>
-        <Button variant="outline" disabled={isPending} onClick={archive}>
-          Archive finished rotation
-        </Button>
-        <Button disabled={isPending} onClick={() => startNew(true)}>
-          Start new rotation (random order)
-        </Button>
-        <Button variant="outline" disabled={isPending} onClick={() => startNew(false)}>
-          Start new rotation (same order)
-        </Button>
+        {live.finished && (
+          <Button variant="outline" disabled={isPending} onClick={archive}>
+            Archive finished rotation
+          </Button>
+        )}
+        <p className="basis-full text-xs text-muted-foreground">
+          The rotation archives itself when its last turn is paid; then you can start the next one here.
+        </p>
+        </>
+        )}
       </CardContent>
     </Card>
   );
@@ -908,6 +1052,11 @@ function ActivityLog({ events, members }: { events: SlotEvent[]; members: Member
 export function MgrManager({
   config,
   cycles,
+  rotations,
+  liveRotationId,
+  suggestedStart,
+  totalTurns,
+  today,
   turns,
   members,
   isStaff,
@@ -927,6 +1076,11 @@ export function MgrManager({
     mgrFeePct: string;
   };
   cycles: CycleWithSlots[];
+  rotations: RotationView[];
+  liveRotationId: number | null;
+  suggestedStart: string | null;
+  totalTurns: number;
+  today: string;
   turns: Turn[];
   members: Member[];
   isStaff: boolean;
@@ -947,6 +1101,9 @@ export function MgrManager({
       <TabsContent value="schedule">
         <ScheduleTab
           cycles={cycles}
+          rotations={rotations}
+          liveRotationId={liveRotationId}
+          today={today}
           isStaff={isStaff}
           members={members}
           canClaim={!blockedByAgreement}
@@ -958,7 +1115,7 @@ export function MgrManager({
       <TabsContent value="turns">
         <TurnsTab
           turns={turns}
-          cycles={cycles}
+          cycles={cycles.filter((c) => c.rotationId === liveRotationId)}
           isStaff={isStaff}
           myMemberId={myMemberId}
           choicesCloseDate={config.mgrChoicesCloseDate}
@@ -968,8 +1125,8 @@ export function MgrManager({
 
       {isStaff && (
         <TabsContent value="admin" className="space-y-6">
-          <ConfigForm config={config} />
-          <AdminActions />
+          <ConfigForm config={config} totalTurns={totalTurns} hasLiveRotation={liveRotationId !== null} />
+          <AdminActions live={rotations.find((r) => r.id === liveRotationId) ?? null} suggestedStart={suggestedStart} today={today} />
           <ActivityLog events={slotEvents} members={members} />
         </TabsContent>
       )}

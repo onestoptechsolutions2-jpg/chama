@@ -9,6 +9,7 @@ import {
   contributions,
   fines,
   mgrCycles,
+  mgrRotations,
   contributionDues,
   platformPayments,
   users,
@@ -42,6 +43,7 @@ import {
 let tenantA: number;
 let tenantB: number;
 let memberA: number;
+let rotationA: number;
 
 beforeAll(async () => {
   const roleCheck = await pool.query(
@@ -76,6 +78,14 @@ beforeAll(async () => {
       .returning({ id: members.id }),
   );
   memberA = m.id;
+
+  const [r] = await withTenant(tenantA, (tx) =>
+    tx
+      .insert(mgrRotations)
+      .values({ groupId: tenantA, number: 1, startDate: "2026-01-01", endDate: "2026-01-01", frequency: "monthly", contributionAmount: "100" })
+      .returning({ id: mgrRotations.id }),
+  );
+  rotationA = r.id;
 });
 
 afterAll(async () => {
@@ -199,8 +209,19 @@ testTenantIsolation("fines", fines, fines.id, () => ({
   amount: "50",
 }));
 
+testTenantIsolation("mgrRotations", mgrRotations, mgrRotations.id, () => ({
+  groupId: tenantA,
+  number: 99,
+  status: "archived",
+  startDate: "2025-01-01",
+  endDate: "2025-01-01",
+  frequency: "monthly",
+  contributionAmount: "100",
+}));
+
 testTenantIsolation("mgrCycles", mgrCycles, mgrCycles.id, () => ({
   groupId: tenantA,
+  rotationId: rotationA,
   cycleNumber: 999,
 }));
 
