@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { revalidatePath } from "next/cache";
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
@@ -223,6 +224,9 @@ export async function createGroupAction(
     const admin = await tx.query.users.findFirst({ where: sql`lower(${users.email}) = ${adminEmail.trim().toLowerCase()}` });
     if (!admin) {
       return { error: "No account with that email exists yet — ask them to register first" };
+    }
+    if (isPlatformStaff(admin.platformRole)) {
+      return { error: "The group's admin must be a member's own account, not a platform staff account." };
     }
 
     const [group] = await tx

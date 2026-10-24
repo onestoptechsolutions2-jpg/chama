@@ -10,6 +10,7 @@ import { requirePlatformPermission, requireSession } from "@/lib/auth/session";
 import { canPlatform } from "@/lib/auth/permissions";
 import { SUPPORT_SESSION_MINUTES } from "@/lib/auth/support";
 import { insertNotification } from "@/lib/db/notifications";
+import { runAgent, type AgentReport } from "@/lib/agent/run";
 
 const startSchema = z.object({
   reason: z.string().trim().min(5, "Say why you're opening this group (at least a few words)").max(300),
@@ -85,5 +86,40 @@ export async function endSupportSessionAction(): Promise<void> {
   }
   const groupId = session.activeMembership?.groupId;
   await db.update(sessions).set({ supportSessionId: null, activeGroupId: null }).where(eq(sessions.id, session.sessionId));
-  redirect(groupId ? `/super-admin/groups/${groupId}` : "/super-admin");
+  redirect(groupId ? `/super-admin/support?left=${groupId}` : "/super-admin/support");
+}
+
+/** Another 30 minutes on the open support session (logged in the group's Activity). */
+export async function extendSupportSessionAction(): Promise<void> {
+  const session = await requireSession();
+  if (!session.support || !session.activeMembership) return;
+  const id = session.support.supportSessionId;
+  const expiresAt = new Date(Date.now() + SUPPORT_SESSION_MINUTES * 60_000);
+  await withPlatformAdmin((tx) =>
+    tx.update(supportSessions).set({ expiresAt }).where(and(eq(supportSessions.id, id), eq(supportSessions.staffUserId, session.user.id))),
+  );
+  await withTenant(session.activeMembership.groupId, (tx) =>
+    tx.insert(groupAuditLog).values({
+      groupId: session.activeMembership!.groupId,
+      command: "support.extend",
+      actorUserId: session.user.id,
+      via: "support",
+      onBehalfOfUserId: session.support!.asUserId,
+      reason: session.support!.reason,
+      input: {},
+      ok: true,
+    }),
+  );
+  redirect("/dashboard");
+}
+
+/**
+ * Runs the deterministic agent's playbooks for one group from the support
+ * console: dryRun shows the plan, otherwise it's carried out (audited as
+ * via = agent, with the staff member recorded).
+ */
+export async function runAgentAction(groupId: number, dryRun: boolean): Promise<AgentReport | { error: string }> {
+  const session = await requirePlatformPermission("agent.run");
+  const report = await runAgent(groupId, { dryRun, trigger: "support", triggeredBy: session.user.id });
+  return report ?? { error: "Group not found or inactive" };
 }

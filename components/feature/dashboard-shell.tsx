@@ -175,7 +175,7 @@ function BottomBar({ items, onMenu }: { items: NavItem[]; onMenu: () => void }) 
             className={`${base} ${active ? "text-primary" : "text-muted-foreground"}`}
           >
             <Icon className="size-6" />
-            {item.label}
+            {item.shortLabel ?? item.label}
           </Link>
         );
       })}

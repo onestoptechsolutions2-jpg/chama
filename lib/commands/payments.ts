@@ -27,7 +27,7 @@ type Applied =
   | { kind: "loan"; loanId: number };
 
 /** Records the money against the member: a contribution, or a repayment on their oldest open loan. */
-async function applyToMember(
+export async function applyToMember(
   tx: Tx,
   actor: Actor,
   group: typeof groups.$inferSelect,

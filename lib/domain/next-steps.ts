@@ -25,6 +25,7 @@ export type NextStepsInput = {
     welfareManage: boolean;
     settingsManage: boolean;
     rulesManage: boolean;
+    approveWithdrawal: boolean;
   };
   setup: {
     registrationComplete: boolean;
@@ -41,6 +42,8 @@ export type NextStepsInput = {
     pendingLoanApplications: number;
     overdueLoans: number;
     pendingWelfareRequests: number;
+    /** Group-wallet withdrawals someone else asked for, waiting for this official. */
+    withdrawalsToApprove: number;
   };
   me: {
     hasMemberRecord: boolean;
@@ -109,6 +112,16 @@ export function generateNextSteps(input: NextStepsInput): NextStep[] {
       detail: "We couldn't tell who paid. Pick the member and they get their receipt.",
       href: "/dashboard/payments",
       action: "Match",
+    });
+  }
+  if (work.withdrawalsToApprove > 0 && can.approveWithdrawal) {
+    add({
+      id: "approve-withdrawals",
+      severity: "warning",
+      title: `${plural(work.withdrawalsToApprove, "withdrawal")} waiting for your approval`,
+      detail: "Another official asked to move money from the group wallet to the group's own account.",
+      href: "/dashboard/payments",
+      action: "Review",
     });
   }
   if (work.pendingJoinRequests > 0 && can.membersApprove) {

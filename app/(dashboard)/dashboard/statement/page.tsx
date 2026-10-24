@@ -1,6 +1,11 @@
 import { requireActiveGroup } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
 import { Card, CardContent } from "@/components/ui/card";
+import { eq } from "drizzle-orm";
+import { withTenant } from "@/lib/db/rls";
+import { groups } from "@/lib/db/schema";
+import { groupWalletsEnabled } from "@/lib/payments/intasend";
+import { PayByMpesa } from "@/components/feature/pay-by-mpesa";
 import { loadStatement } from "./data";
 import { StatementView } from "./statement-view";
 
@@ -32,11 +37,26 @@ export default async function StatementPage({
   if (!member) return null;
 
   const isSelf = targetId === session.activeMembership.memberId;
+  const walletOn =
+    isSelf &&
+    groupWalletsEnabled() &&
+    Boolean(
+      (await withTenant(groupId, (tx) => tx.query.groups.findFirst({ where: eq(groups.id, groupId), columns: { intasendWalletId: true } })))
+        ?.intasendWalletId,
+    );
+  const products = session.activeMembership.products;
+  const purposes = [
+    { value: "capital", label: "Shares" },
+    { value: "personal_savings", label: "Savings" },
+    ...(products.welfare ? [{ value: "welfare", label: "Welfare" }] : []),
+    ...(products.loans ? [{ value: "loan", label: "Loan repayment" }] : []),
+  ];
   return (
     <StatementView
       title={isSelf ? "My Money" : `Money — ${member.name}`}
       description={isSelf ? "What you have put in and what you owe." : "Full financial history."}
       data={{ ...data, member }}
+      action={walletOn ? <PayByMpesa purposes={purposes} /> : null}
     />
   );
 }

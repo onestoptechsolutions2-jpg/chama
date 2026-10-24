@@ -8,6 +8,8 @@ import { Landmark, Wallet, HeartHandshake, CalendarDays, Gavel, RefreshCw, type 
 import { requireSession, type SessionWithGroup } from "@/lib/auth/session";
 import { loadNextSteps } from "@/lib/next-steps/data";
 import { NextSteps } from "@/components/feature/next-steps";
+import { FundCard } from "@/components/feature/fund-card";
+import { fundSummary } from "@/lib/funds/funds";
 import { can, canPlatform } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { members, fines, meetings } from "@/lib/db/schema";
@@ -28,7 +30,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   if (!session.activeMembership) {
     // Platform staff don't need a group; their home is the super-admin area.
-    if (canPlatform(session.user.platformRole, "platform.console") && myInvites.length === 0) redirect("/super-admin");
+    if (canPlatform(session.user.platformRole, "platform.console")) redirect("/super-admin/support");
     return (
       <div className="space-y-4">
       <MyInvites invites={myInvites} />
@@ -77,6 +79,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Tiles follow permissions, so nobody sees a button for something they can't do.
   const m = session.activeMembership;
   const nextSteps = await loadNextSteps(session as SessionWithGroup);
+  // A funeral fund's committee sees the fund first (lib/funds/funds.ts).
+  const fund = can(m, "members.view") ? await fundSummary(groupId) : null;
 
   const tiles: Tile[] = [
     ...(can(m, "money.record") ? [{ href: "/dashboard/collect", label: "Add Money", hint: "Record today's payments", icon: Wallet }] : []),
@@ -103,6 +107,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           {groupName} · {totals.memberCount} members · {ksh(totals.saved)} saved together
         </p>
       </div>
+
+      {fund && <FundCard s={fund} canWithdraw={can(m, "money.withdraw") || can(m, "money.approveWithdrawal")} />}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {tiles.map(({ href, label, hint, icon: Icon }) => (

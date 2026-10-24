@@ -1,0 +1,1 @@
+ALTER TABLE "funeral_funds" ADD COLUMN "target_kes" integer;

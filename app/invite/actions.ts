@@ -1,5 +1,6 @@
 "use server";
 
+import { isPlatformStaff, PLATFORM_STAFF_NO_GROUPS } from "@/lib/auth/permissions";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
@@ -25,6 +26,7 @@ export async function acceptInviteAction(token: string): Promise<{ error: string
 
   const user = await db.query.users.findFirst({ where: eq(users.id, session.user.id) });
   if (!user) return { error: "Sign in again." };
+  if (isPlatformStaff(user.platformRole)) return { error: PLATFORM_STAFF_NO_GROUPS };
   const blocked = inviteAcceptError(invite, user);
   if (blocked) return { error: blocked };
 

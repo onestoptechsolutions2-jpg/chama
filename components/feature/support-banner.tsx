@@ -1,4 +1,4 @@
-import { endSupportSessionAction } from "@/app/super-admin/support/actions";
+import { endSupportSessionAction, extendSupportSessionAction } from "@/app/super-admin/support/actions";
 import type { SupportContext } from "@/lib/auth/session";
 import { Button } from "@/components/ui/button";
 
@@ -11,11 +11,18 @@ export function SupportBanner({ support, groupName }: { support: SupportContext;
         <strong>Support mode</strong> · {groupName} · as {support.asUserName ?? "group admin"} ·{" "}
         {support.mode === "act" ? "can make changes" : "view only"} · “{support.reason}” · ends {ends}
       </p>
-      <form action={endSupportSessionAction}>
-        <Button type="submit" size="sm" variant="secondary">
-          Exit support mode
-        </Button>
-      </form>
+      <div className="flex gap-2">
+        <form action={extendSupportSessionAction}>
+          <Button type="submit" size="sm" variant="ghost" className="text-white hover:bg-red-700 hover:text-white">
+            Add 30 min
+          </Button>
+        </form>
+        <form action={endSupportSessionAction}>
+          <Button type="submit" size="sm" variant="secondary">
+            Exit support mode
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

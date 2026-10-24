@@ -1,3 +1,4 @@
+import { funeralOfferEnabled } from "@/lib/funds/referral";
 import { and, eq } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/permissions";
@@ -84,6 +85,7 @@ export default async function WelfarePage() {
         reserveLow={reserveLow}
         isStaff={isStaff}
         memberId={memberId}
+        funeralOffer={funeralOfferEnabled()}
       />
       {can(session.activeMembership, "settings.manage") && (
         <BenefitTableEditor initial={readBenefitSchedule(policy.benefitSchedule)} />

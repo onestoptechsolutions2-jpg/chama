@@ -37,6 +37,16 @@ mirrors it. Members see the same matrix in plain words at **Roles & access**
 Products (loans, MGR, welfare, projects) are switched on per group, and a
 permission tied to a product only applies when it is on.
 
+**Platform staff never belong to a group.** An account with a platform role
+can't create, join, accept an invite to, or be approved into a group, and
+any memberships it had before are ignored at sign-in
+(`isPlatformStaff`). Granting a platform role to someone who is in a group
+is refused, and merging a member account into a staff account is refused.
+Staff reach groups only through support mode — so everything they do is
+time-boxed, has a reason and is in the group's Activity log. A staff member
+who is also a real chama member uses a separate personal account.
+`/super-admin/users` lists any staff account still recorded in a group.
+
 ## 3. Group permissions
 
 | Permission | Admin | Treasurer | Secretary | Member | Product |
@@ -64,14 +74,17 @@ permission tied to a product only applies when it is on.
 | `reports.view` — staff reports, CSV | ✓ | ✓ | ✓ | | |
 | `audit.view` — Activity log | ✓ | ✓ | ✓ | | |
 | `settings.view` | ✓ | ✓ | ✓ | | |
-| `settings.manage` — settings, products, paybill, benefit table | ✓ | | | | |
+| `settings.manage` — settings, products, paybill, benefit table, turn on the wallet | ✓ | | | | |
+| `money.withdraw` — ask to withdraw from the group wallet | ✓ | ✓ | | | |
+| `money.approveWithdrawal` — approve another official's withdrawal | ✓ | ✓ | ✓ | | |
+| `money.payoutDestination` — where wallet withdrawals go | ✓ | | | | |
 | `billing.view` / `billing.pay` | ✓ | ✓ | | | |
 | `billing.invoice`, `platformFees.pay`, `developer.manage` | ✓ | | | | |
 
 **Maker–checker** (`selfDealingError`): nobody creates, approves or records
 repayment of their own loan, marks their own merry-go-round payout paid,
-waives their own fine, or approves their own welfare claim — another
-official must.
+waives their own fine, or approves their own welfare claim, or approves a wallet withdrawal
+they asked for — another official must.
 
 ## 4. Platform permissions
 
@@ -116,21 +129,44 @@ Officials read it at **Activity** (`/dashboard/activity`).
 
 ## 7. Support mode ("act as")
 
-From `/super-admin/groups/<id>` → *Open as support*: a reason (shown to
+Staff start at the **Support console** (`/super-admin/support`, their home
+page): every group with its waiting work — payments to match, join, loan and
+welfare requests, overdue loans, unaccepted invites, unfinished setup — and
+an **Open** button (reason + view-only or work on it). It opens the group as
+its admin, so every function of the group is available, within the rules
+below. *Add 30 min* in the banner extends the session (logged). The same
+form, plus "see it as a particular member", is on `/super-admin/groups/<id>`.
+
+From either place: a reason (shown to
 the group), as the group admin or as one member, view-only or act, for 30
 minutes. The group is shown exactly as that member sees it. A red banner is
 on every page. The group's admins are notified. In support mode:
 
 - view-only blocks every write;
-- never: API keys, paying the platform, member passwords, personal KYC;
-- loans/MGR/welfare management: platform owners only;
+- never: API keys, paying the platform, member passwords, personal KYC,
+  where wallet withdrawals go;
+- loans/MGR/welfare management and wallet withdrawals: platform owners only;
 - maker–checker applies to the member being acted as;
 - every write attempt — allowed or refused — is in the group's Activity log.
 
-## 8. The agent
+## 8. Partners (funeral funds)
 
-`POST /api/internal/commands` with `Authorization: Bearer $AGENT_API_TOKEN`
-runs a registered command (`lib/commands/registry.ts`) as `AGENT_USER_ID`
-(an account with the `agent` platform role). Dry-run by default; a reason
-is required; `asUserId` makes it act with that member's role; it never moves
-money out (it prepares, a person pays). See `api.md`.
+A partner (Family Compass) authenticates with its own token
+(`PARTNER_API_TOKENS`) and can only create and read **its own** funeral
+funds. It never acts inside a group: the committee join by invite with their
+own logins and hold the group roles; withdrawals still need two officials;
+the payout account can be set by the partner only at creation, before any
+money arrives. Platform staff can't be committee members.
+
+## 9. The agent — fixed rules, no AI
+
+The agent is deterministic: a set of playbooks (`lib/domain/agent-playbooks.ts`)
+— plain rules that read the group's records and return a plan. The same
+records always give the same plan. `lib/agent/run.ts` carries a plan out
+through the normal commands as `via: agent`, with the playbook as the
+reason, so the permission matrix, maker–checker and audit log apply and it
+never moves money out. It runs daily (cron), from the Support console's
+**Run agent** (staff with `agent.run`; preview first), or via
+`POST /api/internal/agent` (`AGENT_API_TOKEN`), which can trigger playbooks
+only — never arbitrary commands. Next steps on Home is the same idea for
+people: fixed rules that list what to do.

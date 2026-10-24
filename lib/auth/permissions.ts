@@ -42,6 +42,9 @@ export const GROUP_PERMISSIONS = {
   "members.manage": { roles: ADMIN, label: "Change roles, remove or bring back members, reset passwords" },
 
   "money.record": { roles: MONEY, label: "Record contributions and match M-Pesa/bank payments" },
+  "money.withdraw": { roles: MONEY, label: "Ask to withdraw from the group wallet (to the group's own account)" },
+  "money.approveWithdrawal": { roles: OFFICIALS, label: "Approve a withdrawal another official asked for" },
+  "money.payoutDestination": { roles: ADMIN, label: "Set the group's own bank account or paybill for withdrawals" },
   "fines.issue": { roles: OFFICIALS, label: "Issue fines" },
   "fines.settle": { roles: MONEY, label: "Mark fines paid or waived" },
   "meetings.manage": { roles: OFFICIALS, label: "Schedule meetings and take attendance" },
@@ -81,7 +84,7 @@ export const PLATFORM_PERMISSIONS = {
   "support.view": { roles: ["owner", "support"], label: "Open a group as a user, read-only" },
   "support.act": { roles: ["owner", "support"], label: "Make changes in a group on a user's behalf" },
   "support.money": { roles: ["owner"], label: "Move money (payouts, disbursements) on a user's behalf" },
-  "agent.run": { roles: ["agent", "owner"], label: "Run commands through the internal agent endpoint" },
+  "agent.run": { roles: ["agent", "owner", "support"], label: "Run the agent's fixed playbooks for a group (no AI; never moves money out)" },
 } as const satisfies Record<string, { roles: PlatformRole[]; label: string }>;
 
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;
@@ -124,3 +127,16 @@ export function selfDealingError(
   }
   return null;
 }
+
+/**
+ * Platform staff (owner, support, agent) never belong to a group — they
+ * work on groups only through support mode, so every change they make is
+ * time-boxed, reasoned and audited, and their access never mixes with a
+ * member's. Checked wherever someone joins a group, and at sign-in.
+ */
+export function isPlatformStaff(role: PlatformRole | null | undefined): boolean {
+  return role !== null && role !== undefined;
+}
+
+export const PLATFORM_STAFF_NO_GROUPS =
+  "Platform staff accounts can't belong to a group. Use support mode to help this group, or a separate personal account to be a member.";

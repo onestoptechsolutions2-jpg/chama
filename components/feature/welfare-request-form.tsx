@@ -28,12 +28,15 @@ export function WelfareRequestForm({
   maxLongTermGrant,
   maxAdvance,
   benefits = [],
+  funeralOffer = false,
 }: {
   maxEmergencyGrant: number;
   maxLongTermGrant: number;
   maxAdvance: number;
   /** The group's benefit table; when present, members pick an event and the amount is fixed. */
   benefits?: BenefitItem[];
+  /** Offer the Family Compass opt-in (only used when the claim is a bereavement). */
+  funeralOffer?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<WelfareActionState, FormData>(
     submitWelfareRequestAction,
@@ -183,6 +186,15 @@ export function WelfareRequestForm({
             <Textarea id="description" name="description" />
           </div>
 
+          {funeralOffer && (
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" name="partnerContactOk" className="mt-0.5 size-4" />
+              <span>
+                If this is about a death: Family Compass may text me an offer to prepare a funeral programme. Nothing about me is shared with
+                them.
+              </span>
+            </label>
+          )}
           {state?.error && <p className="text-sm text-destructive">{state.error}</p>}
           <Button type="submit" disabled={pending || nothingSelected || benefitId === ""}>
             {pending ? "Submitting…" : "Submit request"}

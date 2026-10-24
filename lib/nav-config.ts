@@ -42,6 +42,8 @@ export const navSections: { id: NavSection; label: string }[] = [
 export type NavItem = {
   href: string;
   label: string;
+  /** Shorter text for the phone's bottom bar, when `label` would wrap. */
+  shortLabel?: string;
   icon: LucideIcon;
   /**
    * The permission needed to see this item (lib/auth/permissions.ts) — the
@@ -98,6 +100,7 @@ export const navItems: NavItem[] = [
     permission: "money.record",
     section: "money",
     label: "Record Money",
+    shortLabel: "Record",
     icon: Banknote,
     guide:
       "Meeting day on one screen: type what each member paid (shares, savings, welfare, loan repayment), then save once. If one line is wrong nothing is saved, so you can fix it. Every member with a phone gets an SMS receipt.",

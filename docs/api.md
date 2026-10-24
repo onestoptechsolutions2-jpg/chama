@@ -148,6 +148,130 @@ funds).
 { "ok": true, "paymentId": 20, "amount": 5000 }
 ```
 
+## Partner API — funeral funds (Family Compass)
+
+Server-to-server, for a partner that creates **funeral funds**: a
+short-lived group for a funeral harambee. Mourners give by M-Pesa prompt
+into the fund's own IntaSend wallet without joining; the committee are the
+group's officials, and money leaves only to the account the family
+nominated, after one official asks and another approves (see Group
+wallets below). Needs `GROUP_WALLETS_ENABLED`; otherwise `POST /funds`
+returns 503 and the partner keeps its manual fallback.
+
+Auth: `Authorization: Bearer <token>`, one token per partner in
+`PARTNER_API_TOKENS` (`familycompass:<token>,…`, tokens ≥ 24 chars). A
+partner only ever sees its own funds (another's id is a 404). All amounts
+are whole shillings. Base: `/api/partner/v1`.
+
+### `POST /funds` — create (idempotent on `ref`)
+
+```json
+{ "ref": "memorial-42", "deceasedName": "Jane Wanjiru", "name": "optional",
+  "closesOn": "2026-12-23",            // optional, default 60 days, at most 120
+  "targetKes": 200000,                 // optional
+  "committee": [ { "name": "Wanjiku Kamau", "phone": "0712345678", "role": "chair" },
+                 { "name": "Akinyi Otieno", "phone": "0722111222", "role": "treasurer" } ],
+  "branches": ["Kamau family", "Wanjiru family"],
+  "payout": { "kind": "mpesa", "phone": "0799000111", "name": "Mary Wanjiru" },
+  "webhookUrl": "https://partner.example/chama-webhook" }
+// 201 { "fundId": 15, "ref", "name", "deceasedName", "status": "open", "closesOn", "targetKes",
+//       "branches", "giveUrl": "https://<chama>/f/<token>",
+//       "webhookSecret": "<shown once>", "invites": [{ "phone", "role", "sent" }] }
+// 200 (same ref again) — the same fund, without webhookSecret
+```
+
+- Committee: a chair is required (chair = group admin), at most one of each
+  role, distinct valid phones. Each gets an SMS invite and joins with their
+  own login. Platform staff accounts are refused.
+- `payout` kinds: `mpesa` (phone), `paybill` (paybill + accountRef), `till`,
+  `bank` (bankCode + account). Set only here, before any money arrives;
+  afterwards only the chair can change it in the app.
+
+### `POST /funds/{fundId}/gifts` — M-Pesa prompt for a mourner
+
+```json
+{ "name": "Peter", "phone": "0711000001", "amount": 1000, "branch": "Kamau family",
+  "message": "Pole sana", "anonymous": false }
+// 202 { "giftId": 1, "status": "pending" }
+```
+
+Ksh 10 – 250,000; `branch` must be one of the fund's branches; at most 3
+prompts per phone per fund in 10 minutes (429); refused once the fund is
+closed. The result arrives as a `fund.gift.paid` / `fund.gift.failed`
+webhook.
+
+### `GET /funds/{fundId}` — live totals
+
+```json
+{ "fundId", "ref", "name", "deceasedName", "status": "open|closed|converted", "closesOn",
+  "targetKes", "branches", "giveUrl", "total": 1500, "giftCount": 2,
+  "byBranch": [{ "branch": "Kamau family", "total": 1000, "count": 1 }],
+  "recent": [{ "name": "Well-wisher", "amount": 500, "message": "Rest in peace", "paidAt": "…" }] }
+```
+
+`byBranch` is for the committee — the partner decides who sees it (Chama's
+own public page doesn't show it). Anonymous givers show as "Well-wisher".
+
+### `POST /funds/{fundId}/convert` — keep going as a family welfare chama
+
+```json
+{ "members": [{ "name": "John Kamau", "phone": "0733000001" }] }
+// 200 { "groupId": 15, "status": "converted", "invites": [{ "phone", "invited", "sms", "reason" }] }
+```
+
+Stops gifts, switches on welfare with the funeral benefit table and rules,
+and invites each person (duplicates and bad phones are skipped and
+reported). The committee stay as officials; the group then subscribes
+like any other.
+
+### Webhooks to `webhookUrl`
+
+Same signing as group webhooks (`X-Chama-Timestamp`,
+`X-Chama-Signature-256`, `eventId`; see Outbound webhooks):
+`fund.gift.paid` `{ fundId, ref, giftId, name, amount, branch, message, total, giftCount, byBranch }`,
+`fund.gift.failed` `{ fundId, ref, giftId }`,
+`fund.closed` `{ fundId, ref, total, giftCount }` (daily job
+`/api/cron/funds-close` just after midnight Nairobi).
+
+### Bereavement referral (Chama → Family Compass)
+
+When a group approves a **bereavement** welfare claim and the claimant
+ticked "Family Compass may text me an offer", Chama POSTs to
+`FAMILY_COMPASS_REFERRAL_URL`, signed the same way with
+`FAMILY_COMPASS_REFERRAL_SECRET`:
+
+```json
+{ "eventId": "…", "event": "bereavement.approved", "groupId": 15, "groupName": "…",
+  "referrerCode": "chama-15", "payout": { "kind": "mpesa", … } | null }
+// Family Compass answers 200 { "link": "https://<family-compass>/r/<code>?to=/shop/funeral-programme" }
+```
+
+No personal details are sent. Chama texts the link to the claimant (only
+a link on Family Compass's own origin). `payout` is the group's nominated
+account, where Family Compass pays the group's referral commission.
+
+## Group wallets (IntaSend) — optional
+
+Off unless `GROUP_WALLETS_ENABLED=true` and `INTASEND_SECRET_KEY` are set
+(`groupWalletsEnabled()`). Server Actions only, no public routes
+(`app/(dashboard)/dashboard/payments/wallet-actions.ts`), all through
+commands in `lib/commands/wallet.ts`:
+
+| Command | Permission | What it does |
+|---|---|---|
+| `wallet.enable` | `settings.manage` | `POST wallets/` — a WORKING KES wallet labelled `GROUP-<id>` |
+| `collections.prompt` | `group.view` (others: `money.record`) | pending `incoming_payments` row (member + purpose known), then `POST payment/mpesa-stk-push/` with `wallet_id` and `api_ref chama-<group>-<payment>` |
+| `collections.confirm` | `money.record` (via `mpesa`) | from the webhook: COMPLETE → applied to the member and receipted; FAILED → failed. Idempotent |
+| `wallet.setDestination` | `money.payoutDestination` (admin; never support) | bank (PesaLink, bank code), paybill, till or M-Pesa number (B2C) |
+| `wallet.requestWithdrawal` | `money.withdraw` | checks the live balance and destination |
+| `wallet.approveWithdrawal` | `money.approveWithdrawal` | a different official; then `POST send-money/initiate/` (PESALINK or MPESA-B2B) |
+| `wallet.cancelWithdrawal` | `money.withdraw` | only while waiting for approval |
+
+The existing IntaSend webhook (`/api/payments/callback`) routes a COMPLETE /
+FAILED event whose `invoice_id` matches a prompt to `collections.confirm`.
+Withdrawals are `movesMoney`: the agent can't run them, and in support mode
+only platform owners can.
+
 ## Webhooks (inbound)
 
 ### `POST /api/payments/callback` — IntaSend
@@ -221,31 +345,35 @@ app only records it.
 Bank statements and payroll check-off files are imported as CSV on the
 Payments page (`payments.import`), with the same matching.
 
-## Internal agent API
+## The agent (deterministic — no AI)
 
-### `GET /api/internal/commands`
-Lists the commands the agent may run (`lib/commands/registry.ts`).
+The agent is a set of fixed rules ("playbooks", `lib/domain/agent-playbooks.ts`),
+not an AI model: the same group records always produce the same actions. It
+runs daily from Vercel Cron (`GET /api/cron/agent`, 09:00 Nairobi), from the
+Support console's **Run agent** button (preview, then *Do it*), or from
+another system with:
 
-### `POST /api/internal/commands`
+### `GET /api/internal/agent`
+Lists the playbooks and the rule each follows.
+
+### `POST /api/internal/agent`
 
 ```json
-{
-  "groupId": 12,
-  "command": "contributions.record",
-  "input": { "memberId": 5, "type": "capital", "amount": 250 },
-  "reason": "Treasurer asked to add a missed cash payment",
-  "asUserId": 31,        // optional: act with this member's role (maker–checker applies)
-  "dryRun": true         // default true: shows the result and rolls back
-}
-// 200 { "dryRun": true, "ok": true, "data": { ... } }
-// 403 { "dryRun": false, "ok": false, "error": "..." }
+{ "groupId": 12, "playbooks": ["rematch-payments"], "dryRun": true }
+// 200 { "groupId": 12, "groupName": "...", "dryRun": true,
+//       "steps": [{ "playbook": "rematch-payments", "summary": "Payment #8 → Akinyi (capital, matched by account)", "ok": null }] }
 ```
 
-- Auth: `Authorization: Bearer $AGENT_API_TOKEN`; acts as `AGENT_USER_ID`,
-  which must have the `agent` platform role. 401 otherwise.
-- Same permission matrix, validation, transaction and audit log
-  (`via: agent`, with the reason) as a person. Commands that move money out
-  are refused.
+- Auth: `Authorization: Bearer $AGENT_API_TOKEN`. `dryRun` defaults to true.
+- It can only run playbooks — it can't be given arbitrary commands, so no
+  outside system (an AI model included) can steer it.
+- Each step runs through the normal commands as `via: agent` with the
+  playbook as the reason: permission-checked, re-validated, audited, never
+  moving money out.
+
+Playbooks: **rematch-payments** (re-checks unmatched payments against
+today's member numbers/phones) and **loan-reminders** (SMS 3 days before,
+on the due date, and weekly while overdue).
 
 ## Public developer API (v1)
 
@@ -488,11 +616,14 @@ delivery attempts across all of a group's endpoints are visible there too
 POST <your configured URL>
 Content-Type: application/json
 X-Chama-Event: contribution.recorded
-X-Chama-Signature: <hex HMAC-SHA256 of the raw request body, keyed with your endpoint's secret>
+X-Chama-Timestamp: 1793091600
+X-Chama-Signature-256: <hex HMAC-SHA256 of "<timestamp>.<raw body>", keyed with your endpoint's secret>
+X-Chama-Signature: <hex HMAC-SHA256 of the raw body alone — kept for older integrations>
 ```
 
 ```json
 {
+  "eventId": "8b0d1c7e-…",
   "event": "contribution.recorded",
   "groupId": 12,
   "occurredAt": "2026-08-31T09:00:00.000Z",
@@ -502,15 +633,18 @@ X-Chama-Signature: <hex HMAC-SHA256 of the raw request body, keyed with your end
 
 ### Verifying the signature
 
-Recompute the HMAC over the **exact raw bytes** of the request body
-(don't re-serialize the parsed JSON — key order/whitespace would differ)
-using your endpoint's secret, and compare to `X-Chama-Signature`:
+Recompute the HMAC over `"<X-Chama-Timestamp>.<raw body>"` — the **exact
+raw bytes** of the body (don't re-serialize the parsed JSON) — with your
+endpoint's secret, compare it to `X-Chama-Signature-256`, and reject a
+timestamp more than ~5 minutes old (replay protection). `eventId` is unique
+per event: store the ones you've handled and ignore repeats.
 
 ```js
 import { createHmac, timingSafeEqual } from "crypto";
 
-function isValidChamaWebhook(rawBody, signatureHeader, secret) {
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+function isValidChamaWebhook(rawBody, timestamp, signatureHeader, secret) {
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
   const a = Buffer.from(expected, "hex");
   const b = Buffer.from(signatureHeader ?? "", "hex");
   return a.length === b.length && timingSafeEqual(a, b);

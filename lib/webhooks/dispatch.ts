@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHmac, randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { withTenant, type Tx } from "@/lib/db/rls";
 import { webhookEndpoints, webhookDeliveries } from "@/lib/db/schema";
@@ -12,12 +12,30 @@ export type WebhookEventType =
   | "welfare.request.submitted"
   | "welfare.request.approved"
   | "welfare.request.rejected"
-  | "welfare.request.disbursed";
+  | "welfare.request.disbursed"
+  | "fund.gift.paid"
+  | "fund.gift.failed"
+  | "fund.closed";
 
 const DELIVERY_TIMEOUT_MS = 8000;
 
 function signPayload(secret: string, body: string): string {
   return createHmac("sha256", secret).update(body).digest("hex");
+}
+
+/**
+ * Signature headers for any request Chama sends. X-Chama-Signature-256 is
+ * HMAC-SHA256 of "<X-Chama-Timestamp>.<raw body>", so a receiver can reject
+ * stale or replayed requests (older than ~5 minutes). X-Chama-Signature
+ * (body only) is kept for integrations built before the timestamp existed.
+ */
+export function signedHeaders(secret: string, body: string, now = Date.now()): Record<string, string> {
+  const timestamp = String(Math.floor(now / 1000));
+  return {
+    "X-Chama-Timestamp": timestamp,
+    "X-Chama-Signature-256": signPayload(secret, `${timestamp}.${body}`),
+    "X-Chama-Signature": signPayload(secret, body),
+  };
 }
 
 /**
@@ -52,6 +70,8 @@ export async function dispatchWebhookEvent(
     if (subscribed.length === 0) return;
 
     const payload = {
+      // Unique per event (same for every endpoint), so receivers can drop duplicates.
+      eventId: randomUUID(),
       event: eventType,
       groupId,
       occurredAt: new Date().toISOString(),
@@ -73,7 +93,6 @@ async function deliverOne(
   payload: Record<string, unknown>,
   body: string,
 ): Promise<void> {
-  const signature = signPayload(endpoint.secret, body);
   let success = false;
   let responseStatus: number | null = null;
   let errorMessage: string | null = null;
@@ -86,7 +105,7 @@ async function deliverOne(
       headers: {
         "Content-Type": "application/json",
         "X-Chama-Event": eventType,
-        "X-Chama-Signature": signature,
+        ...signedHeaders(endpoint.secret, body),
       },
       body,
       signal: controller.signal,

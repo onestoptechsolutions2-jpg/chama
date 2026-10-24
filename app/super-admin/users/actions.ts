@@ -1,10 +1,11 @@
 "use server";
 
+import { isPlatformStaff } from "@/lib/auth/permissions";
 import { findPerson } from "@/lib/identity/people";
 import { normalizePhone, planMerge, type MergeMembership } from "@/lib/domain/identity";
 import { revalidatePath } from "next/cache";
 import { randomBytes } from "crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { groupMemberships, groups, members, notifications, platformUserAuditLogs, sessions, users } from "@/lib/db/schema";
 import { requirePlatformPermission } from "@/lib/auth/session";
@@ -208,6 +209,11 @@ export async function updatePlatformRoleAction(
   if (nextRole === "owner" && callerRole !== "owner") {
     return { error: "Only owners can assign the owner platform role" };
   }
+  if (nextRole && !targetUser.platformRole && (await activeGroupCount(targetUser.id)) > 0) {
+    return {
+      error: "This person belongs to a group. Platform staff can't be group members — hand over their group roles and remove them first, or use a separate staff account.",
+    };
+  }
 
   const ownerCount = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -291,7 +297,11 @@ export async function mergeUsersAction(
         hasMemberRow: memberRows.some((m) => m.groupId === r.groupId),
       }));
     };
-    const plan = planMerge(await load(keep.id), await load(dup.id));
+    const dupMemberships = await load(dup.id);
+    if (isPlatformStaff(keep.platformRole) && dupMemberships.length > 0) {
+      return { error: "The account you're keeping is platform staff, which can't hold the other account's group memberships. Keep the member account instead." };
+    }
+    const plan = planMerge(await load(keep.id), dupMemberships);
     if (!plan.ok) return { error: plan.error };
 
     for (const groupId of plan.moveGroupIds) {
@@ -347,4 +357,13 @@ export async function mergeUsersAction(
 
   revalidatePath("/super-admin/users");
   return result;
+}
+
+/** Groups this user is an active or pending member of (platform staff must have none). */
+async function activeGroupCount(userId: number): Promise<number> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(groupMemberships)
+    .where(and(eq(groupMemberships.userId, userId), inArray(groupMemberships.status, ["active", "pending"])));
+  return row?.n ?? 0;
 }

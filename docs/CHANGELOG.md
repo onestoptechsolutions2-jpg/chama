@@ -191,6 +191,55 @@ below) was exactly this same class recurring.
 
   Verified: `tsc --noEmit`, `eslint`, and the full test suite (252 tests) clean at each step.
 
+## Funeral funds with Family Compass (Oct 2026)
+
+- Partner API (`/api/partner/v1/funds`) for Family Compass: a funeral
+  programme order creates a short-lived fund group; mourners give by M-Pesa
+  prompt from Family Compass or Chama's public page (`/f/<token>`), without
+  joining. Gifts record themselves; the partner gets signed webhooks with
+  totals per family branch. The committee see the fund on Home; payouts use
+  the wallet's two-official withdrawal to the family's nominated account
+  (now also a personal M-Pesa number, IntaSend B2C).
+- After the burial a fund converts into a family welfare chama, members
+  invited from the family tree.
+- Approved bereavement claims (with the claimant's consent) are referred to
+  Family Compass; the claimant gets the programme link by SMS and the group
+  earns the referral commission.
+- Every outbound webhook now carries `eventId` and `X-Chama-Timestamp` with
+  `X-Chama-Signature-256` over `"<timestamp>.<body>"` (old header kept).
+- Migrations 0060–0061 (`funeral_funds`, `fund_gifts`,
+  `welfare_requests.partner_contact_ok`, three webhook events).
+
+## Group wallets on IntaSend (Oct 2026)
+
+- Optional wallet per group under the platform's IntaSend account
+  (`GROUP_WALLETS_ENABLED`, off by default). Members pay by M-Pesa prompt —
+  from Payments (treasurer) or My Money (themselves) — and the payment is on
+  their record as soon as IntaSend confirms it: no account numbers, no
+  matching.
+- Withdrawals only to the group's own bank (PesaLink), paybill or till; one
+  official asks, a different official approves, checked against the live
+  wallet balance. Only the admin sets the destination (never support), and
+  it can't change while a withdrawal is open.
+- This reverses the "never hold members' money" rule for groups that opt
+  in: needs IntaSend's approval and a lawyer's view before it is switched on.
+- New: `group_withdrawals`, `groups.intasend_wallet_id`,
+  `groups.payout_destination` (migration 0059); permissions
+  `money.withdraw`, `money.approveWithdrawal`, `money.payoutDestination`.
+
+## Staff separation, deterministic agent, mobile (Oct 2026)
+
+- Platform staff never belong to a group; they work on groups from the
+  Support console (`/super-admin/support`) through time-boxed, audited
+  support sessions.
+- The agent is fixed rules, not an AI model: playbooks
+  (`rematch-payments`, `loan-reminders`) plan from the group's records and
+  run through the normal commands; daily cron, Support console *Run agent*,
+  or `POST /api/internal/agent` (playbooks only). The earlier
+  `/api/internal/commands` endpoint, which accepted arbitrary commands, is
+  removed.
+- One-screen landing page; every page measured and fixed at 375px.
+
 ## Lean v1: IAM, identity, payments and the assistant (Oct 2026)
 
 Driven by `docs/audit-2026-10.md` and `docs/product-plan.md` (segments:

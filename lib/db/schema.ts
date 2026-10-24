@@ -314,6 +314,10 @@ export const groups = pgTable("groups", {
   c2bToken: text("c2b_token").unique(),
   /** What an M-Pesa/bank payment counts as when the account reference doesn't say. */
   paymentDefaultType: text("payment_default_type").notNull().default("capital"),
+  // ── Group wallet on IntaSend (lib/domain/group-wallet.ts; off unless GROUP_WALLETS_ENABLED) ──
+  intasendWalletId: text("intasend_wallet_id"),
+  /** The group's own bank account / paybill / till — the ONLY place wallet money can go. */
+  payoutDestination: jsonb("payout_destination"),
 
   // Product entitlements — a group's access to loans/MGR/welfare/projects
   // is an explicit, independently toggleable flag (Settings > Products),
@@ -744,6 +748,86 @@ export const incomingPayments = pgTable(
     unique("incoming_payments_source_external_unique").on(t.groupId, t.source, t.externalId),
     index("incoming_payments_group_status_idx").on(t.groupId, t.status),
   ],
+);
+
+// ── Group wallet withdrawals — money out, two officials ─────────────────
+// One official requests, a different official approves (lib/domain/
+// group-wallet.ts approvalError); then IntaSend pays the group's own payout
+// destination, snapshotted here so a later change can't redirect it.
+export const groupWithdrawals = pgTable(
+  "group_withdrawals",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    destination: jsonb("destination").notNull(),
+    narrative: text("narrative").notNull(),
+    /** requested | approved | sent | failed | cancelled */
+    status: text("status").notNull().default("requested"),
+    requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
+    approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),
+    trackingId: text("tracking_id"),
+    error: text("error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("group_withdrawals_group_idx").on(t.groupId, t.createdAt)],
+);
+
+// ── Funeral funds — a short-lived group for a funeral harambee ────────────
+// Created by a partner (Family Compass) through /api/partner/v1/funds.
+// Mourners give by M-Pesa prompt into the group's wallet without joining;
+// the committee are the group's officials. After the burial the group can
+// be converted into a standing family welfare chama.
+export const funeralFunds = pgTable(
+  "funeral_funds",
+  {
+    groupId: integer("group_id")
+      .primaryKey()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    partner: text("partner").notNull(),
+    /** The partner's own id for this fund (e.g. a memorial id); unique per partner. */
+    ref: text("ref").notNull(),
+    deceasedName: text("deceased_name").notNull(),
+    closesOn: date("closes_on").notNull(),
+    /** The family's target, whole KES (optional). */
+    targetKes: integer("target_kes"),
+    /** open | closed | converted */
+    status: text("status").notNull().default("open"),
+    branches: jsonb("branches").$type<string[]>().notNull().default([]),
+    /** Secret part of the public giving page URL (/f/<token>). */
+    giveToken: text("give_token").notNull().unique(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("funeral_funds_partner_ref_idx").on(t.partner, t.ref)],
+);
+
+export const fundGifts = pgTable(
+  "fund_gifts",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** IntaSend invoice id once the prompt is sent. */
+    externalId: text("external_id").unique(),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
+    branch: text("branch"),
+    message: text("message"),
+    anonymous: boolean("anonymous").notNull().default(false),
+    /** pending | paid | failed */
+    status: text("status").notNull().default("pending"),
+    /** web (public page) | partner (API) */
+    source: text("source").notNull(),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("fund_gifts_group_idx").on(t.groupId, t.status), index("fund_gifts_phone_idx").on(t.groupId, t.phone, t.createdAt)],
 );
 
 // ── Sessions — DB-backed cookie auth, carries active tenant server-side ────
@@ -1231,6 +1315,8 @@ export const welfareRequests = pgTable(
     // without rewriting an in-flight request's required approval path.
     approvalTier: text("approval_tier").notNull().default("tier1"),
     status: welfareRequestStatusEnum("status").notNull().default("pending"),
+    /** The claimant agreed that Family Compass may contact them about a funeral programme (bereavement only). */
+    partnerContactOk: boolean("partner_contact_ok").notNull().default(false),
     reviewedBy: integer("reviewed_by").references(() => users.id, { onDelete: "set null" }),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
     rejectionReason: text("rejection_reason"),
@@ -1834,6 +1920,10 @@ export const webhookEventTypeEnum = pgEnum("webhook_event_type", [
   "welfare.request.approved",
   "welfare.request.rejected",
   "welfare.request.disbursed",
+  // Funeral funds (drizzle/0060), sent to the partner that created the fund.
+  "fund.gift.paid",
+  "fund.gift.failed",
+  "fund.closed",
 ]);
 
 export const webhookEndpoints = pgTable(

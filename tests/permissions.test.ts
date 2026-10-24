@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   can,
   canPlatform,
+  isPlatformStaff,
   permissionsForRole,
   selfDealingError,
   GROUP_PERMISSIONS,
@@ -85,5 +86,14 @@ describe("nav follows permissions", () => {
     const labels = getVisibleNavItems({ role: "admin", products: allOff }).map((i) => i.label);
     expect(labels).not.toContain("Loans");
     expect(labels).not.toContain("Mzunguko");
+  });
+});
+
+describe("isPlatformStaff", () => {
+  it("treats every platform role as staff who can't join groups", () => {
+    expect(isPlatformStaff("owner")).toBe(true);
+    expect(isPlatformStaff("support")).toBe(true);
+    expect(isPlatformStaff("agent")).toBe(true);
+    expect(isPlatformStaff(null)).toBe(false);
   });
 });

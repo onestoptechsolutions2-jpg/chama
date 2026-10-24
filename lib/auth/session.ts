@@ -2,7 +2,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
 import { randomBytes } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db/client";
 import { withTenant, withUser } from "@/lib/db/rls";
@@ -13,6 +13,7 @@ import type { ProductFlags } from "@/lib/domain/products";
 import {
   can,
   canPlatform,
+  isPlatformStaff,
   type GroupPermission,
   type PlatformPermission,
   type PlatformRole,
@@ -182,6 +183,11 @@ export const getSession = cache(async (): Promise<Session | null> => {
       },
     }));
 
+  // Platform staff never act as group members (lib/auth/permissions.ts
+  // isPlatformStaff): any old memberships are ignored; they reach a group
+  // only through support mode below.
+  const staff = isPlatformStaff(row.user.platformRole);
+  if (staff) activeMemberships.length = 0;
   let activeMembership =
     activeMemberships.find((m) => m.groupId === row.activeGroupId) ?? null;
 
@@ -281,8 +287,24 @@ async function guardSupportWrite(session: SessionWithGroup, permission: GroupPer
   const isWrite = (await headers()).has("next-action");
   if (!isWrite || !session.support) return;
   const refused = supportWriteError(session.support, session.user.platformRole, permission);
-  await withTenant(session.activeMembership.groupId, (tx) =>
-    tx.insert(groupAuditLog).values({
+  // After a Server Action the page re-renders under the same Next-Action
+  // header and calls requirePermission again — log one entry, not two.
+  await withTenant(session.activeMembership.groupId, async (tx) => {
+    const [recent] = await tx
+      .select({ id: groupAuditLog.id })
+      .from(groupAuditLog)
+      .where(
+        and(
+          eq(groupAuditLog.groupId, session.activeMembership.groupId),
+          eq(groupAuditLog.actorUserId, session.user.id),
+          eq(groupAuditLog.command, `action:${permission}`),
+          eq(groupAuditLog.ok, !refused),
+          gt(groupAuditLog.createdAt, new Date(Date.now() - 5_000)),
+        ),
+      )
+      .limit(1);
+    if (recent) return;
+    await tx.insert(groupAuditLog).values({
       groupId: session.activeMembership.groupId,
       command: `action:${permission}`,
       actorUserId: session.user.id,
@@ -292,8 +314,8 @@ async function guardSupportWrite(session: SessionWithGroup, permission: GroupPer
       input: {},
       ok: !refused,
       error: refused,
-    }),
-  ).catch(() => {});
+    });
+  }).catch(() => {});
   if (refused) redirect(`/dashboard?support_blocked=${encodeURIComponent(refused)}`);
 }
 
