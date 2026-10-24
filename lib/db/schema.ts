@@ -764,7 +764,7 @@ export const groupWithdrawals = pgTable(
     amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
     destination: jsonb("destination").notNull(),
     narrative: text("narrative").notNull(),
-    /** requested | approved | sent | failed | cancelled */
+    /** requested | approved | sent (IntaSend accepted it) | paid (confirmed) | failed | cancelled */
     status: text("status").notNull().default("requested"),
     requestedBy: integer("requested_by").references(() => users.id, { onDelete: "set null" }),
     approvedBy: integer("approved_by").references(() => users.id, { onDelete: "set null" }),

@@ -189,3 +189,12 @@ export async function getBankCodes(): Promise<{ name: string; code: string }[] |
     return null;
   }
 }
+
+/** Status of a payout batch (send-money/status/): batch status_code plus per-transaction status_code. */
+export async function getPayoutStatus(trackingId: string): Promise<{
+  status?: string;
+  status_code?: string;
+  transactions?: { status?: string; status_code?: string; status_description?: string }[];
+}> {
+  return intasend("POST", "send-money/status/", { tracking_id: trackingId });
+}

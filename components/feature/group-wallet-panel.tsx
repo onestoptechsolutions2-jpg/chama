@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import {
   approveWithdrawalAction,
   cancelWithdrawalAction,
+  checkPayoutAction,
   enableWalletAction,
   promptMembersAction,
   requestWithdrawalAction,
@@ -42,7 +43,14 @@ type Props = {
 
 const ksh = (n: number) => `Ksh ${Math.round(n).toLocaleString()}`;
 const PURPOSES: Record<string, string> = { capital: "Shares", personal_savings: "Savings", welfare: "Welfare", loan: "Loan repayment" };
-const STATUS: Record<string, string> = { requested: "Waiting for approval", approved: "Sending", sent: "Sent", failed: "Failed", cancelled: "Cancelled" };
+const STATUS: Record<string, string> = {
+  requested: "Waiting for approval",
+  approved: "Sending",
+  sent: "Sent — waiting for confirmation",
+  paid: "Paid",
+  failed: "Failed",
+  cancelled: "Cancelled",
+};
 
 function useRun() {
   const [pending, start] = useTransition();
@@ -200,6 +208,11 @@ function WithdrawalsCard(props: Props) {
                   {w.error ? ` · ${w.error}` : ""}
                 </p>
               </div>
+              {w.status === "sent" && props.can.withdraw && (
+                <Button size="sm" variant="outline" disabled={pending} onClick={() => run(() => checkPayoutAction(w.id))}>
+                  Check now
+                </Button>
+              )}
               {w.status === "requested" && (
                 <div className="flex gap-2">
                   {props.can.approve && w.requestedById !== props.myUserId && (

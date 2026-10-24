@@ -55,3 +55,15 @@ describe("maker–checker", () => {
     expect(requestError(500, 1000, bank)).toBeNull();
   });
 });
+
+describe("payout outcome", () => {
+  it("reads IntaSend's status codes", async () => {
+    const { payoutOutcome } = await import("@/lib/domain/group-wallet");
+    expect(payoutOutcome({ status_code: "BC100", transactions: [{ status_code: "TS100" }] })).toEqual({ state: "paid" });
+    expect(payoutOutcome({ status_code: "BC100", transactions: [{ status_code: "TF103", status_description: "Invalid account" }] })).toEqual({ state: "failed", reason: "Invalid account" });
+    expect(payoutOutcome({ transactions: [{ status_code: "TF105", status: "Unknown" }] })).toMatchObject({ state: "failed", reason: expect.stringMatching(/contact IntaSend/) });
+    expect(payoutOutcome({ status_code: "BF102", status: "Failed" })).toEqual({ state: "failed", reason: "Failed" });
+    expect(payoutOutcome({ status_code: "BP103", transactions: [{ status_code: "TP102" }] })).toEqual({ state: "pending" });
+    expect(payoutOutcome({})).toEqual({ state: "pending" });
+  });
+});
