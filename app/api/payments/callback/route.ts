@@ -12,6 +12,7 @@ import {
 import { systemActor } from "@/lib/commands/actor";
 import { runCommand } from "@/lib/commands/run";
 import { confirmPrompt } from "@/lib/commands/wallet";
+import { confirmGift } from "@/lib/funds/funds";
 import { isValidIntasendChallenge } from "@/lib/domain/payments";
 import type { IntasendWebhookPayload } from "@/lib/payments/intasend";
 
@@ -114,8 +115,9 @@ export async function POST(req: Request) {
 
   // Not a platform fee? Then it may be a member's M-Pesa prompt into a group
   // wallet (lib/commands/wallet.ts): find the pending payment by invoice id
-  // and record it through the normal command (idempotent on resends).
-  if (payload.state === "COMPLETE" || payload.state === "FAILED") {
+  // and record it through the normal command (idempotent on resends). A
+  // funeral-fund gift (lib/funds/funds.ts) is checked first.
+  if ((payload.state === "COMPLETE" || payload.state === "FAILED") && !(await confirmGift(payload.invoice_id, payload.state))) {
     const prompt = await withPlatformAdmin((tx) =>
       tx.query.incomingPayments.findFirst({
         where: and(eq(incomingPayments.source, "intasend"), eq(incomingPayments.externalId, payload.invoice_id)),

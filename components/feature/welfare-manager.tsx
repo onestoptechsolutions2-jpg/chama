@@ -333,6 +333,7 @@ export function WelfareManager({
   reserveLow,
   isStaff,
   memberId,
+  funeralOffer = false,
 }: {
   fund: Fund;
   policy: Policy;
@@ -342,6 +343,8 @@ export function WelfareManager({
   reserveLow: boolean;
   isStaff: boolean;
   memberId: number | null;
+  /** Family Compass referrals are configured (lib/funds/referral.ts). */
+  funeralOffer?: boolean;
 }) {
   return (
     <div className="space-y-6">
@@ -388,6 +391,7 @@ export function WelfareManager({
           maxLongTermGrant={Number(policy.maxLongTermGrant)}
           maxAdvance={Number(policy.maxAdvance)}
           benefits={readBenefitSchedule(policy.benefitSchedule)}
+          funeralOffer={funeralOffer}
         />
       )}
 

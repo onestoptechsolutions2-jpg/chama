@@ -31,6 +31,8 @@ export const submitWelfareRequestSchema = z
     requestedEmergencyAmount: z.coerce.number().nonnegative().default(0),
     requestedLongTermAmount: z.coerce.number().nonnegative().default(0),
     requestedAdvanceAmount: z.coerce.number().nonnegative().default(0),
+    /** Bereavement only: the claimant agrees Family Compass may send them an offer. */
+    partnerContactOk: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()).optional(),
   })
   .refine(
     (v) => v.requestedEmergencyAmount + v.requestedLongTermAmount + v.requestedAdvanceAmount > 0,

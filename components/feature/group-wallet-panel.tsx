@@ -238,13 +238,14 @@ function DestinationCard({ destination, bankCodes }: { destination: PayoutDestin
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Where withdrawals go</CardTitle>
-        <p className="text-sm text-muted-foreground">The group&apos;s OWN bank account, paybill or till. Only the admin can change it, never platform support.</p>
+        <p className="text-sm text-muted-foreground">The group&apos;s OWN bank account, paybill, till or M-Pesa number. Only the admin can change it, never platform support.</p>
       </CardHeader>
       <CardContent className="space-y-3">
         <select value={kind} onChange={(e) => setKind(e.target.value as PayoutDestination["kind"])} className="h-10 rounded-md border bg-background px-2 text-sm" aria-label="Type">
           <option value="bank">Bank account</option>
           <option value="paybill">Paybill</option>
           <option value="till">Till number</option>
+          <option value="mpesa">M-Pesa number</option>
         </select>
         <div className="grid gap-3 sm:grid-cols-2">
           {kind === "bank" &&
@@ -267,6 +268,7 @@ function DestinationCard({ destination, bankCodes }: { destination: PayoutDestin
           {kind === "paybill" && field("paybill", "Paybill number", { inputMode: "numeric" })}
           {kind === "paybill" && field("accountRef", "Account number at the paybill")}
           {kind === "till" && field("till", "Till number", { inputMode: "numeric" })}
+          {kind === "mpesa" && field("phone", "M-Pesa number", { inputMode: "tel", placeholder: "07…" })}
           {field("name", "Account name (the group's name)")}
         </div>
         <Button disabled={pending} onClick={() => run(() => setDestinationAction({ kind, ...f }))}>

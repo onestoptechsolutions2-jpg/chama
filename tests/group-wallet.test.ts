@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { approvalError, destinationError, requestError, toIntasendPayout } from "@/lib/domain/group-wallet";
+import { approvalError, destinationError, normalizeDestination, requestError, toIntasendPayout } from "@/lib/domain/group-wallet";
 
 const bank = { kind: "bank" as const, bankCode: "1", account: "0123456789", name: "Umoja Women Group" };
 
@@ -22,6 +22,19 @@ describe("destinations", () => {
       account_reference: "123",
     });
     expect(toIntasendPayout({ kind: "till", till: "54321", name: "G" }, 200, "x").transaction).toMatchObject({ account_type: "TillNumber" });
+  });
+});
+
+describe("M-Pesa number payouts", () => {
+  it("normalizes, validates and pays by B2C", () => {
+    const d = normalizeDestination({ kind: "mpesa", phone: "0712 345 678", name: "Mary Wanjiru" });
+    expect(d).toEqual({ kind: "mpesa", phone: "254712345678", name: "Mary Wanjiru" });
+    expect(destinationError(d)).toBeNull();
+    expect(destinationError({ kind: "mpesa", phone: "12345", name: "M" })).toMatch(/Safaricom/);
+    expect(toIntasendPayout(d, 5000, "Funeral fund")).toEqual({
+      provider: "MPESA-B2C",
+      transaction: { name: "Mary Wanjiru", amount: 5000, narrative: "Funeral fund", account: "254712345678" },
+    });
   });
 });
 

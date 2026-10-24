@@ -125,6 +125,11 @@ export async function loadNextSteps(session: SessionWithGroup): Promise<NextStep
         kycIncomplete: Boolean(me && !me.kycCompletedAt),
       },
     };
+    // A funeral fund (lib/funds/funds.ts) has no chama setup to do: no paybill,
+    // rule book or roster — the committee only shares the link and approves payouts.
+    if (group?.segment === "funeral_fund") {
+      input.setup = { ...input.setup, registrationComplete: true, memberCount: Math.max(3, input.setup.memberCount), hasPaybill: true, ruleCount: 1, contributionCount: 1 };
+    }
     return generateNextSteps(input);
   });
 }

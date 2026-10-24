@@ -149,7 +149,16 @@ on every page. The group's admins are notified. In support mode:
 - maker–checker applies to the member being acted as;
 - every write attempt — allowed or refused — is in the group's Activity log.
 
-## 8. The agent — fixed rules, no AI
+## 8. Partners (funeral funds)
+
+A partner (Family Compass) authenticates with its own token
+(`PARTNER_API_TOKENS`) and can only create and read **its own** funeral
+funds. It never acts inside a group: the committee join by invite with their
+own logins and hold the group roles; withdrawals still need two officials;
+the payout account can be set by the partner only at creation, before any
+money arrives. Platform staff can't be committee members.
+
+## 9. The agent — fixed rules, no AI
 
 The agent is deterministic: a set of playbooks (`lib/domain/agent-playbooks.ts`)
 — plain rules that read the group's records and return a plan. The same

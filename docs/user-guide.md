@@ -293,6 +293,21 @@ used sensibly without having to ask. Admins can set a target
 loan-deployment percentage in Settings to get drift alerts here if actual
 deployment strays too far from it.
 
+## Funeral funds
+
+A funeral fund is created for a family by Family Compass when they order a
+funeral programme. The committee (chair, treasurer, secretary) get an SMS
+invite. Home shows the total, each family side and the link to share (also
+on WhatsApp). Anyone can give from the link by M-Pesa without an account;
+names can be hidden. Money goes to the fund's wallet and is sent to the
+family's nominated account when one committee member asks and another
+approves (Payments). After the burial the fund can carry on as a family
+welfare group.
+
+When you ask for welfare help after a death, you can tick that Family
+Compass may text you an offer for a funeral programme. Nothing about you is
+shared with them.
+
 ## Statement
 
 One merged timeline of your own contributions, fines, and loan activity —

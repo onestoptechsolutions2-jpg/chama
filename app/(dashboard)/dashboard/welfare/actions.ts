@@ -41,6 +41,7 @@ import {
   notifyApprovalNeeded,
   notifyMember,
 } from "./welfare-data";
+import { referBereavement } from "@/lib/funds/referral";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 
 export type WelfareActionState = { error: string } | null;
@@ -63,7 +64,7 @@ export async function submitWelfareRequestAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { beneficiaryName, beneficiaryRel, benefitId } = parsed.data;
+  const { beneficiaryName, beneficiaryRel, benefitId, partnerContactOk } = parsed.data;
   let { reason, description, requestedEmergencyAmount, requestedLongTermAmount, requestedAdvanceAmount } = parsed.data;
   const groupId = session.activeMembership.groupId;
 
@@ -165,6 +166,7 @@ export async function submitWelfareRequestAction(
         requestedAdvanceAmount: String(requestedAdvanceAmount),
         approvalTier: tier,
         status: tier === "tier1" ? "pending" : "under_review",
+        partnerContactOk: reason === "bereavement" && Boolean(partnerContactOk),
       })
       .returning();
 
@@ -291,6 +293,7 @@ export async function reviewWelfareRequestAction(
       memberId: result.memberId,
       amount: result.amount,
     });
+    void referBereavement(groupId, requestId);
     void dispatchWebhookEvent(groupId, "welfare.request.disbursed", {
       requestId,
       memberId: result.memberId,
@@ -432,6 +435,7 @@ export async function respondToWelfareApprovalAction(
       memberId: result.memberId,
       amount: result.amount,
     });
+    void referBereavement(groupId, result.requestId);
     void dispatchWebhookEvent(groupId, "welfare.request.disbursed", {
       requestId: result.requestId,
       memberId: result.memberId,

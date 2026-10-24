@@ -148,6 +148,108 @@ funds).
 { "ok": true, "paymentId": 20, "amount": 5000 }
 ```
 
+## Partner API — funeral funds (Family Compass)
+
+Server-to-server, for a partner that creates **funeral funds**: a
+short-lived group for a funeral harambee. Mourners give by M-Pesa prompt
+into the fund's own IntaSend wallet without joining; the committee are the
+group's officials, and money leaves only to the account the family
+nominated, after one official asks and another approves (see Group
+wallets below). Needs `GROUP_WALLETS_ENABLED`; otherwise `POST /funds`
+returns 503 and the partner keeps its manual fallback.
+
+Auth: `Authorization: Bearer <token>`, one token per partner in
+`PARTNER_API_TOKENS` (`familycompass:<token>,…`, tokens ≥ 24 chars). A
+partner only ever sees its own funds (another's id is a 404). All amounts
+are whole shillings. Base: `/api/partner/v1`.
+
+### `POST /funds` — create (idempotent on `ref`)
+
+```json
+{ "ref": "memorial-42", "deceasedName": "Jane Wanjiru", "name": "optional",
+  "closesOn": "2026-12-23",            // optional, default 60 days, at most 120
+  "targetKes": 200000,                 // optional
+  "committee": [ { "name": "Wanjiku Kamau", "phone": "0712345678", "role": "chair" },
+                 { "name": "Akinyi Otieno", "phone": "0722111222", "role": "treasurer" } ],
+  "branches": ["Kamau family", "Wanjiru family"],
+  "payout": { "kind": "mpesa", "phone": "0799000111", "name": "Mary Wanjiru" },
+  "webhookUrl": "https://partner.example/chama-webhook" }
+// 201 { "fundId": 15, "ref", "name", "deceasedName", "status": "open", "closesOn", "targetKes",
+//       "branches", "giveUrl": "https://<chama>/f/<token>",
+//       "webhookSecret": "<shown once>", "invites": [{ "phone", "role", "sent" }] }
+// 200 (same ref again) — the same fund, without webhookSecret
+```
+
+- Committee: a chair is required (chair = group admin), at most one of each
+  role, distinct valid phones. Each gets an SMS invite and joins with their
+  own login. Platform staff accounts are refused.
+- `payout` kinds: `mpesa` (phone), `paybill` (paybill + accountRef), `till`,
+  `bank` (bankCode + account). Set only here, before any money arrives;
+  afterwards only the chair can change it in the app.
+
+### `POST /funds/{fundId}/gifts` — M-Pesa prompt for a mourner
+
+```json
+{ "name": "Peter", "phone": "0711000001", "amount": 1000, "branch": "Kamau family",
+  "message": "Pole sana", "anonymous": false }
+// 202 { "giftId": 1, "status": "pending" }
+```
+
+Ksh 10 – 250,000; `branch` must be one of the fund's branches; at most 3
+prompts per phone per fund in 10 minutes (429); refused once the fund is
+closed. The result arrives as a `fund.gift.paid` / `fund.gift.failed`
+webhook.
+
+### `GET /funds/{fundId}` — live totals
+
+```json
+{ "fundId", "ref", "name", "deceasedName", "status": "open|closed|converted", "closesOn",
+  "targetKes", "branches", "giveUrl", "total": 1500, "giftCount": 2,
+  "byBranch": [{ "branch": "Kamau family", "total": 1000, "count": 1 }],
+  "recent": [{ "name": "Well-wisher", "amount": 500, "message": "Rest in peace", "paidAt": "…" }] }
+```
+
+`byBranch` is for the committee — the partner decides who sees it (Chama's
+own public page doesn't show it). Anonymous givers show as "Well-wisher".
+
+### `POST /funds/{fundId}/convert` — keep going as a family welfare chama
+
+```json
+{ "members": [{ "name": "John Kamau", "phone": "0733000001" }] }
+// 200 { "groupId": 15, "status": "converted", "invites": [{ "phone", "invited", "sms", "reason" }] }
+```
+
+Stops gifts, switches on welfare with the funeral benefit table and rules,
+and invites each person (duplicates and bad phones are skipped and
+reported). The committee stay as officials; the group then subscribes
+like any other.
+
+### Webhooks to `webhookUrl`
+
+Same signing as group webhooks (`X-Chama-Timestamp`,
+`X-Chama-Signature-256`, `eventId`; see Outbound webhooks):
+`fund.gift.paid` `{ fundId, ref, giftId, name, amount, branch, message, total, giftCount, byBranch }`,
+`fund.gift.failed` `{ fundId, ref, giftId }`,
+`fund.closed` `{ fundId, ref, total, giftCount }` (daily job
+`/api/cron/funds-close` just after midnight Nairobi).
+
+### Bereavement referral (Chama → Family Compass)
+
+When a group approves a **bereavement** welfare claim and the claimant
+ticked "Family Compass may text me an offer", Chama POSTs to
+`FAMILY_COMPASS_REFERRAL_URL`, signed the same way with
+`FAMILY_COMPASS_REFERRAL_SECRET`:
+
+```json
+{ "eventId": "…", "event": "bereavement.approved", "groupId": 15, "groupName": "…",
+  "referrerCode": "chama-15", "payout": { "kind": "mpesa", … } | null }
+// Family Compass answers 200 { "link": "https://<family-compass>/r/<code>?to=/shop/funeral-programme" }
+```
+
+No personal details are sent. Chama texts the link to the claimant (only
+a link on Family Compass's own origin). `payout` is the group's nominated
+account, where Family Compass pays the group's referral commission.
+
 ## Group wallets (IntaSend) — optional
 
 Off unless `GROUP_WALLETS_ENABLED=true` and `INTASEND_SECRET_KEY` are set
@@ -160,7 +262,7 @@ commands in `lib/commands/wallet.ts`:
 | `wallet.enable` | `settings.manage` | `POST wallets/` — a WORKING KES wallet labelled `GROUP-<id>` |
 | `collections.prompt` | `group.view` (others: `money.record`) | pending `incoming_payments` row (member + purpose known), then `POST payment/mpesa-stk-push/` with `wallet_id` and `api_ref chama-<group>-<payment>` |
 | `collections.confirm` | `money.record` (via `mpesa`) | from the webhook: COMPLETE → applied to the member and receipted; FAILED → failed. Idempotent |
-| `wallet.setDestination` | `money.payoutDestination` (admin; never support) | bank (PesaLink, bank code), paybill or till |
+| `wallet.setDestination` | `money.payoutDestination` (admin; never support) | bank (PesaLink, bank code), paybill, till or M-Pesa number (B2C) |
 | `wallet.requestWithdrawal` | `money.withdraw` | checks the live balance and destination |
 | `wallet.approveWithdrawal` | `money.approveWithdrawal` | a different official; then `POST send-money/initiate/` (PESALINK or MPESA-B2B) |
 | `wallet.cancelWithdrawal` | `money.withdraw` | only while waiting for approval |
@@ -514,11 +616,14 @@ delivery attempts across all of a group's endpoints are visible there too
 POST <your configured URL>
 Content-Type: application/json
 X-Chama-Event: contribution.recorded
-X-Chama-Signature: <hex HMAC-SHA256 of the raw request body, keyed with your endpoint's secret>
+X-Chama-Timestamp: 1793091600
+X-Chama-Signature-256: <hex HMAC-SHA256 of "<timestamp>.<raw body>", keyed with your endpoint's secret>
+X-Chama-Signature: <hex HMAC-SHA256 of the raw body alone — kept for older integrations>
 ```
 
 ```json
 {
+  "eventId": "8b0d1c7e-…",
   "event": "contribution.recorded",
   "groupId": 12,
   "occurredAt": "2026-08-31T09:00:00.000Z",
@@ -528,15 +633,18 @@ X-Chama-Signature: <hex HMAC-SHA256 of the raw request body, keyed with your end
 
 ### Verifying the signature
 
-Recompute the HMAC over the **exact raw bytes** of the request body
-(don't re-serialize the parsed JSON — key order/whitespace would differ)
-using your endpoint's secret, and compare to `X-Chama-Signature`:
+Recompute the HMAC over `"<X-Chama-Timestamp>.<raw body>"` — the **exact
+raw bytes** of the body (don't re-serialize the parsed JSON) — with your
+endpoint's secret, compare it to `X-Chama-Signature-256`, and reject a
+timestamp more than ~5 minutes old (replay protection). `eventId` is unique
+per event: store the ones you've handled and ignore repeats.
 
 ```js
 import { createHmac, timingSafeEqual } from "crypto";
 
-function isValidChamaWebhook(rawBody, signatureHeader, secret) {
-  const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
+function isValidChamaWebhook(rawBody, timestamp, signatureHeader, secret) {
+  if (Math.abs(Date.now() / 1000 - Number(timestamp)) > 300) return false;
+  const expected = createHmac("sha256", secret).update(`${timestamp}.${rawBody}`).digest("hex");
   const a = Buffer.from(expected, "hex");
   const b = Buffer.from(signatureHeader ?? "", "hex");
   return a.length === b.length && timingSafeEqual(a, b);

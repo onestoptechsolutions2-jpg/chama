@@ -9,14 +9,25 @@
  * one official requests and a DIFFERENT official approves. These are the pure
  * rules; lib/commands/wallet.ts applies them.
  */
+import { normalizePhone } from "./identity";
+
 export type PayoutDestination =
   | { kind: "bank"; bankCode: string; account: string; name: string }
   | { kind: "paybill"; paybill: string; accountRef: string; name: string }
-  | { kind: "till"; till: string; name: string };
+  | { kind: "till"; till: string; name: string }
+  /** A relative's personal M-Pesa number — how most bereaved families collect. */
+  | { kind: "mpesa"; phone: string; name: string };
+
+/** Stores an M-Pesa number in canonical 2547… form (lib/domain/identity.ts). */
+export function normalizeDestination(d: PayoutDestination): PayoutDestination {
+  return d.kind === "mpesa" ? { ...d, phone: normalizePhone(d.phone) ?? d.phone } : d;
+}
 
 export function destinationError(d: PayoutDestination): string | null {
   if (!d.name.trim()) return "Enter the account name";
-  if (d.kind === "bank") {
+  if (d.kind === "mpesa") {
+    if (!/^254[17]\d{8}$/.test(d.phone)) return "Enter a valid Safaricom number";
+  } else if (d.kind === "bank") {
     if (!/^\d{1,4}$/.test(d.bankCode)) return "Choose the bank";
     if (!/^\d{6,20}$/.test(d.account)) return "Enter the bank account number (digits only)";
   } else if (d.kind === "paybill") {
@@ -29,13 +40,15 @@ export function destinationError(d: PayoutDestination): string | null {
 export function describeDestination(d: PayoutDestination): string {
   if (d.kind === "bank") return `Bank (code ${d.bankCode}) account ${d.account} — ${d.name}`;
   if (d.kind === "paybill") return `Paybill ${d.paybill}, account ${d.accountRef} — ${d.name}`;
+  if (d.kind === "mpesa") return `M-Pesa ${d.phone} — ${d.name}`;
   return `Till ${d.till} — ${d.name}`;
 }
 
-/** IntaSend send-money request for one payout (PESALINK for banks, MPESA-B2B for paybill/till). */
+/** IntaSend send-money request for one payout (PESALINK for banks, MPESA-B2C for a phone, MPESA-B2B for paybill/till). */
 export function toIntasendPayout(d: PayoutDestination, amount: number, narrative: string) {
   const base = { name: d.name, amount: Math.round(amount * 100) / 100, narrative: narrative.slice(0, 22) };
   if (d.kind === "bank") return { provider: "PESALINK", transaction: { ...base, account: d.account, bank_code: d.bankCode } };
+  if (d.kind === "mpesa") return { provider: "MPESA-B2C", transaction: { ...base, account: d.phone } };
   if (d.kind === "paybill") {
     return { provider: "MPESA-B2B", transaction: { ...base, account: d.paybill, account_type: "PayBill", account_reference: d.accountRef } };
   }

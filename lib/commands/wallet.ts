@@ -9,6 +9,7 @@ import { PAYMENT_PURPOSES, type PaymentPurpose } from "@/lib/domain/payment-matc
 import {
   approvalError,
   destinationError,
+  normalizeDestination,
   requestError,
   toIntasendPayout,
   type PayoutDestination,
@@ -16,6 +17,7 @@ import {
 import { createGroupWallet, getWallet, groupWalletsEnabled, sendFromWallet, stkPushToWallet } from "@/lib/payments/intasend";
 import { announce, loadGroup, type RecordedContribution } from "./contributions";
 import { applyToMember } from "./payments";
+import { payoutDestinationSchema } from "@/lib/validation/payout";
 import { defineCommand, done, fail } from "./types";
 
 const purpose = z.enum(PAYMENT_PURPOSES as [PaymentPurpose, ...PaymentPurpose[]]);
@@ -133,19 +135,14 @@ export const confirmPrompt = defineCommand({
   afterCommit: (actor, _input, data) => announce(actor, data.receipts),
 });
 
-const destinationSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("bank"), bankCode: z.string().trim(), account: z.string().trim(), name: z.string().trim() }),
-  z.object({ kind: z.literal("paybill"), paybill: z.string().trim(), accountRef: z.string().trim(), name: z.string().trim() }),
-  z.object({ kind: z.literal("till"), till: z.string().trim(), name: z.string().trim() }),
-]);
-
 /** The group's own account — the only place wallet money can be sent. Admin only; never support. */
 export const setPayoutDestination = defineCommand({
   name: "wallet.setDestination",
-  description: "Set the group's own bank account, paybill or till for withdrawals.",
+  description: "Set the group's own bank account, paybill, till or M-Pesa number for withdrawals.",
   permission: "money.payoutDestination",
-  input: destinationSchema,
-  run: async (tx, actor, input) => {
+  input: payoutDestinationSchema,
+  run: async (tx, actor, rawInput) => {
+    const input = normalizeDestination(rawInput);
     const err = destinationError(input);
     if (err) return fail(err);
     const open = await tx.query.groupWithdrawals.findFirst({
