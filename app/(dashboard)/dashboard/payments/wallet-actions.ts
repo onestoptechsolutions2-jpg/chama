@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { requireActiveGroup, requirePermission } from "@/lib/auth/session";
 import { runCommand } from "@/lib/commands/run";
 import { actorFromSession } from "@/lib/commands/actor";
+import { and, eq } from "drizzle-orm";
+import { withTenant } from "@/lib/db/rls";
+import { groupWithdrawals } from "@/lib/db/schema";
+import { settlePayout } from "@/lib/payments/payouts";
 import {
   approveWithdrawal,
   cancelWithdrawal,
@@ -74,4 +78,22 @@ export async function cancelWithdrawalAction(withdrawalId: number): Promise<Resu
   const r = await runCommand(actorFromSession(session), cancelWithdrawal, { withdrawalId });
   revalidatePath("/dashboard/payments");
   return done(r, "Cancelled.");
+}
+
+/** Ask IntaSend now whether a sent withdrawal arrived (normally its event does this). */
+export async function checkPayoutAction(withdrawalId: number): Promise<Result> {
+  const session = await requirePermission("money.withdraw");
+  const groupId = session.activeMembership.groupId;
+  const w = await withTenant(groupId, (tx) =>
+    tx.query.groupWithdrawals.findFirst({ where: and(eq(groupWithdrawals.id, withdrawalId), eq(groupWithdrawals.groupId, groupId)) }),
+  );
+  if (!w?.trackingId || w.status !== "sent") return { error: "Only a withdrawal that has been sent can be checked" };
+  try {
+    const r = await settlePayout(w.trackingId);
+    revalidatePath("/dashboard/payments");
+    if (!r || r.state === "pending") return { ok: true, message: "Still on its way — IntaSend hasn't confirmed it yet." };
+    return r.state === "paid" ? { ok: true, message: "Confirmed: the money arrived." } : { error: `It failed: ${r.reason}` };
+  } catch {
+    return { error: "Couldn't reach IntaSend. Try again later." };
+  }
 }

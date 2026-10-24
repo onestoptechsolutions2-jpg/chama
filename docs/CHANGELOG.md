@@ -302,26 +302,81 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Group-wallet payouts confirmed (Oct 2026)
+
+- A withdrawal is "sent" when IntaSend accepts it and now moves to **paid**
+  or **failed** when IntaSend reports the result: its send-money event
+  (`/api/payments/payout-callback`, challenge-verified and logged) or, as a
+  backstop, a daily status lookup (`/api/cron/payouts-check`) and a
+  *Check now* button. Codes per IntaSend's status reference: `TS100` paid,
+  `TF…` failed, a `BF…` batch failed, anything else still in progress.
+  Officials are notified either way; a failed payout's money stays in the
+  wallet.
+- Confirmed from IntaSend's SDK: M-Pesa number payouts use provider
+  `MPESA-B2C`.
+
 ## Known gaps
 
-Carried forward from the phases above, still true as of the last update to this file:
+Current as of the last update to this file, roughly in order of priority.
 
-- **MGR fraud controls** — free-rider gating (claiming a slot without having made that cycle's contributions), requiring the platform fee before a slot can be marked paid, and a maker-checker control for "mark paid" are all deliberately deferred design tradeoffs, not built.
-- **Wizard rollout incomplete** — MGR cycle first-time setup and member KYC completion (`/dashboard/profile`) still lack the guided-wizard treatment given to vehicle activation, new-group setup, and (as of this update) welfare policy setup. Welfare claim submission itself is deliberately skipped (short enough already).
-- **Scale follow-ups** — no pagination on large `findMany` calls; connection-pool sizing under real concurrent load never measured.
-- **Billing rates unconfirmed** — `lib/domain/billing.ts`'s transaction-fee percentages are directional, not checked against IntaSend's actual merchant rate.
-- **IntaSend live payments** — blocked externally on IntaSend completing the account's business/KYC verification in their own dashboard, not on this codebase.
-- **`groups` has no DELETE policy** — flagged, low priority, nothing in the app deletes a group.
-- **`announcements`** — has a schema + RLS policy, no UI was ever built.
-- **Only some actions are commands.** Contributions, meeting collections, fines, loan repayments and payment matching run through `lib/commands` (audited, reachable by the agent and API). Loan approval/disbursement, MGR, welfare, meetings, settings and member management still keep their logic in Server Actions — in support mode those are audited at permission level (which action, by whom, why), not with their inputs. Move each into a command when another door needs it.
-- **Unique contact indexes may be pending.** Migration 0051 skips any unique index whose data still has duplicates; merge them at /super-admin/users, then run `npm run db:enforce-unique-contacts`.
-- **M-Pesa C2B needs setup per group** (Daraja app on the group's own shortcode, or its provider forwarding notifications). Safaricom masks the payer's phone, so matching relies on the account number. Not tested against Safaricom's sandbox from this environment.
-- **Share-out is a preview** — it doesn't record the payouts or reset balances for the new year.
-- **Prices and the legal position are untested decisions** — the plans in `lib/domain/billing.ts` are to be validated with groups; holding member money is deliberately avoided, but SASRA/CBK applicability (especially for registered boda-boda SACCOs) needs a Kenyan lawyer's view.
-- **Outbound webhook delivery has no retry queue** — single attempt, logged regardless of outcome (`lib/webhooks/dispatch.ts`). This app is fully serverless with no background job runner, so retry-with-backoff is out of scope for now; a subscriber should treat the API as its own reconciliation backstop for anything it can't afford to miss. See `api.md`'s Outbound webhooks section.
-- **Public API v1 write scope is intentionally minimal** — one write endpoint (`POST /api/v1/contributions`), chosen after confirming the intended scope directly rather than guessing on a financial app. Loan approval, membership approval, and welfare-request submission are exposed as read + webhook-notify only; extending write scope further needs the same explicit confirmation, not a default assumption.
-- **KYC documents are stored with public blob URLs** (unguessable, but not access-controlled). The fix is a *private* Vercel Blob store plus an authenticated proxy route that checks the viewer may see that member's document — it needs a second store provisioned by the account owner, so it is not built.
-- **SMS is receipts and invites only.** Africa's Talking (optional) sends invites and payment receipts within each plan's monthly allowance; there is no phone-based password reset (OTP), no due-date reminder SMS, and no way to buy extra SMS yet.
-- **Login throttling is per account only** — it does not slow one attacker trying a single password across many accounts; shared rate limiting (e.g. Upstash) would. No Content-Security-Policy yet, and no "sign out everywhere" or expired-session cleanup.
-- **MGR: mid-rotation joiners need a schedule rebuild** ("Generate / rebuild schedule" keeps every claimed or paid turn and only redraws open ones). `groups.mgr_cycle_day` is stored but never read.
-- **Governance has no public API or webhook coverage** — a deliberate exclusion when the module was built (no third-party integration need was named for it, and folding a 4th area into that session's API/webhook work would have blurred an already large change), not an oversight.
+**Needs the owner (outside the code)**
+- **Wallets and funeral funds are off** (`GROUP_WALLETS_ENABLED`) until
+  IntaSend confirms a wallet per group in writing and a Kenyan lawyer
+  reviews the platform holding group money (funeral funds especially) —
+  including SASRA/CBK applicability, notably for registered boda-boda SACCOs.
+- **IntaSend live payments** are blocked on IntaSend finishing the account's
+  business/KYC verification in their dashboard.
+- **Prices and fees are untested decisions** — the plans and transaction-fee
+  percentages in `lib/domain/billing.ts` are directional, not checked against
+  IntaSend's merchant rate; whether funeral funds carry a fee is undecided.
+- **Partner settings** — `PARTNER_API_TOKENS`, `FAMILY_COMPASS_REFERRAL_URL`
+  and `_SECRET` in production; a shared test URL/token for Family Compass.
+
+**Money correctness**
+- **Wallet calls are untested against IntaSend's sandbox** (built from the
+  SDK and docs, exercised against a stand-in): wallet creation, STK push to a
+  wallet, send-money, status lookups and both webhooks.
+- **Outbound webhook delivery has no retry queue** — single attempt, logged
+  regardless of outcome (`lib/webhooks/dispatch.ts`); subscribers should use
+  the API (e.g. `GET /funds/{id}`) as their backstop.
+- **M-Pesa C2B needs setup per group** (Daraja app on the group's own
+  shortcode, or its provider forwarding notifications). Safaricom masks the
+  payer's phone, so matching relies on the account number. Not tested against
+  Safaricom's sandbox.
+- **MGR free-rider gating** — a member can take a turn without having paid
+  into that cycle, and the platform fee isn't required before a turn is
+  marked paid. (Maker–checker on "mark paid" is built.)
+- **Share-out is a preview** — it doesn't record the payouts or reset
+  balances for the new year.
+
+**Security and hygiene**
+- **KYC documents are stored with public blob URLs** (unguessable, but not
+  access-controlled). The fix is a *private* Vercel Blob store (provisioned
+  by the account owner) plus an authenticated proxy route.
+- **Login throttling is per account only** — no shared rate limiting (e.g.
+  Upstash), no Content-Security-Policy, no "sign out everywhere", no
+  expired-session cleanup.
+- **Unique contact indexes may be pending.** Migration 0051 skips any unique
+  index whose data still has duplicates; merge them at /super-admin/users,
+  then run `npm run db:enforce-unique-contacts`.
+- **Scale** — no pagination on large `findMany` calls; connection-pool sizing
+  under real load never measured.
+- **`groups` has no DELETE policy** — low priority; nothing deletes a group.
+
+**Product**
+- **SMS** covers invites, receipts and loan reminders (the agent); there is
+  no phone-based password reset (OTP), no contribution-due reminder SMS, and
+  no way to buy extra SMS.
+- **Only some actions are commands.** Contributions, meeting collections,
+  fines, loan repayments, payment matching and the wallet run through
+  `lib/commands` (audited with inputs, reachable by the agent and API). Loan
+  approval/disbursement, MGR, welfare, meetings, settings and member
+  management still keep their logic in Server Actions — in support mode those
+  are audited at permission level, not with their inputs.
+- **Guided setup** — MGR first-time setup and member KYC completion
+  (`/dashboard/profile`) lack the wizard treatment.
+- **`announcements`** has a schema and RLS policy, no UI.
+- **Public API v1 write scope is intentionally minimal** — one write
+  (`POST /api/v1/contributions`); more needs explicit confirmation.
+- **Governance has no public API or webhook coverage** (a deliberate
+  exclusion).

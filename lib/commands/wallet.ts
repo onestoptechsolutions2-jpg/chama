@@ -18,6 +18,7 @@ import { createGroupWallet, getWallet, groupWalletsEnabled, sendFromWallet, stkP
 import { announce, loadGroup, type RecordedContribution } from "./contributions";
 import { applyToMember } from "./payments";
 import { payoutDestinationSchema } from "@/lib/validation/payout";
+import { appUrl } from "@/lib/urls";
 import { defineCommand, done, fail } from "./types";
 
 const purpose = z.enum(PAYMENT_PURPOSES as [PaymentPurpose, ...PaymentPurpose[]]);
@@ -210,7 +211,13 @@ export const approveWithdrawal = defineCommand({
     const payout = toIntasendPayout(data.destination, data.amount, data.narrative);
     let set: Partial<typeof groupWithdrawals.$inferInsert>;
     try {
-      const res = await sendFromWallet({ walletId: data.walletId, provider: payout.provider, transaction: payout.transaction });
+      const res = await sendFromWallet({
+        walletId: data.walletId,
+        provider: payout.provider,
+        transaction: payout.transaction,
+        // IntaSend reports the final result here (lib/payments/payouts.ts settles it).
+        callbackUrl: await appUrl("/api/payments/payout-callback"),
+      });
       set = { status: "sent", trackingId: res.tracking_id };
     } catch (e) {
       set = { status: "failed", error: e instanceof Error ? e.message.slice(0, 500) : String(e) };

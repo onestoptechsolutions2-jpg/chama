@@ -21,6 +21,10 @@
       "schedule": "0 6 * * *"
     },
     {
+      "path": "/api/cron/payouts-check",
+      "schedule": "50 5 * * *"
+    },
+    {
       "path": "/api/cron/funds-close",
       "schedule": "5 21 * * *"
     }

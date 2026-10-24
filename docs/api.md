@@ -277,6 +277,16 @@ commands in `lib/commands/wallet.ts`:
 | `wallet.approveWithdrawal` | `money.approveWithdrawal` | a different official; then `POST send-money/initiate/` (PESALINK or MPESA-B2B) |
 | `wallet.cancelWithdrawal` | `money.withdraw` | only while waiting for approval |
 
+**Payout results.** `wallet.approveWithdrawal` sends the payout with
+`callback_url` = `/api/payments/payout-callback`. IntaSend posts a
+send-money event there whenever the status changes (verified by the same
+`challenge`, logged to `payment_webhook_events` as `intasend-payout`); a
+`TS100` transaction marks the withdrawal `paid`, `TF…` (or a `BF…` batch)
+`failed` with the reason. `/api/cron/payouts-check` (daily) looks up any
+still `sent` after 15 minutes via `send-money/status/`, and officials can
+press *Check now*. Withdrawal statuses: `requested → approved → sent →
+paid | failed`, or `cancelled`.
+
 The existing IntaSend webhook (`/api/payments/callback`) routes a COMPLETE /
 FAILED event whose `invoice_id` matches a prompt to `collections.confirm`.
 Withdrawals are `movesMoney`: the agent can't run them, and in support mode

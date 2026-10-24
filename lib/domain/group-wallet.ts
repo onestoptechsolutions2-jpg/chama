@@ -74,3 +74,30 @@ export function requestError(amount: number, availableBalance: number, destinati
   if (amount > availableBalance) return `The wallet has only Ksh ${Math.floor(availableBalance).toLocaleString("en-KE")} available`;
   return null;
 }
+
+/**
+ * What IntaSend says happened to a payout, from a send-money status lookup
+ * or a send-money event (both carry the batch `status_code` and the
+ * per-transaction `transactions[].status_code`). Per IntaSend's status
+ * reference: TS100 = the transaction succeeded; TF… = it failed (TF105:
+ * status unknown, contact support); a BF… batch code = the whole request
+ * failed; anything else (TP101/TP102, BP…, BC100 with no transaction result)
+ * is still in progress. We send one transaction per payout.
+ */
+export type PayoutOutcome = { state: "paid" } | { state: "failed"; reason: string } | { state: "pending" };
+
+export function payoutOutcome(payload: {
+  status?: string | null;
+  status_code?: string | null;
+  transactions?: { status?: string | null; status_code?: string | null; status_description?: string | null }[] | null;
+}): PayoutOutcome {
+  const tx = payload.transactions?.[0];
+  const code = (tx?.status_code ?? "").toUpperCase();
+  if (code === "TS100") return { state: "paid" };
+  if (code.startsWith("TF")) {
+    const why = tx?.status_description || tx?.status || "the payout failed";
+    return { state: "failed", reason: code === "TF105" ? `${why} (status unknown — contact IntaSend support)` : why };
+  }
+  if ((payload.status_code ?? "").toUpperCase().startsWith("BF")) return { state: "failed", reason: payload.status || "the payout request failed" };
+  return { state: "pending" };
+}
