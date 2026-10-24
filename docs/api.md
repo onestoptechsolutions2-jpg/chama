@@ -224,6 +224,16 @@ and invites each person (duplicates and bad phones are skipped and
 reported). The committee stay as officials; the group then subscribes
 like any other.
 
+### `POST /funds/{fundId}/webhook-secret` — new webhook secret
+
+```json
+// 200 { "webhookSecret": "<new secret>" }   — the old one stops working at once
+// 409 when the fund was created without a webhookUrl
+```
+
+For a partner that lost the 201 carrying the first secret (e.g. a timeout
+after the fund was created: the retry returns 200 without it).
+
 ### Webhooks to `webhookUrl`
 
 Same signing as group webhooks (`X-Chama-Timestamp`,
