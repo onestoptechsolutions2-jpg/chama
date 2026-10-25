@@ -7,7 +7,7 @@ import { actorFromSession } from "@/lib/commands/actor";
 import { recordMeetingCollections } from "@/lib/commands/meeting";
 
 export type CollectInput = {
-  entries: { memberId: number; type: "capital" | "personal_savings" | "welfare"; amount: number }[];
+  entries: { memberId: number; type: "capital" | "personal_savings" | "welfare" | "mgr"; amount: number }[];
   repayments: { loanId: number; amount: number }[];
   reference?: string;
 };

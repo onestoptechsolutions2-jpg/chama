@@ -177,6 +177,10 @@ moves under *Past rotations* with its dates and total paid out.
 - The top of the Schedule tab shows the rotation (*Rotation 2 · started
   2 Nov · ends 18 Jan*) and progress: *Cycle 3 of 12 · 7 of 10 turns
   paid*.
+- The **Turns** tab shows what you have paid into this rotation against
+  your share so far (*Paid in Ksh 2,000 of Ksh 3,000 · owes Ksh 1,000*).
+  Record merry-go-round money as type MGR — the collection sheet has a
+  column for it, or pay M-Pesa with account `12 mgr`.
 - On the **Turns** tab, *Which turn would you like?* lets you pick up to
   three cycles, best first. Choices are honoured fairly when turns are
   given out, and you can change them until the group's deadline (if one is
@@ -192,6 +196,9 @@ moves under *Past rotations* with its dates and total paid out.
    = 12 cycles, weekly. Starting 2 Nov, it ends on 18 Jan*). They apply to
    the next rotation, and to the current one until its first payout. A
    31st-of-the-month start lands on the last day of shorter months.
+   *Only pay out to members who are up to date* (off by default) stops a
+   turn being marked paid while its member owes for that cycle or earlier
+   ones, and says how much.
 2. **Change start date / Move remaining dates** (Schedule tab) — before
    the first payout, moves the whole rotation; after, moves the next payout
    and everything after it. Paid cycles keep their dates; the end date

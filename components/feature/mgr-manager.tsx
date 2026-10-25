@@ -27,7 +27,7 @@ import {
   chargeFeeFromWalletAction,
   rescheduleRotationAction,
 } from "@/app/(dashboard)/dashboard/mgr/actions";
-import { cyclesNeeded, rotationEndDate, summarizeRotation, type MgrFrequency } from "@/lib/domain/mgr";
+import { cyclesNeeded, rotationEndDate, summarizeRotation, type MgrFrequency, type MgrStanding } from "@/lib/domain/mgr";
 import { mgrFrequencies } from "@/lib/validation/mgr";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { Button } from "@/components/ui/button";
@@ -588,7 +588,7 @@ function ScheduleTab({
 }
 
 // ── Turns tab ────────────────────────────────────────────────────────────
-function TurnRow({ turn, editable }: { turn: Turn; editable: boolean }) {
+function TurnRow({ turn, editable, standing }: { turn: Turn; editable: boolean; standing?: MgrStanding }) {
   const [value, setValue] = useState(turn.turnsTotal);
   const [isPending, startTransition] = useTransition();
 
@@ -605,7 +605,15 @@ function TurnRow({ turn, editable }: { turn: Turn; editable: boolean }) {
 
   return (
     <div className="flex items-center justify-between gap-4 border-b py-2 text-sm last:border-0">
-      <span className="font-medium">{turn.member.name}</span>
+      <div>
+        <span className="font-medium">{turn.member.name}</span>
+        {standing && standing.expected > 0 && (
+          <p className={standing.owed > 0 ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
+            Paid in {ksh(standing.paid)} of {ksh(standing.expected)}
+            {standing.owed > 0 ? ` · owes ${ksh(Math.ceil(standing.owed))}` : " · up to date"}
+          </p>
+        )}
+      </div>
       <div className="flex items-center gap-3">
         <span className="text-muted-foreground">
           {turn.slotsTaken} / {turn.turnsTotal} used
@@ -711,7 +719,9 @@ function TurnsTab({
   myMemberId,
   choicesCloseDate,
   choicesOpen,
+  standings,
 }: {
+  standings: Record<number, MgrStanding>;
   turns: Turn[];
   cycles: CycleWithSlots[];
   isStaff: boolean;
@@ -734,7 +744,11 @@ function TurnsTab({
           {turns.length === 0 && <p className="text-sm text-muted-foreground">No turn records yet.</p>}
           {turns.map((t) => (
             <div key={t.id}>
-              <TurnRow turn={t} editable={isStaff || t.memberId === myMemberId} />
+              <TurnRow
+                turn={t}
+                editable={isStaff || t.memberId === myMemberId}
+                standing={isStaff || t.memberId === myMemberId ? standings[t.memberId] : undefined}
+              />
               {isStaff && t.preferredCycles && t.preferredCycles.length > 0 && (
                 <p className="pb-2 text-xs text-muted-foreground">
                   Would like: {t.preferredCycles.map((n) => `Cycle ${positions(cycles).get(n) ?? n}`).join(", ")}
@@ -762,6 +776,7 @@ function ConfigForm({
     mgrStartDate: string | null;
     mgrChoicesCloseDate: string | null;
     mgrContributionAmount: string | null;
+    mgrRequireUpToDate: boolean;
     sharePrice: string;
   };
 }) {
@@ -850,6 +865,13 @@ function ConfigForm({
               defaultValue={config.mgrContributionAmount ?? config.sharePrice}
             />
           </div>
+          <label className="flex items-start gap-2 text-sm sm:col-span-2 lg:col-span-4">
+            <input type="checkbox" name="mgrRequireUpToDate" defaultChecked={config.mgrRequireUpToDate} className="mt-0.5 size-4" />
+            <span>
+              Only pay out to members who are up to date — a turn can&apos;t be marked paid while its member owes merry-go-round
+              contributions for this cycle or earlier ones. Record contributions as type &quot;MGR&quot; (or account &quot;12 mgr&quot; on M-Pesa).
+            </span>
+          </label>
           <p className="rounded-md bg-muted/50 p-3 text-sm sm:col-span-2 lg:col-span-4">
             {totalTurns} turns ÷ {Number(recipients) || 1} per cycle = <strong>{cycles} cycles</strong>, {FREQUENCY_LABEL[frequency] ?? frequency}.
             {preview ? (
@@ -1053,6 +1075,7 @@ export function MgrManager({
   config,
   cycles,
   rotations,
+  standings,
   liveRotationId,
   suggestedStart,
   totalTurns,
@@ -1072,11 +1095,14 @@ export function MgrManager({
     mgrStartDate: string | null;
     mgrChoicesCloseDate: string | null;
     mgrContributionAmount: string | null;
+    mgrRequireUpToDate: boolean;
     sharePrice: string;
     mgrFeePct: string;
   };
   cycles: CycleWithSlots[];
   rotations: RotationView[];
+  /** memberId → paid-in standing in the live rotation (cycles so far). */
+  standings: Record<number, MgrStanding>;
   liveRotationId: number | null;
   suggestedStart: string | null;
   totalTurns: number;
@@ -1120,6 +1146,7 @@ export function MgrManager({
           myMemberId={myMemberId}
           choicesCloseDate={config.mgrChoicesCloseDate}
           choicesOpen={choicesOpen}
+          standings={standings}
         />
       </TabsContent>
 

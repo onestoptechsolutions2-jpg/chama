@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@/lib/db/rls";
-import { contributions, groups, members } from "@/lib/db/schema";
+import { contributions, groups, members, mgrRotations } from "@/lib/db/schema";
 import { CONTRIBUTION_BALANCE_FIELD, validateContributionAmount } from "@/lib/domain/contributions";
 import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
 import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
@@ -50,6 +50,15 @@ export async function applyContribution(
   const amountError = validateContributionAmount(entry.type, entry.amount, Number(group.minPersonalSavingsIncrement));
   if (amountError) return fail(amountError);
 
+  // MGR money counts towards the rotation running now (who has paid in).
+  const mgrRotation =
+    entry.type === "mgr"
+      ? await tx.query.mgrRotations.findFirst({
+          where: and(eq(mgrRotations.groupId, actor.groupId), eq(mgrRotations.status, "active")),
+          columns: { id: true },
+        })
+      : undefined;
+
   const [row] = await tx
     .insert(contributions)
     .values({
@@ -61,6 +70,7 @@ export async function applyContribution(
       reference: entry.reference ?? null,
       notes: entry.notes ?? null,
       recordedBy: actor.userId,
+      mgrRotationId: mgrRotation?.id ?? null,
     })
     .returning({ id: contributions.id });
 

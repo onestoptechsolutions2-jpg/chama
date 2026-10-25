@@ -302,6 +302,20 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Merry-go-round: who has paid in (Oct 2026)
+
+- MGR contributions are tagged with the rotation they were paid into
+  (`contributions.mgr_rotation_id`, set when recorded; migration 0063 tags
+  recent ones to the live rotation).
+- Each member's standing — paid in vs. their share (contribution × their
+  multiplier) for every cycle so far — shows on the Turns tab (officials see
+  everyone, members themselves).
+- New group setting **Only pay out to members who are up to date**
+  (`groups.mgr_require_up_to_date`, off by default): a turn can't be marked
+  paid while its member owes for that cycle or earlier ones; the refusal
+  says how much.
+- The meeting collection sheet has a Merry-go-round column when MGR is on.
+
 ## Group-wallet payouts confirmed (Oct 2026)
 
 - A withdrawal is "sent" when IntaSend accepts it and now moves to **paid**
@@ -343,9 +357,9 @@ Current as of the last update to this file, roughly in order of priority.
   shortcode, or its provider forwarding notifications). Safaricom masks the
   payer's phone, so matching relies on the account number. Not tested against
   Safaricom's sandbox.
-- **MGR free-rider gating** — a member can take a turn without having paid
-  into that cycle, and the platform fee isn't required before a turn is
-  marked paid. (Maker–checker on "mark paid" is built.)
+- **MGR platform fee before payout** — the 5% fee is charged after a turn is
+  marked paid, not required before. (Paid-in gating is a group setting;
+  maker–checker on "mark paid" is built.)
 - **Share-out is a preview** — it doesn't record the payouts or reset
   balances for the new year.
 

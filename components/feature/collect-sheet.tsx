@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label";
 import { displayPhone } from "@/lib/domain/identity";
 
 type Row = { id: number; name: string; phone: string | null; loan: { loanId: number; remaining: number } | null };
-type Amounts = { capital: string; personal_savings: string; welfare: string; loan: string };
-const EMPTY: Amounts = { capital: "", personal_savings: "", welfare: "", loan: "" };
+type Amounts = { capital: string; personal_savings: string; welfare: string; mgr: string; loan: string };
+const EMPTY: Amounts = { capital: "", personal_savings: "", welfare: "", mgr: "", loan: "" };
 
 const ksh = (n: number) => `Ksh ${Math.round(n).toLocaleString()}`;
 const num = (v: string) => {
@@ -27,12 +27,15 @@ export function CollectSheet({
   rows,
   usual,
   showWelfare,
+  showMgr = false,
   showLoans,
   myMemberId,
 }: {
   rows: Row[];
-  usual: { capital: number; welfare: number };
+  usual: { capital: number; welfare: number; mgr?: number };
   showWelfare: boolean;
+  /** Merry-go-round on: an MGR column, counted towards the live rotation (who has paid in). */
+  showMgr?: boolean;
   showLoans: boolean;
   myMemberId: number | null;
 }) {
@@ -47,7 +50,7 @@ export function CollectSheet({
   const total = useMemo(
     () =>
       Object.values(amounts).reduce(
-        (s, a) => s + num(a.capital) + num(a.personal_savings) + num(a.welfare) + num(a.loan),
+        (s, a) => s + num(a.capital) + num(a.personal_savings) + num(a.welfare) + num(a.mgr) + num(a.loan),
         0,
       ),
     [amounts],
@@ -62,6 +65,7 @@ export function CollectSheet({
           ...a,
           capital: a.capital || (usual.capital > 0 ? String(usual.capital) : ""),
           welfare: showWelfare ? a.welfare || (usual.welfare > 0 ? String(usual.welfare) : "") : "",
+          mgr: showMgr ? a.mgr || ((usual.mgr ?? 0) > 0 ? String(usual.mgr) : "") : "",
         };
       }
       return next;
@@ -73,7 +77,7 @@ export function CollectSheet({
     for (const r of rows) {
       const a = amounts[r.id];
       if (!a) continue;
-      for (const type of ["capital", "personal_savings", "welfare"] as const) {
+      for (const type of ["capital", "personal_savings", "welfare", "mgr"] as const) {
         if (num(a[type]) > 0) input.entries.push({ memberId: r.id, type, amount: num(a[type]) });
       }
       if (r.loan && num(a.loan) > 0) input.repayments.push({ loanId: r.loan.loanId, amount: num(a.loan) });
@@ -96,7 +100,7 @@ export function CollectSheet({
 
   const q = query.trim().toLowerCase();
   const shown = q ? rows.filter((r) => r.name.toLowerCase().includes(q)) : rows;
-  const cols = 2 + (showWelfare ? 1 : 0) + (showLoans ? 1 : 0);
+  const cols = 2 + (showWelfare ? 1 : 0) + (showMgr ? 1 : 0) + (showLoans ? 1 : 0);
 
   return (
     <div className="space-y-4">
@@ -110,7 +114,7 @@ export function CollectSheet({
             placeholder="e.g. Cash, meeting 12 Oct"
           />
         </div>
-        {(usual.capital > 0 || usual.welfare > 0) && (
+        {(usual.capital > 0 || usual.welfare > 0 || (showMgr && (usual.mgr ?? 0) > 0)) && (
           <Button type="button" variant="outline" onClick={fillUsual}>
             Fill usual amounts
           </Button>
@@ -134,6 +138,7 @@ export function CollectSheet({
                   <AmountInput label="Shares" value={a.capital} onChange={(v) => set(r.id, "capital", v)} />
                   <AmountInput label="Savings" value={a.personal_savings} onChange={(v) => set(r.id, "personal_savings", v)} />
                   {showWelfare && <AmountInput label="Welfare" value={a.welfare} onChange={(v) => set(r.id, "welfare", v)} />}
+                  {showMgr && <AmountInput label="Merry-go-round" value={a.mgr} onChange={(v) => set(r.id, "mgr", v)} />}
                   {showLoans &&
                     (r.loan && !ownLoan ? (
                       <AmountInput

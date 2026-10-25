@@ -8,6 +8,8 @@ export const updateMgrConfigSchema = z.object({
   mgrStartDate: z.string().trim().optional(),
   mgrChoicesCloseDate: z.string().trim().optional(),
   mgrContributionAmount: z.coerce.number().nonnegative().optional(),
+  /** Checkbox: "on" when ticked, absent otherwise. */
+  mgrRequireUpToDate: z.literal("on").optional(),
 });
 
 export const setTurnsSchema = z.object({
