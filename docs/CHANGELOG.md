@@ -302,6 +302,27 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Security: shared rate limits, sessions, CSP, private KYC (Oct 2026)
+
+- **Shared rate limits** in Postgres (`rate_limits`, `lib/auth/rate-limit.ts`;
+  no extra service): sign-in per IP (30 / 15 min) and per account tried
+  (10 / 15 min, on top of the existing 5-try lock), registration per IP
+  (10 / hour), and the public funeral-fund giving form per IP (20 / 10 min).
+- **Sessions**: *Sign out everywhere* on My Profile ends every session of
+  the account; a super-admin password reset now signs the person out
+  everywhere (a group admin's reset already did); a daily
+  `/api/cron/housekeeping` deletes expired sessions and stale rate counters.
+- **Content-Security-Policy** on every page: scripts, styles, fonts and
+  requests only from the app; no plugins, no framing, no `<base>` or
+  form-action hijacking. Inline scripts are still allowed (Next's bootstrap
+  needs them without a per-request nonce), so it blocks foreign scripts
+  rather than all injection.
+- **Private KYC documents** when `BLOB_PRIVATE_READ_WRITE_TOKEN` (a second,
+  private Blob store) is set: ID scans, photos and signatures upload there
+  and are served by `/api/files/…` only to the uploader, the member, or
+  officials (members.view) of a group whose record holds the file.
+  `npm run files:move-kyc-private` moves existing ones.
+
 ## Merry-go-round: who has paid in (Oct 2026)
 
 - MGR contributions are tagged with the rotation they were paid into
@@ -364,12 +385,11 @@ Current as of the last update to this file, roughly in order of priority.
   balances for the new year.
 
 **Security and hygiene**
-- **KYC documents are stored with public blob URLs** (unguessable, but not
-  access-controlled). The fix is a *private* Vercel Blob store (provisioned
-  by the account owner) plus an authenticated proxy route.
-- **Login throttling is per account only** — no shared rate limiting (e.g.
-  Upstash), no Content-Security-Policy, no "sign out everywhere", no
-  expired-session cleanup.
+- **KYC documents stay public until the private store is connected** — set
+  `BLOB_PRIVATE_READ_WRITE_TOKEN` (a private Blob store created in Vercel),
+  then run `npm run files:move-kyc-private`. Governance documents stay public.
+- **CSP allows inline scripts** (Next's bootstrap); a nonce-based policy
+  would need per-request middleware.
 - **Unique contact indexes may be pending.** Migration 0051 skips any unique
   index whose data still has duplicates; merge them at /super-admin/users,
   then run `npm run db:enforce-unique-contacts`.

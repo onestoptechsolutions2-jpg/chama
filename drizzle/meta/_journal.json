@@ -449,6 +449,13 @@
       "when": 1792897472561,
       "tag": "0063_mgr_paid_in",
       "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1792901169751,
+      "tag": "0064_rate_limits",
+      "breakpoints": true
     }
   ]
 }

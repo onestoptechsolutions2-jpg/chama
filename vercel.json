@@ -25,6 +25,10 @@
       "schedule": "50 5 * * *"
     },
     {
+      "path": "/api/cron/housekeeping",
+      "schedule": "10 0 * * *"
+    },
+    {
       "path": "/api/cron/funds-close",
       "schedule": "5 21 * * *"
     }

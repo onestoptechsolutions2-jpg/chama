@@ -5,7 +5,9 @@ import { members } from "@/lib/db/schema";
 import { PageHeader } from "@/components/feature/page-header";
 import { ProfileForm } from "@/components/feature/profile-form";
 import { MyGroupsList } from "@/components/feature/my-groups-list";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { signOutEverywhereAction } from "@/app/(auth)/actions";
 
 export default async function ProfilePage() {
   const session = await requireActiveGroup();
@@ -37,6 +39,19 @@ export default async function ProfilePage() {
           </CardContent>
         </Card>
       )}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Lost a phone?</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>Sign out on every phone and computer where your account is open, including this one. You then sign in again here.</p>
+          <form action={signOutEverywhereAction}>
+            <Button type="submit" variant="outline">
+              Sign out everywhere
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

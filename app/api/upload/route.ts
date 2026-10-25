@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { requireSession } from "@/lib/auth/session";
+import { PRIVATE_FOLDERS, privateFileRef, privateFilesToken } from "@/lib/files/private";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 
@@ -43,6 +44,13 @@ export async function POST(req: Request) {
   const pathname = `${safeFolder}/${session.user.id}/${Date.now()}-${safeName}`;
 
   try {
+    // Personal documents go to the private store when it is connected
+    // (lib/files/private.ts); the app serves them after checking who asks.
+    const privateToken = PRIVATE_FOLDERS.has(safeFolder) ? privateFilesToken() : null;
+    if (privateToken) {
+      const blob = await put(pathname, file, { access: "private", addRandomSuffix: true, token: privateToken });
+      return NextResponse.json({ url: privateFileRef(blob.pathname) });
+    }
     const blob = await put(pathname, file, { access: "public", addRandomSuffix: true });
     return NextResponse.json({ url: blob.url });
   } catch (err) {

@@ -847,6 +847,15 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── Rate limits — shared counters for abuse protection (lib/auth/rate-limit.ts) ──
+// Not tenant data (keys are like "login-ip:1.2.3.4"), so no RLS; old rows
+// are cleared by /api/cron/housekeeping.
+export const rateLimits = pgTable("rate_limits", {
+  key: text("key").primaryKey(),
+  windowStart: timestamp("window_start", { withTimezone: true }).notNull().defaultNow(),
+  count: integer("count").notNull().default(0),
+});
+
 // ── Support sessions — platform staff helping inside a group ───────────
 // Time-boxed (30 min), with a reason, view-only unless "act" was chosen,
 // and every change made is in the group's audit log with via = support.
