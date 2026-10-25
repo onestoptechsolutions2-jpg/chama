@@ -400,6 +400,8 @@ export const groups = pgTable("groups", {
     .notNull()
     .default("5.00"),
   mgrTerms: text("mgr_terms"),
+  /** Refuse to mark a turn paid while its recipient owes MGR contributions (lib/domain/mgr.ts payoutBlocker). */
+  mgrRequireUpToDate: boolean("mgr_require_up_to_date").notNull().default(false),
 
   // Fine settings
   fineLateness: numeric("fine_lateness", { precision: 14, scale: 2 })
@@ -936,11 +938,14 @@ export const contributions = pgTable(
     recordedBy: integer("recorded_by").references(() => users.id, {
       onDelete: "set null",
     }),
+    /** For type "mgr": the rotation it was paid into (the live one when recorded). */
+    mgrRotationId: integer("mgr_rotation_id").references(() => mgrRotations.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("contributions_group_id_idx").on(t.groupId),
     index("contributions_member_id_idx").on(t.memberId),
+    index("contributions_mgr_rotation_idx").on(t.mgrRotationId, t.memberId),
   ],
 );
 

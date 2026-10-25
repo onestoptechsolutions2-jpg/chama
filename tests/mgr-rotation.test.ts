@@ -64,3 +64,14 @@ describe("suggested start of a new rotation", () => {
     expect(suggestRotationStart({ configuredStart: null, previous: { endDate: "2026-01-12", frequency: "weekly" }, today })).toBe(today);
   });
 });
+
+describe("who has paid in", () => {
+  it("expects each member's share for every cycle so far", async () => {
+    const { mgrStanding, payoutBlocker } = await import("@/lib/domain/mgr");
+    expect(mgrStanding({ contribution: 500, multiplier: 1, cyclesDue: 3, paid: 1500 })).toEqual({ expected: 1500, paid: 1500, owed: 0 });
+    expect(mgrStanding({ contribution: 500, multiplier: 2, cyclesDue: 3, paid: 2000 })).toEqual({ expected: 3000, paid: 2000, owed: 1000 });
+    expect(mgrStanding({ contribution: 500, multiplier: 1, cyclesDue: 2, paid: 1800 }).owed).toBe(0);
+    expect(payoutBlocker("Akinyi", { expected: 3000, paid: 2000, owed: 1000 })).toMatch(/Akinyi still owes Ksh 1,000.*paid 2,000 of 3,000/);
+    expect(payoutBlocker("Akinyi", { expected: 1500, paid: 1500, owed: 0 })).toBeNull();
+  });
+});

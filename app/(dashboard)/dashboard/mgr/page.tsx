@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/feature/page-header";
 import { MgrManager } from "@/components/feature/mgr-manager";
 import { MgrAgreementGate } from "@/components/feature/mgr-agreement-gate";
 import { choicesAreOpen, nairobiToday, suggestRotationStart } from "@/lib/domain/mgr";
+import { rotationStandings } from "@/lib/mgr/standing";
 
 const CLAIMED_STATUSES = ["claimed", "auto_assigned", "paid"] as const;
 
@@ -25,7 +26,7 @@ export default async function MgrPage() {
   const groupId = session.activeMembership.groupId;
   const isStaff = can(session.activeMembership, "mgr.manage");
 
-  const { group, rotations, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet } =
+  const { group, rotations, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet, standings } =
     await withTenant(groupId, async (tx) => {
       const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId) });
 
@@ -100,7 +101,13 @@ export default async function MgrPage() {
         ? await tx.query.groupWallets.findFirst({ where: eq(groupWallets.groupId, groupId) })
         : null;
 
-      return { group, rotations, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet };
+      // Who has paid in: each member's share for every cycle so far in the live rotation.
+      const due = live
+        ? cycles.filter((c) => c.rotationId === live.id && (c.status === "completed" || c.status === "active")).length
+        : 0;
+      const standings = live ? Object.fromEntries(await rotationStandings(tx, groupId, live, due)) : {};
+
+      return { group, rotations, cycles, slots, turns, groupMembers, activeCycle, agreement, slotEvents, wallet, standings };
     });
 
   if (!group) return null;
@@ -147,11 +154,13 @@ export default async function MgrPage() {
           mgrStartDate: group.mgrStartDate,
           mgrChoicesCloseDate: group.mgrChoicesCloseDate,
           mgrContributionAmount: group.mgrContributionAmount,
+          mgrRequireUpToDate: group.mgrRequireUpToDate,
           sharePrice: group.sharePrice,
           mgrFeePct: group.mgrFeePct,
         }}
         cycles={cyclesWithSlots}
         rotations={rotationViews}
+        standings={standings}
         liveRotationId={live?.id ?? null}
         suggestedStart={live ? null : suggestRotationStart({ configuredStart: group.mgrStartDate, previous, today })}
         totalTurns={totalTurns}

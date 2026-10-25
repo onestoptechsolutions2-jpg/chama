@@ -37,7 +37,10 @@ import {
   rescheduleRotation,
   rotationFinished,
   suggestRotationStart,
+  mgrStanding,
+  payoutBlocker,
 } from "@/lib/domain/mgr";
+import { cyclePosition, rotationStandings } from "@/lib/mgr/standing";
 import { calcPlatformFee } from "@/lib/domain/payments";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { insertNotification, listActiveStaffUserIds } from "@/lib/db/notifications";
@@ -95,7 +98,7 @@ export async function updateMgrConfigAction(
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
-  const { mgrFrequency, mgrRecipientsPerCycle, mgrStartDate, mgrContributionAmount, mgrChoicesCloseDate } =
+  const { mgrFrequency, mgrRecipientsPerCycle, mgrStartDate, mgrContributionAmount, mgrChoicesCloseDate, mgrRequireUpToDate } =
     parsed.data;
   const groupId = session.activeMembership.groupId;
 
@@ -107,6 +110,7 @@ export async function updateMgrConfigAction(
         mgrRecipientsPerCycle,
         mgrStartDate: mgrStartDate || null,
         mgrChoicesCloseDate: mgrChoicesCloseDate || null,
+        mgrRequireUpToDate: mgrRequireUpToDate === "on",
         mgrContributionAmount:
           mgrContributionAmount !== undefined ? String(mgrContributionAmount) : undefined,
         updatedAt: new Date(),
@@ -553,6 +557,22 @@ export async function adminUpdateSlotAction(
       if (self) {
         blocked = self;
         return null;
+      }
+      // Free-rider control (a group setting): the recipient must have paid
+      // their share for every cycle up to and including this one.
+      const group = await tx.query.groups.findFirst({ where: eq(groups.id, groupId), columns: { mgrRequireUpToDate: true } });
+      if (group?.mgrRequireUpToDate && recipient) {
+        const rotation = await tx.query.mgrRotations.findFirst({ where: eq(mgrRotations.id, slot.rotationId) });
+        const member = await tx.query.members.findFirst({ where: eq(members.id, recipient), columns: { name: true } });
+        if (rotation && member) {
+          const due = await cyclePosition(tx, rotation.id, slot.cycleNumber);
+          const standing = (await rotationStandings(tx, groupId, rotation, due)).get(recipient) ?? mgrStanding({ contribution: Number(rotation.contributionAmount), multiplier: 1, cyclesDue: due, paid: 0 });
+          const owes = payoutBlocker(member.name, standing);
+          if (owes) {
+            blocked = owes;
+            return null;
+          }
+        }
       }
     }
 

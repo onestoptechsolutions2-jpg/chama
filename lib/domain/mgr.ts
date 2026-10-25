@@ -329,6 +329,29 @@ export function rotationFinished(cycleStatuses: string[]): boolean {
   return cycleStatuses.length > 0 && cycleStatuses.every((s) => s === "completed");
 }
 
+// ── Who has paid in (free-rider control) ─────────────────────────────────
+// Every member pays their share into every cycle: the rotation's
+// contribution × their multiplier (a member with two turns pays double).
+// A member is up to date for a cycle when their MGR contributions in this
+// rotation cover every cycle up to and including it.
+
+export type MgrStanding = { expected: number; paid: number; owed: number };
+
+export function mgrStanding(input: { contribution: number; multiplier: number; cyclesDue: number; paid: number }): MgrStanding {
+  const expected = Math.round(input.contribution * input.multiplier * Math.max(0, input.cyclesDue) * 100) / 100;
+  const paid = Math.round(input.paid * 100) / 100;
+  return { expected, paid, owed: Math.max(0, Math.round((expected - paid) * 100) / 100) };
+}
+
+/**
+ * Why a turn can't be paid out yet when the group requires members to be up
+ * to date: the recipient still owes for cycles up to the one they receive in.
+ */
+export function payoutBlocker(name: string, standing: MgrStanding): string | null {
+  if (standing.owed <= 0) return null;
+  return `${name} still owes Ksh ${Math.ceil(standing.owed).toLocaleString("en-KE")} to the merry-go-round (paid ${Math.round(standing.paid).toLocaleString("en-KE")} of ${Math.round(standing.expected).toLocaleString("en-KE")}). Record their contribution first.`;
+}
+
 /**
  * Can members still change their turn choices? `closeDate` is the last open
  * day (inclusive); `today` is a YYYY-MM-DD string in the group's own time

@@ -442,6 +442,13 @@
       "when": 1792861887527,
       "tag": "0062_mgr_rotations",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1792897472561,
+      "tag": "0063_mgr_paid_in",
+      "breakpoints": true
     }
   ]
 }
