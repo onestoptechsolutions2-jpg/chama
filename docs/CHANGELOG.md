@@ -302,6 +302,21 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Contribution dues fixed, SMS reminders (Oct 2026)
+
+- **Bug fixed:** monthly contribution dues were never marked paid when
+  savings came in, so five days after each due date the daily job fined
+  every member — including those who had paid. Savings (shares or personal
+  savings) recorded by any door now pay off the member's oldest open dues
+  (`allocateToDues`, `lib/commands/contributions.ts`). Migration 0066 marks
+  still-pending dues paid where that month's savings cover them. Fines
+  already issued this way are not reversed automatically — officials should
+  review fines titled "Missed contribution due …" and waive the ones for
+  members who had paid.
+- **SMS reminders** from the same daily job: on the due date and three days
+  later (with the fine date), only to members who still owe, never the same
+  message twice a day, within each plan's SMS allowance.
+
 ## Share-out recorded (Oct 2026)
 
 - The year-end share-out is now an action, not only a preview: one official
@@ -409,9 +424,10 @@ Current as of the last update to this file, roughly in order of priority.
 - **`groups` has no DELETE policy** — low priority; nothing deletes a group.
 
 **Product**
-- **SMS** covers invites, receipts and loan reminders (the agent); there is
-  no phone-based password reset (OTP), no contribution-due reminder SMS, and
-  no way to buy extra SMS.
+- **SMS** covers invites, receipts, loan reminders (the agent) and
+  contribution-due reminders; there is no phone-based password reset (OTP)
+  and no way to buy extra SMS. Reminders can't be switched off per group yet
+  (they stay within the plan's SMS allowance).
 - **Only some actions are commands.** Contributions, meeting collections,
   fines, loan repayments, payment matching and the wallet run through
   `lib/commands` (audited with inputs, reachable by the agent and API). Loan

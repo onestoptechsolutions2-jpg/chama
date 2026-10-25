@@ -133,6 +133,14 @@ Every fine issued to a member — lateness, absence, rule violations, loan
 defaults — and whether it's been paid. Meetings auto-generate attendance
 fines; this is where staff record manual ones and mark any of them paid.
 
+
+**Monthly contributions and reminders.** On the group's contribution day
+each member owes the regular amount (share price). Savings recorded any way
+— collection sheet, M-Pesa, bank file, API — pay off a member's oldest unpaid
+month first. Members who still owe get an SMS on the due date and a reminder
+three days later saying when the fine applies (within the group's SMS
+allowance); five days after the due date, anyone still owing is fined the
+absence fine. Members who have paid get neither.
 ## Meetings
 
 Schedule meetings and record attendance. Marking someone absent or late
