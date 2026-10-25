@@ -383,8 +383,10 @@ Your plan, by active members: **Free** up to 10 members; **Group** up to 50
 (Ksh 400 a month, or 4,000 a year); **Large group** up to 300 (Ksh 900 a
 month, or 9,000 a year); **Employee welfare** Ksh 30 per member per month,
 paid by the employer. Every plan has every feature, with a monthly SMS
-allowance. Generate this period's invoice and pay it from the prepaid Wallet
-or by M-Pesa.
+allowance. Each month's invoice is created automatically early on the 1st
+(none for the Free plan). If your prepaid Wallet covers it, it is paid from
+the wallet straight away; otherwise the admin and treasurer get a
+notification to pay it here, from the wallet or by M-Pesa.
 
 ## Settings (admin)
 

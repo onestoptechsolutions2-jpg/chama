@@ -25,6 +25,10 @@
       "schedule": "50 5 * * *"
     },
     {
+      "path": "/api/cron/invoices",
+      "schedule": "20 3 * * *"
+    },
+    {
       "path": "/api/cron/housekeeping",
       "schedule": "10 0 * * *"
     },

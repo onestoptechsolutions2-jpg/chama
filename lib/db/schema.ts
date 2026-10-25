@@ -1872,7 +1872,11 @@ export const subscriptionInvoices = pgTable(
     }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("subscription_invoices_group_id_idx").on(t.groupId)],
+  (t) => [
+    index("subscription_invoices_group_id_idx").on(t.groupId),
+    // One invoice per group per month (lib/billing/invoices.ts relies on it).
+    uniqueIndex("subscription_invoices_group_period_unique").on(t.groupId, t.periodStart),
+  ],
 );
 
 // ── Group wallet — a prepaid balance for PLATFORM FEES ONLY, never member

@@ -302,6 +302,19 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Invoices generate themselves (Oct 2026)
+
+- A daily job (`/api/cron/invoices`) makes sure every active group has this
+  month's subscription invoice, from the same quote the Billing page shows
+  (`lib/billing/invoices.ts`, shared with the manual button). Running it
+  again changes nothing; a unique index (migration 0067) keeps one invoice
+  per group per month.
+- Free-plan groups (Ksh 0) and funeral funds get no invoice; a funeral fund
+  converted into a welfare group is billed like any group.
+- A new invoice is paid from the group's prepaid wallet when the balance
+  covers it; the admin and treasurer are notified either way ("paid from
+  your wallet" or "pay it on Billing").
+
 ## Contribution dues fixed, SMS reminders (Oct 2026)
 
 - **Bug fixed:** monthly contribution dues were never marked paid when
