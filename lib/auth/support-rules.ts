@@ -21,6 +21,7 @@ export const SUPPORT_MONEY_OUT: ReadonlySet<GroupPermission> = new Set([
   "welfare.manage",
   "money.withdraw",
   "money.approveWithdrawal",
+  "shareout.manage",
 ]);
 
 /** Why this support write is refused, or null. Pure — also used by tests. */

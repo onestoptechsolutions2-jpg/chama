@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { isAuthorizedCronRequest, runCronJob } from "@/lib/cron/helpers";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { groups, members, contributionDues, fines } from "@/lib/db/schema";
+import { GRACE_DAYS, SECOND_REMINDER_DAYS, dueReminderKind, dueReminderText } from "@/lib/domain/contribution-dues";
+import { addDays, nairobiToday } from "@/lib/domain/dates";
+import { alreadySentToday } from "@/lib/commands/reminders";
+import { sendSms } from "@/lib/notify/sms";
 
-const GRACE_DAYS = 5;
 
 /**
  * Daily at 08:00 Africa/Nairobi (Vercel Cron is UTC-only, no DST in Nairobi
@@ -20,7 +23,11 @@ const GRACE_DAYS = 5;
  *    whole cron permanently a no-op — this generation step is a genuine
  *    addition, not a port, so the enforcement half actually has real rows
  *    to act on.
- * 2. Fine members whose due is still pending GRACE_DAYS after the due
+ * 2. SMS members who still owe: on the due date, and SECOND_REMINDER_DAYS
+ *    later (before the fine). Paid dues are skipped — savings recorded by
+ *    any door pay off dues (lib/commands/contributions.ts). Never the same
+ *    message twice a day; within each group's SMS allowance.
+ * 3. Fine members whose due is still pending GRACE_DAYS after the due
  *    date. Each row is processed in its own transaction with a row lock,
  *    so one bad row can't roll back another's already-committed fine.
  */
@@ -31,6 +38,7 @@ export async function GET(req: Request) {
 
   const result = await runCronJob("contribution-dues", async () => {
     await generateThisMonthsDues();
+    await sendDueReminders();
     return fineOverdueDues();
   });
 
@@ -71,6 +79,49 @@ async function generateThisMonthsDues(): Promise<void> {
       }
     }
   });
+}
+
+async function sendDueReminders(): Promise<number> {
+  const today = nairobiToday();
+  const pending = await withPlatformAdmin((tx) =>
+    tx
+      .select({
+        groupId: contributionDues.groupId,
+        dueDate: contributionDues.dueDate,
+        amountDue: contributionDues.amountDue,
+        amountPaid: contributionDues.amountPaid,
+        phone: members.phone,
+        groupName: groups.name,
+        fine: groups.fineAbsence,
+      })
+      .from(contributionDues)
+      .innerJoin(members, eq(members.id, contributionDues.memberId))
+      .innerJoin(groups, eq(groups.id, contributionDues.groupId))
+      .where(
+        and(
+          eq(contributionDues.status, "pending"),
+          eq(members.active, true),
+          inArray(contributionDues.dueDate, [today, addDays(today, -SECOND_REMINDER_DAYS)]),
+        ),
+      ),
+  );
+  let sent = 0;
+  for (const d of pending) {
+    const kind = dueReminderKind(d.dueDate, today);
+    const owed = Number(d.amountDue) - Number(d.amountPaid);
+    if (!kind || !d.phone || owed <= 0) continue;
+    const message = dueReminderText({
+      kind,
+      groupName: d.groupName,
+      owed,
+      dueDate: d.dueDate,
+      fine: Number(d.fine),
+      fineDate: addDays(d.dueDate, GRACE_DAYS),
+    });
+    if (await withPlatformAdmin((tx) => alreadySentToday(tx, d.groupId, d.phone!, message))) continue;
+    if (await sendSms(d.groupId, d.phone, message)) sent++;
+  }
+  return sent;
 }
 
 async function fineOverdueDues(): Promise<number> {

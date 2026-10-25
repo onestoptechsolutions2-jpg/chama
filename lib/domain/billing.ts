@@ -13,6 +13,7 @@
  * Prices are a product decision to test, kept here in one place; every
  * plan includes the core features. Transaction fees (below) stay separate.
  */
+import { nairobiToday } from "./dates";
 export type PlanId = "free" | "group" | "large" | "employer" | "custom";
 
 export type Plan = {
@@ -129,4 +130,12 @@ const TRANSACTION_RATES: Record<TransactionEventType, number> = {
 
 export function computeTransactionFee(eventType: TransactionEventType, amount: number): number {
   return Math.round(amount * TRANSACTION_RATES[eventType] * 100) / 100;
+}
+
+/** The calendar month containing `today` (YYYY-MM-DD, Nairobi): what a monthly invoice covers. */
+export function billingPeriod(today: string = nairobiToday()): { periodStart: string; periodEnd: string } {
+  const [y, m] = today.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const mm = String(m).padStart(2, "0");
+  return { periodStart: `${y}-${mm}-01`, periodEnd: `${y}-${mm}-${String(last).padStart(2, "0")}` };
 }

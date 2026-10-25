@@ -302,6 +302,68 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Invoices generate themselves (Oct 2026)
+
+- A daily job (`/api/cron/invoices`) makes sure every active group has this
+  month's subscription invoice, from the same quote the Billing page shows
+  (`lib/billing/invoices.ts`, shared with the manual button). Running it
+  again changes nothing; a unique index (migration 0067) keeps one invoice
+  per group per month.
+- Free-plan groups (Ksh 0) and funeral funds get no invoice; a funeral fund
+  converted into a welfare group is billed like any group.
+- A new invoice is paid from the group's prepaid wallet when the balance
+  covers it; the admin and treasurer are notified either way ("paid from
+  your wallet" or "pay it on Billing").
+
+## Contribution dues fixed, SMS reminders (Oct 2026)
+
+- **Bug fixed:** monthly contribution dues were never marked paid when
+  savings came in, so five days after each due date the daily job fined
+  every member — including those who had paid. Savings (shares or personal
+  savings) recorded by any door now pay off the member's oldest open dues
+  (`allocateToDues`, `lib/commands/contributions.ts`). Migration 0066 marks
+  still-pending dues paid where that month's savings cover them. Fines
+  already issued this way are not reversed automatically — officials should
+  review fines titled "Missed contribution due …" and waive the ones for
+  members who had paid.
+- **SMS reminders** from the same daily job: on the due date and three days
+  later (with the fine date), only to members who still owe, never the same
+  message twice a day, within each plan's SMS allowance.
+
+## Share-out recorded (Oct 2026)
+
+- The year-end share-out is now an action, not only a preview: one official
+  prepares it (`shareout.prepare`, a draft with every member's line), a
+  different one confirms (`shareout.confirm`, maker–checker). Confirming
+  re-reads the records (refuses if anything changed), settles each member's
+  open loans (oldest due first) and whole unpaid fines from their share,
+  records take-home and still-owed per member, and lowers savings by what was
+  paid out. Optional *members keep their shares*. Past share-outs are listed;
+  the next period starts the day after. New permission `shareout.manage`
+  (chair, treasurer; platform owners only in support mode). Migration 0065
+  (`share_outs`, `share_out_lines`).
+
+## Security: shared rate limits, sessions, CSP, private KYC (Oct 2026)
+
+- **Shared rate limits** in Postgres (`rate_limits`, `lib/auth/rate-limit.ts`;
+  no extra service): sign-in per IP (30 / 15 min) and per account tried
+  (10 / 15 min, on top of the existing 5-try lock), registration per IP
+  (10 / hour), and the public funeral-fund giving form per IP (20 / 10 min).
+- **Sessions**: *Sign out everywhere* on My Profile ends every session of
+  the account; a super-admin password reset now signs the person out
+  everywhere (a group admin's reset already did); a daily
+  `/api/cron/housekeeping` deletes expired sessions and stale rate counters.
+- **Content-Security-Policy** on every page: scripts, styles, fonts and
+  requests only from the app; no plugins, no framing, no `<base>` or
+  form-action hijacking. Inline scripts are still allowed (Next's bootstrap
+  needs them without a per-request nonce), so it blocks foreign scripts
+  rather than all injection.
+- **Private KYC documents** when `BLOB_PRIVATE_READ_WRITE_TOKEN` (a second,
+  private Blob store) is set: ID scans, photos and signatures upload there
+  and are served by `/api/files/…` only to the uploader, the member, or
+  officials (members.view) of a group whose record holds the file.
+  `npm run files:move-kyc-private` moves existing ones.
+
 ## Merry-go-round: who has paid in (Oct 2026)
 
 - MGR contributions are tagged with the rotation they were paid into
@@ -360,16 +422,13 @@ Current as of the last update to this file, roughly in order of priority.
 - **MGR platform fee before payout** — the 5% fee is charged after a turn is
   marked paid, not required before. (Paid-in gating is a group setting;
   maker–checker on "mark paid" is built.)
-- **Share-out is a preview** — it doesn't record the payouts or reset
-  balances for the new year.
 
 **Security and hygiene**
-- **KYC documents are stored with public blob URLs** (unguessable, but not
-  access-controlled). The fix is a *private* Vercel Blob store (provisioned
-  by the account owner) plus an authenticated proxy route.
-- **Login throttling is per account only** — no shared rate limiting (e.g.
-  Upstash), no Content-Security-Policy, no "sign out everywhere", no
-  expired-session cleanup.
+- **KYC documents stay public until the private store is connected** — set
+  `BLOB_PRIVATE_READ_WRITE_TOKEN` (a private Blob store created in Vercel),
+  then run `npm run files:move-kyc-private`. Governance documents stay public.
+- **CSP allows inline scripts** (Next's bootstrap); a nonce-based policy
+  would need per-request middleware.
 - **Unique contact indexes may be pending.** Migration 0051 skips any unique
   index whose data still has duplicates; merge them at /super-admin/users,
   then run `npm run db:enforce-unique-contacts`.
@@ -378,9 +437,10 @@ Current as of the last update to this file, roughly in order of priority.
 - **`groups` has no DELETE policy** — low priority; nothing deletes a group.
 
 **Product**
-- **SMS** covers invites, receipts and loan reminders (the agent); there is
-  no phone-based password reset (OTP), no contribution-due reminder SMS, and
-  no way to buy extra SMS.
+- **SMS** covers invites, receipts, loan reminders (the agent) and
+  contribution-due reminders; there is no phone-based password reset (OTP)
+  and no way to buy extra SMS. Reminders can't be switched off per group yet
+  (they stay within the plan's SMS allowance).
 - **Only some actions are commands.** Contributions, meeting collections,
   fines, loan repayments, payment matching and the wallet run through
   `lib/commands` (audited with inputs, reachable by the agent and API). Loan

@@ -1,13 +1,14 @@
 import "server-only";
 import { z } from "zod";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, inArray, asc } from "drizzle-orm";
 import type { Tx } from "@/lib/db/rls";
-import { contributions, groups, members, mgrRotations } from "@/lib/db/schema";
+import { contributions, groups, members, mgrRotations, contributionDues } from "@/lib/db/schema";
 import { CONTRIBUTION_BALANCE_FIELD, validateContributionAmount } from "@/lib/domain/contributions";
 import { computeContributionAllocation, splitAcrossReserves } from "@/lib/domain/welfare-policy";
 import { getOrCreateWelfarePolicy, allocateContributionToWelfareFund } from "@/app/(dashboard)/dashboard/welfare/welfare-data";
 import { dispatchWebhookEvent } from "@/lib/webhooks/dispatch";
 import { sendContributionReceipts } from "@/lib/notify/receipts";
+import { DUE_SAVINGS_TYPES, allocateToDues } from "@/lib/domain/contribution-dues";
 import { defineCommand, done, fail, type Actor, type CommandResult } from "./types";
 
 export const CONTRIBUTION_TYPES = ["capital", "security", "personal_savings", "welfare", "mgr", "project", "other"] as const;
@@ -73,6 +74,27 @@ export async function applyContribution(
       mgrRotationId: mgrRotation?.id ?? null,
     })
     .returning({ id: contributions.id });
+
+  // Savings pay off the member's open monthly dues, oldest first, so the
+  // daily dues job never fines (or reminds) someone who has paid.
+  if ((DUE_SAVINGS_TYPES as readonly string[]).includes(entry.type)) {
+    const open = await tx
+      .select({ id: contributionDues.id, amountDue: contributionDues.amountDue, amountPaid: contributionDues.amountPaid })
+      .from(contributionDues)
+      .where(and(eq(contributionDues.groupId, actor.groupId), eq(contributionDues.memberId, member.id), inArray(contributionDues.status, ["pending", "overdue"])))
+      .orderBy(asc(contributionDues.dueDate))
+      .for("update");
+    const applied = allocateToDues(
+      entry.amount,
+      open.map((d) => ({ id: d.id, amountDue: Number(d.amountDue), amountPaid: Number(d.amountPaid) })),
+    );
+    for (const a of applied) {
+      await tx
+        .update(contributionDues)
+        .set({ amountPaid: String(a.amountPaid), ...(a.paid ? { status: "paid" as const } : {}), updatedAt: new Date() })
+        .where(eq(contributionDues.id, a.id));
+    }
+  }
 
   if (entry.type === "welfare") {
     const policy = await getOrCreateWelfarePolicy(tx, actor.groupId);

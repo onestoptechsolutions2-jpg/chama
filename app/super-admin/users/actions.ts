@@ -169,6 +169,8 @@ export async function resetUserPasswordAction(
       .update(users)
       .set({ passwordHash, failedLogins: 0, lockedUntil: null, updatedAt: new Date() })
       .where(eq(users.id, userId));
+    // A reset password signs the person out everywhere.
+    await tx.delete(sessions).where(eq(sessions.userId, userId));
     await recordPlatformUserAudit(
       tx,
       userId,

@@ -133,6 +133,14 @@ Every fine issued to a member — lateness, absence, rule violations, loan
 defaults — and whether it's been paid. Meetings auto-generate attendance
 fines; this is where staff record manual ones and mark any of them paid.
 
+
+**Monthly contributions and reminders.** On the group's contribution day
+each member owes the regular amount (share price). Savings recorded any way
+— collection sheet, M-Pesa, bank file, API — pay off a member's oldest unpaid
+month first. Members who still owe get an SMS on the due date and a reminder
+three days later saying when the fine applies (within the group's SMS
+allowance); five days after the due date, anyone still owing is fined the
+absence fine. Members who have paid get neither.
 ## Meetings
 
 Schedule meetings and record attendance. Marking someone absent or late
@@ -263,8 +271,17 @@ group earned (loan interest, fines paid, other income you type in, less
 expenses), less any loan or fines they still owe. Share by **savings × time
 saved** (money saved in January earns more than money saved in November) or
 by savings at the end. Officials see everyone; members see their own line.
-It's a preview from the records — print it for the meeting, pay outside the
-app.
+Tick *Members keep their shares* if the group pays out savings and earnings
+but keeps shares in the group.
+
+When the officials agree on it: the chair or treasurer presses **Prepare
+this share-out**, and a *different* one **confirms**. Confirming settles each
+member's open loans (oldest first) and unpaid fines from their share, records
+what each takes home and what is still owed, and pays out their savings
+(their balance goes down by what was paid; money paid in after the period
+stays). If anything changed in between — a new payment, loan or fine — it
+asks you to prepare again. The money itself is paid outside the app. Past
+share-outs stay on the page, and the next period starts the day after.
 
 ## Activity (officials)
 
@@ -366,8 +383,10 @@ Your plan, by active members: **Free** up to 10 members; **Group** up to 50
 (Ksh 400 a month, or 4,000 a year); **Large group** up to 300 (Ksh 900 a
 month, or 9,000 a year); **Employee welfare** Ksh 30 per member per month,
 paid by the employer. Every plan has every feature, with a monthly SMS
-allowance. Generate this period's invoice and pay it from the prepaid Wallet
-or by M-Pesa.
+allowance. Each month's invoice is created automatically early on the 1st
+(none for the Free plan). If your prepaid Wallet covers it, it is paid from
+the wallet straight away; otherwise the admin and treasurer get a
+notification to pay it here, from the wallet or by M-Pesa.
 
 ## Settings (admin)
 

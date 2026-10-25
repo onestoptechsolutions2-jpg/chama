@@ -3,12 +3,13 @@
 import { redirect } from "next/navigation";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { users } from "@/lib/db/schema";
+import { sessions, users } from "@/lib/db/schema";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
-import { createSession, destroySession, startSessionForUser } from "@/lib/auth/session";
+import { createSession, destroySession, getSession, startSessionForUser } from "@/lib/auth/session";
 import { registerSchema, loginSchema } from "@/lib/validation/auth";
 import { isEmailIdentifier, normalizeEmail, normalizePhone } from "@/lib/domain/identity";
 import { createUserIfNew } from "@/lib/identity/people";
+import { LIMITS, TOO_MANY, clientIp, hit } from "@/lib/auth/rate-limit";
 
 const MAX_FAILED_LOGINS = 5;
 const LOCK_MS = 15 * 60 * 1000;
@@ -42,6 +43,9 @@ export async function registerAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { name, phone, email, password } = parsed.data;
+  if (!(await hit(`register-ip:${await clientIp()}`, LIMITS.registerPerIp.limit, LIMITS.registerPerIp.windowSeconds))) {
+    return { error: TOO_MANY };
+  }
 
   const result = await createUserIfNew({ name, phone, email, passwordHash: await hashPassword(password) });
   if ("error" in result) return { error: result.error };
@@ -66,6 +70,11 @@ export async function loginAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
   const { password, identifier } = parsed.data;
+  // Shared limits: one address trying many accounts, or many addresses
+  // trying one account. (The per-account lock below still applies.)
+  const ipOk = await hit(`login-ip:${await clientIp()}`, LIMITS.loginPerIp.limit, LIMITS.loginPerIp.windowSeconds);
+  const accountOk = await hit(`login-id:${identifier.trim().toLowerCase()}`, LIMITS.loginPerAccount.limit, LIMITS.loginPerAccount.windowSeconds);
+  if (!ipOk || !accountOk) return { error: TOO_MANY };
   // Phones are stored canonical (lib/domain/identity.ts), so "0712…" and
   // "+254712…" both find the same account.
   const where = isEmailIdentifier(identifier)
@@ -103,4 +112,12 @@ export async function loginAction(
 export async function logoutAction(): Promise<void> {
   await destroySession();
   redirect("/login");
+}
+
+/** Ends every session this account has — this phone and any other — e.g. after losing a phone. */
+export async function signOutEverywhereAction(): Promise<void> {
+  const session = await getSession();
+  if (session) await db.delete(sessions).where(eq(sessions.userId, session.user.id));
+  await destroySession();
+  redirect("/login?signed_out=everywhere");
 }

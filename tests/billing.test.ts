@@ -50,3 +50,11 @@ describe("computeTransactionFee", () => {
     expect(computeTransactionFee("loan_repayment", 100_000)).toBe(500);
   });
 });
+
+describe("billing period", () => {
+  it("is the Nairobi calendar month", async () => {
+    const { billingPeriod } = await import("../lib/domain/billing");
+    expect(billingPeriod("2026-10-25")).toEqual({ periodStart: "2026-10-01", periodEnd: "2026-10-31" });
+    expect(billingPeriod("2028-02-10")).toEqual({ periodStart: "2028-02-01", periodEnd: "2028-02-29" });
+  });
+});

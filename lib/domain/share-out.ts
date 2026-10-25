@@ -25,6 +25,12 @@ export type ShareOutMember = {
   openingSavings: number;
   loanBalance: number;
   unpaidFines: number;
+  /**
+   * Shares the member keeps in the group instead of taking out (when the
+   * group returns savings and earnings but not shares). They still earn —
+   * they count in the weight — but aren't paid out. Default 0.
+   */
+  sharesKept?: number;
 };
 
 export type ShareOutInput = {
@@ -45,6 +51,8 @@ export type ShareOutLine = {
   weightPct: number;
   earnings: number;
   deductions: number;
+  /** Shares left in the group (not paid out). */
+  sharesKept: number;
   payout: number;
   /** Still owed after the share-out, when deductions exceed savings + earnings. */
   stillOwes: number;
@@ -87,7 +95,8 @@ export function computeShareOut(input: ShareOutInput): ShareOutResult {
     const share = totalWeight > 0 ? weights[i] / totalWeight : 0;
     const earnings = Math.floor(profit * share);
     const deductions = Math.max(0, m.loanBalance) + Math.max(0, m.unpaidFines);
-    const gross = m.savings + earnings;
+    const sharesKept = Math.min(Math.max(0, m.sharesKept ?? 0), m.savings);
+    const gross = m.savings - sharesKept + earnings;
     return {
       memberId: m.memberId,
       name: m.name,
@@ -95,6 +104,7 @@ export function computeShareOut(input: ShareOutInput): ShareOutResult {
       weightPct: Math.round(share * 10000) / 100,
       earnings,
       deductions,
+      sharesKept,
       payout: Math.max(0, gross - deductions),
       stillOwes: Math.max(0, deductions - gross),
     };

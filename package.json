@@ -12,7 +12,8 @@
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx --env-file=.env.local scripts/seed.ts",
     "test": "vitest run",
-    "db:enforce-unique-contacts": "tsx --env-file=.env.local scripts/enforce-unique-contacts.ts"
+    "db:enforce-unique-contacts": "tsx --env-file=.env.local scripts/enforce-unique-contacts.ts",
+    "files:move-kyc-private": "tsx --env-file=.env.local scripts/move-kyc-to-private.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
