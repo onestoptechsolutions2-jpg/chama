@@ -25,6 +25,12 @@ export async function applyRepayment(
   tx: Tx,
   actor: Actor,
   input: z.infer<typeof repaymentSchema>,
+  /**
+   * The year-end share-out settles loans from each member's share, an
+   * official's own included; it has its own maker–checker (a different
+   * official confirms what another prepared), so it skips this one.
+   */
+  opts: { shareOut?: boolean } = {},
 ): Promise<CommandResult<RecordedRepayment>> {
   const [loan] = await tx
     .select()
@@ -33,7 +39,7 @@ export async function applyRepayment(
     .for("update");
   if (!loan) return fail("Loan not found", 404);
   if (loan.status === "cleared") return fail("This loan is already fully repaid");
-  const self = selfDealingError(actor.memberId, loan.memberId, "record a loan repayment");
+  const self = opts.shareOut ? null : selfDealingError(actor.memberId, loan.memberId, "record a loan repayment");
   if (self) return fail(self, 403);
 
   await tx.insert(loanRepayments).values({

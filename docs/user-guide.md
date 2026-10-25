@@ -263,8 +263,17 @@ group earned (loan interest, fines paid, other income you type in, less
 expenses), less any loan or fines they still owe. Share by **savings × time
 saved** (money saved in January earns more than money saved in November) or
 by savings at the end. Officials see everyone; members see their own line.
-It's a preview from the records — print it for the meeting, pay outside the
-app.
+Tick *Members keep their shares* if the group pays out savings and earnings
+but keeps shares in the group.
+
+When the officials agree on it: the chair or treasurer presses **Prepare
+this share-out**, and a *different* one **confirms**. Confirming settles each
+member's open loans (oldest first) and unpaid fines from their share, records
+what each takes home and what is still owed, and pays out their savings
+(their balance goes down by what was paid; money paid in after the period
+stays). If anything changed in between — a new payment, loan or fine — it
+asks you to prepare again. The money itself is paid outside the app. Past
+share-outs stay on the page, and the next period starts the day after.
 
 ## Activity (officials)
 

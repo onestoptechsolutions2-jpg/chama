@@ -847,6 +847,63 @@ export const sessions = pgTable("sessions", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// ── Share-outs — the year-end payout, recorded ───────────────────────────
+// One official prepares (draft, with every member's line); a different
+// official confirms, which settles loans and fines from each member's share
+// and pays out their savings (lib/commands/share-out.ts). Confirmed
+// share-outs are history: the next period starts the day after.
+export const shareOuts = pgTable(
+  "share_outs",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    periodStart: date("period_start").notNull(),
+    periodEnd: date("period_end").notNull(),
+    /** time | savings */
+    method: text("method").notNull(),
+    keepShares: boolean("keep_shares").notNull().default(false),
+    interestEarned: numeric("interest_earned", { precision: 14, scale: 2 }).notNull(),
+    finesCollected: numeric("fines_collected", { precision: 14, scale: 2 }).notNull(),
+    otherIncome: numeric("other_income", { precision: 14, scale: 2 }).notNull().default("0"),
+    expenses: numeric("expenses", { precision: 14, scale: 2 }).notNull().default("0"),
+    profit: numeric("profit", { precision: 14, scale: 2 }).notNull(),
+    totalPayout: numeric("total_payout", { precision: 14, scale: 2 }).notNull(),
+    /** draft | completed | cancelled */
+    status: text("status").notNull().default("draft"),
+    preparedBy: integer("prepared_by").references(() => users.id, { onDelete: "set null" }),
+    confirmedBy: integer("confirmed_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  },
+  (t) => [index("share_outs_group_idx").on(t.groupId, t.status)],
+);
+
+export const shareOutLines = pgTable(
+  "share_out_lines",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    shareOutId: integer("share_out_id")
+      .notNull()
+      .references(() => shareOuts.id, { onDelete: "cascade" }),
+    memberId: integer("member_id")
+      .notNull()
+      .references(() => members.id, { onDelete: "cascade" }),
+    savings: numeric("savings", { precision: 14, scale: 2 }).notNull(),
+    earnings: numeric("earnings", { precision: 14, scale: 2 }).notNull(),
+    loanDeducted: numeric("loan_deducted", { precision: 14, scale: 2 }).notNull().default("0"),
+    finesDeducted: numeric("fines_deducted", { precision: 14, scale: 2 }).notNull().default("0"),
+    sharesKept: numeric("shares_kept", { precision: 14, scale: 2 }).notNull().default("0"),
+    payout: numeric("payout", { precision: 14, scale: 2 }).notNull(),
+    stillOwes: numeric("still_owes", { precision: 14, scale: 2 }).notNull().default("0"),
+  },
+  (t) => [index("share_out_lines_share_out_idx").on(t.shareOutId), index("share_out_lines_member_idx").on(t.memberId)],
+);
+
 // ── Rate limits — shared counters for abuse protection (lib/auth/rate-limit.ts) ──
 // Not tenant data (keys are like "login-ip:1.2.3.4"), so no RLS; old rows
 // are cleared by /api/cron/housekeeping.

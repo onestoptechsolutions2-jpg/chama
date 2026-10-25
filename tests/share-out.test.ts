@@ -77,3 +77,24 @@ describe("helpers", () => {
     expect(interestPortion(500, 1000, 1000)).toBe(0);
   });
 });
+
+describe("members keep their shares", () => {
+  it("pays out savings and earnings but leaves shares in the group", () => {
+    const r = computeShareOut({
+      periodStart: "2026-01-01",
+      periodEnd: "2026-12-31",
+      method: "savings",
+      interestEarned: 1000,
+      finesCollected: 0,
+      otherIncome: 0,
+      expenses: 0,
+      members: [
+        { memberId: 1, name: "A", savings: 6000, deposits: [], openingSavings: 6000, loanBalance: 0, unpaidFines: 0, sharesKept: 2000 },
+        { memberId: 2, name: "B", savings: 4000, deposits: [], openingSavings: 4000, loanBalance: 5000, unpaidFines: 0, sharesKept: 2000 },
+      ],
+    });
+    expect(r.lines[0]).toMatchObject({ earnings: 600, sharesKept: 2000, payout: 4600, stillOwes: 0 });
+    // B: 4000 − 2000 kept + 400 earnings = 2400 against a 5000 loan
+    expect(r.lines[1]).toMatchObject({ earnings: 400, sharesKept: 2000, payout: 0, stillOwes: 2600 });
+  });
+});

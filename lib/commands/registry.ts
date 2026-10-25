@@ -6,6 +6,7 @@ import { recordMeetingCollections } from "./meeting";
 import { sendLoanReminder } from "./reminders";
 import { assignPayment, ignorePayment, importPayments, receivePayment } from "./payments";
 import { approveWithdrawal, cancelWithdrawal, confirmPrompt, enableWallet, promptPayment, requestWithdrawal, setPayoutDestination } from "./wallet";
+import { cancelShareOut, confirmShareOut, prepareShareOut } from "./share-out";
 import type { Command } from "./types";
 
 /**
@@ -15,7 +16,7 @@ import type { Command } from "./types";
  * dry-run come for free.
  */
 export const COMMANDS: Record<string, Command<any, any>> = Object.fromEntries(
-  [recordContribution, recordContributionBatch, recordMeetingCollections, issueFine, settleFine, recordLoanRepayment, receivePayment, importPayments, assignPayment, ignorePayment, sendLoanReminder, enableWallet, promptPayment, confirmPrompt, setPayoutDestination, requestWithdrawal, approveWithdrawal, cancelWithdrawal].map((c) => [c.name, c]),
+  [recordContribution, recordContributionBatch, recordMeetingCollections, issueFine, settleFine, recordLoanRepayment, receivePayment, importPayments, assignPayment, ignorePayment, sendLoanReminder, enableWallet, promptPayment, confirmPrompt, setPayoutDestination, requestWithdrawal, approveWithdrawal, cancelWithdrawal, prepareShareOut, confirmShareOut, cancelShareOut].map((c) => [c.name, c]),
 );
 
 export function listCommands() {

@@ -302,6 +302,19 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Share-out recorded (Oct 2026)
+
+- The year-end share-out is now an action, not only a preview: one official
+  prepares it (`shareout.prepare`, a draft with every member's line), a
+  different one confirms (`shareout.confirm`, maker–checker). Confirming
+  re-reads the records (refuses if anything changed), settles each member's
+  open loans (oldest due first) and whole unpaid fines from their share,
+  records take-home and still-owed per member, and lowers savings by what was
+  paid out. Optional *members keep their shares*. Past share-outs are listed;
+  the next period starts the day after. New permission `shareout.manage`
+  (chair, treasurer; platform owners only in support mode). Migration 0065
+  (`share_outs`, `share_out_lines`).
+
 ## Security: shared rate limits, sessions, CSP, private KYC (Oct 2026)
 
 - **Shared rate limits** in Postgres (`rate_limits`, `lib/auth/rate-limit.ts`;
@@ -381,8 +394,6 @@ Current as of the last update to this file, roughly in order of priority.
 - **MGR platform fee before payout** — the 5% fee is charged after a turn is
   marked paid, not required before. (Paid-in gating is a group setting;
   maker–checker on "mark paid" is built.)
-- **Share-out is a preview** — it doesn't record the payouts or reset
-  balances for the new year.
 
 **Security and hygiene**
 - **KYC documents stay public until the private store is connected** — set

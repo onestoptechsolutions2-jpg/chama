@@ -69,6 +69,7 @@ who is also a real chama member uses a separate personal account.
 | `projects.view` | ✓ | ✓ | ✓ | ✓ | projects |
 | `projects.manage` | ✓ | ✓ | | | projects |
 | `shareout.view` (officials see all, members their own line) | ✓ | ✓ | ✓ | ✓ | loans |
+| `shareout.manage` — prepare / confirm the share-out (two different officials) | ✓ | ✓ | | | loans |
 | `governance.manage` — papers, registration pack | ✓ | | ✓ | | |
 | `rules.manage` | ✓ | | | | |
 | `reports.view` — staff reports, CSV | ✓ | ✓ | ✓ | | |
