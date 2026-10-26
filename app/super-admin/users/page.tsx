@@ -6,10 +6,13 @@ import { normalizeEmail, normalizePhone } from "@/lib/domain/identity";
 import { PageHeader } from "@/components/feature/page-header";
 import { SuperAdminUsersManager } from "@/components/feature/super-admin-users-manager";
 import { DuplicateUsersPanel, type DuplicateSet } from "@/components/feature/duplicate-users-panel";
+import { MergeAccountsBox } from "@/components/feature/merge-accounts-box";
+import type { MergeCandidate } from "@/lib/domain/merge-preview";
 
 export default async function SuperAdminUsersPage() {
   const session = await requirePlatformPermission("platform.users.manage");
-  const [platformUsers, auditLogs, membershipCounts] = await withPlatformAdmin(async (tx) => {
+  const canMerge = canPlatform(session.user.platformRole, "platform.users.merge");
+  const [platformUsers, auditLogs, membershipCounts, mergeMemberships, mergeMemberRows] = await withPlatformAdmin(async (tx) => {
     const usersList = await tx.query.users.findMany({
       orderBy: (u, { desc }) => [desc(u.createdAt)],
     });
@@ -18,7 +21,15 @@ export default async function SuperAdminUsersPage() {
       limit: 20,
     });
     const memberships = await tx.query.groupMemberships.findMany({ columns: { userId: true } });
-    return [usersList, logs, memberships] as const;
+    // Only for owners, who are the only ones who can merge: each account's groups, roles and savings records.
+    const detailed = canMerge
+      ? await tx.query.groupMemberships.findMany({
+          columns: { userId: true, groupId: true, role: true, status: true },
+          with: { group: { columns: { name: true } } },
+        })
+      : [];
+    const memberRows = canMerge ? await tx.query.members.findMany({ columns: { userId: true, groupId: true } }) : [];
+    return [usersList, logs, memberships, detailed, memberRows] as const;
   });
 
   // Platform staff must not belong to groups; older accounts may still have
@@ -59,6 +70,21 @@ export default async function SuperAdminUsersPage() {
     });
   }
 
+  const savings = new Set(mergeMemberRows.filter((m) => m.userId !== null).map((m) => `${m.userId}:${m.groupId}`));
+  const mergeCandidates: MergeCandidate[] = canMerge
+    ? platformUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        phone: u.phone,
+        platformRole: u.platformRole,
+        active: u.active,
+        memberships: mergeMemberships
+          .filter((m) => m.userId === u.id)
+          .map((m) => ({ groupId: m.groupId, groupName: m.group.name, role: m.role, status: m.status, hasMemberRow: savings.has(`${u.id}:${m.groupId}`) })),
+      }))
+    : [];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -84,7 +110,8 @@ export default async function SuperAdminUsersPage() {
           </CardContent>
         </Card>
       )}
-      <DuplicateUsersPanel sets={duplicateSets} canMerge={canPlatform(session.user.platformRole, "platform.users.merge")} />
+      <DuplicateUsersPanel sets={duplicateSets} canMerge={canMerge} />
+      {canMerge && <MergeAccountsBox candidates={mergeCandidates} />}
       <SuperAdminUsersManager users={platformUsers} auditLogs={auditLogs} />
     </div>
   );
