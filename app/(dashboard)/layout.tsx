@@ -51,11 +51,11 @@ export default async function DashboardLayout({
 
   return (
     <>
-      {backupDue && <BackupPrompt backup={{ id: backupDue.id, date: backupDue.backupDate, sizeKb: Math.max(1, Math.round(backupDue.sizeBytes / 1024)) }} />}
       {session.support && session.activeMembership && (
         <SupportBanner support={session.support} groupName={session.activeMembership.groupName} />
       )}
       <DashboardShell session={session} unreadNotifications={unreadNotifications}>
+        {backupDue && <BackupPrompt backup={{ id: backupDue.id, date: backupDue.backupDate, sizeKb: Math.max(1, Math.round(backupDue.sizeBytes / 1024)) }} />}
         {children}
       </DashboardShell>
     </>

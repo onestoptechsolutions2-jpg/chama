@@ -20,3 +20,18 @@ export function addDays(date: string, days: number): string {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().split("T")[0];
 }
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A YYYY-MM-DD date as people say it: "Tue 27 Oct", with the year only when
+ * it isn't this year ("Mon 5 Jan 2027"). "Today"/"Tomorrow" when close.
+ */
+export function formatDay(date: string, today: string = nairobiToday()): string {
+  if (date === today) return "Today";
+  if (date === addDays(today, 1)) return "Tomorrow";
+  const [y, m, d] = date.split("-").map(Number);
+  const wd = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${wd} ${d} ${MONTHS[m - 1]}${String(y) === today.slice(0, 4) ? "" : ` ${y}`}`;
+}

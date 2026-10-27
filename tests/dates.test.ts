@@ -18,3 +18,13 @@ describe("Nairobi dates", () => {
     expect(defaultDueDate(new Date("2026-01-31T21:30:00Z"), 1)).toBe("2026-03-01");
   });
 });
+
+describe("formatDay", () => {
+  it("reads like people say it", async () => {
+    const { formatDay } = await import("@/lib/domain/dates");
+    expect(formatDay("2026-10-27", "2026-10-27")).toBe("Today");
+    expect(formatDay("2026-10-28", "2026-10-27")).toBe("Tomorrow");
+    expect(formatDay("2026-11-05", "2026-10-27")).toBe("Thu 5 Nov");
+    expect(formatDay("2027-01-04", "2026-10-27")).toBe("Mon 4 Jan 2027");
+  });
+});

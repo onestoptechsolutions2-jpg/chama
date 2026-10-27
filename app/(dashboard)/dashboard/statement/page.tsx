@@ -6,6 +6,8 @@ import { withTenant } from "@/lib/db/rls";
 import { groups } from "@/lib/db/schema";
 import { groupWalletsEnabled } from "@/lib/payments/intasend";
 import { PayByMpesa } from "@/components/feature/pay-by-mpesa";
+import { loadMyMonth } from "@/lib/members/my-month";
+import { MyMonthCard } from "@/components/feature/my-month-card";
 import { loadStatement } from "./data";
 import { StatementView } from "./statement-view";
 
@@ -37,6 +39,7 @@ export default async function StatementPage({
   if (!member) return null;
 
   const isSelf = targetId === session.activeMembership.memberId;
+  const myMonth = isSelf ? await withTenant(groupId, (tx) => loadMyMonth(tx, groupId, targetId)) : null;
   const walletOn =
     isSelf &&
     groupWalletsEnabled() &&
@@ -56,7 +59,14 @@ export default async function StatementPage({
       title={isSelf ? "My Money" : `Money — ${member.name}`}
       description={isSelf ? "What you have put in and what you owe." : "Full financial history."}
       data={{ ...data, member }}
-      action={walletOn ? <PayByMpesa purposes={purposes} /> : null}
+      action={
+        isSelf ? (
+          <>
+            {myMonth && <MyMonthCard month={myMonth} showTotals={false} />}
+            {walletOn && <PayByMpesa purposes={purposes} />}
+          </>
+        ) : null
+      }
     />
   );
 }
