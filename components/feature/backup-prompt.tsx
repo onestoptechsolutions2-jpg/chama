@@ -6,19 +6,20 @@ import { Button, buttonVariants } from "@/components/ui/button";
 
 /**
  * Shown to a group's officials when today's backup is ready and they haven't
- * downloaded it yet. Download or "Not now"; it comes back with tomorrow's.
+ * downloaded it yet, as a card at the top of the page (not over it).
+ * Download or "Not now"; it comes back with tomorrow's.
  */
 export function BackupPrompt({ backup }: { backup: { id: number; date: string; sizeKb: number } }) {
   const [hidden, setHidden] = useState(false);
   const [pending, start] = useTransition();
   if (hidden) return null;
   return (
-    <div role="dialog" aria-label="Today's backup" className="fixed inset-x-0 bottom-20 z-40 mx-auto max-w-md px-4 md:bottom-6">
-      <div className="space-y-3 rounded-xl border bg-background p-4 shadow-lg">
+    <section aria-label="Today's backup" className="mb-5">
+      <div className="space-y-3 rounded-xl border border-primary/40 bg-primary/5 p-4">
         <div>
           <p className="font-semibold">Today&apos;s backup is ready</p>
           <p className="text-sm text-muted-foreground">
-            The group&apos;s full record for {backup.date} in one Excel file ({backup.sizeKb} KB). Keep a copy safe — it holds members&apos; details
+            The group&apos;s full record as of today, in one Excel file ({backup.sizeKb} KB). Keep a copy safe — it holds members&apos; details
             and money.
           </p>
         </div>
@@ -40,6 +41,6 @@ export function BackupPrompt({ backup }: { backup: { id: number; date: string; s
           </Button>
         </div>
       </div>
-    </div>
+    </section>
   );
 }

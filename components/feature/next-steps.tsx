@@ -12,12 +12,30 @@ const TONE = {
 } as const;
 
 /** The assistant's short list on Home. */
-export function NextSteps({ steps, limit = 4 }: { steps: NextStep[]; limit?: number }) {
-  if (steps.length === 0) return null;
+export function NextSteps({
+  steps,
+  limit = 4,
+  title = "Next steps",
+  emptyText,
+}: {
+  steps: NextStep[];
+  limit?: number;
+  title?: string;
+  /** Shown instead of hiding the card when there is nothing to do. */
+  emptyText?: string;
+}) {
+  if (steps.length === 0) {
+    if (!emptyText) return null;
+    return (
+      <Card>
+        <CardContent className="pt-6 text-sm text-muted-foreground">{emptyText}</CardContent>
+      </Card>
+    );
+  }
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Next steps</CardTitle>
+        <CardTitle className="text-base">{title}</CardTitle>
       </CardHeader>
       <CardContent className="divide-y">
         {steps.slice(0, limit).map((s) => {
