@@ -31,7 +31,7 @@ const PRODUCT_INFO: {
   href: string;
 }[] = [
   { key: "loans", name: "loansEnabled", label: "Table Banking (Loans)", description: "Loan applications, approvals, and repayments.", href: "/dashboard/loans" },
-  { key: "mgr", name: "mgrEnabled", label: "Merry-Go-Round", description: "Rotation cycles, turns, and payouts.", href: "/dashboard/mgr" },
+  { key: "mgr", name: "mgrEnabled", label: "Merry-go-round", description: "Rotation cycles, turns, and payouts.", href: "/dashboard/mgr" },
   { key: "welfare", name: "welfareEnabled", label: "Welfare", description: "Welfare claims and the welfare fund.", href: "/dashboard/welfare" },
   { key: "projects", name: "projectsEnabled", label: "Investment (Projects)", description: "Table-banking / group projects and contributions.", href: "/dashboard/projects" },
 ];

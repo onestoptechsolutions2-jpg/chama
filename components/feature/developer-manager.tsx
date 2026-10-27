@@ -34,7 +34,7 @@ const EVENT_OPTIONS = [
   { value: "loan.approved", label: "Loan approved" },
   { value: "loan.rejected", label: "Loan rejected" },
   { value: "member.joined", label: "Member joined" },
-  { value: "mgr.slot.paid", label: "MGR slot paid" },
+  { value: "mgr.slot.paid", label: "Merry-go-round turn paid" },
   { value: "welfare.request.submitted", label: "Welfare request submitted" },
   { value: "welfare.request.approved", label: "Welfare request approved" },
   { value: "welfare.request.rejected", label: "Welfare request rejected" },

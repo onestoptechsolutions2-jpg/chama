@@ -13,12 +13,12 @@ const ROLE_SUMMARY: Record<MembershipRole, string> = {
   secretary:
     "Records and meetings — members, fines, meetings, and settings, but not loan approvals or pending-member approvals.",
   member:
-    "A participant, not staff — apply for a loan (if enabled), claim your MGR slot, submit welfare claims or contribute to projects (if enabled), and see your own statement.",
+    "A participant, not staff — apply for a loan (if enabled), claim your merry-go-round turn, submit welfare claims or contribute to projects (if enabled), and see your own statement.",
 };
 
 const PRODUCT_LABELS: Record<keyof ProductFlags, string> = {
   loans: "Loans",
-  mgr: "Merry-Go-Round",
+  mgr: "Merry-go-round",
   welfare: "Welfare",
   projects: "Projects",
 };
@@ -103,8 +103,8 @@ export function RoleGuide({
             you get access.
           </p>
           <p>
-            <span className="font-medium text-foreground">MGR agreement.</span> The first time
-            you interact with a Merry-Go-Round cycle, you&apos;ll be asked to sign a one-time
+            <span className="font-medium text-foreground">Merry-go-round agreement.</span> The first time
+            you interact with a merry-go-round cycle, you&apos;ll be asked to sign a one-time
             agreement for that cycle before you can claim a slot — this covers the platform&apos;s
             5% fee on payouts and the group&apos;s own rotation terms.
           </p>

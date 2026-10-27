@@ -202,13 +202,13 @@ export function buildMgrNotification(event: MgrNotificationEvent): NotificationT
     case "contribution_due_tomorrow":
       return {
         category: "action_required",
-        title: "Mzunguko contribution due tomorrow",
+        title: "Merry-go-round contribution due tomorrow",
         body: `Cycle ${event.cycleNumber} is on ${event.date}. Please have your contribution ready.`,
       };
     case "payout_tomorrow":
       return {
         category: "success",
-        title: "Your Mzunguko turn is tomorrow",
+        title: "Your merry-go-round turn is tomorrow",
         body: event.amount
           ? `You receive Ksh ${event.amount.toLocaleString()} in cycle ${event.cycleNumber}.`
           : `You receive the payout for cycle ${event.cycleNumber}.`,
@@ -230,7 +230,7 @@ export function buildMgrNotification(event: MgrNotificationEvent): NotificationT
     case "rotation_rescheduled":
       return {
         category: "info",
-        title: "Mzunguko dates have moved",
+        title: "Merry-go-round dates have moved",
         body: `The next payout is now on ${event.nextDate}. Rotation ${event.rotationNumber} now ends on ${event.endDate}.`,
       };
   }

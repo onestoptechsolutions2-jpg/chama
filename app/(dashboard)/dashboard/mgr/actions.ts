@@ -683,7 +683,7 @@ export async function chargeFeeFromWalletAction(
       amount: String(fee),
       balanceAfter: updatedWallet.balance,
       relatedPaymentId: payment.id,
-      note: `MGR platform fee — slot #${mgrSlotId}`,
+      note: `Merry-go-round platform fee — turn #${mgrSlotId}`,
     });
 
     return { ok: true as const, fee };

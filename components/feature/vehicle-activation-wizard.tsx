@@ -24,9 +24,9 @@ const VEHICLE_COPY: Record<ActivatableProduct, { label: string; intro: string }>
       "Members can apply for loans against their savings, with guarantors, interest, and repayment tracking. This is usually the biggest change to how a group operates — worth setting your own terms before members start borrowing.",
   },
   mgr: {
-    label: "Merry-Go-Round",
+    label: "Merry-go-round",
     intro:
-      "A rotating payout schedule — members contribute each cycle and take turns receiving the pot. Rotation order, contribution amount, and cycle schedule are configured separately in MGR → Config after this.",
+      "A rotating payout schedule — members contribute each cycle and take turns receiving the pot. Rotation order, contribution amount, and cycle schedule are configured separately in Merry-go-round → Config after this.",
   },
   welfare: {
     label: "Welfare",
@@ -265,7 +265,7 @@ export function VehicleActivationWizard({ product }: { product: ActivatableProdu
             </div>
             {product === "mgr" && (
               <p className="text-muted-foreground">
-                After this, set your rotation schedule in MGR → Config.
+                After this, set your rotation schedule in Merry-go-round → Config.
               </p>
             )}
           </div>

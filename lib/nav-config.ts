@@ -94,7 +94,7 @@ export const navItems: NavItem[] = [
     label: "Advice & Reports",
     icon: Lightbulb,
     guide:
-      "What's next in the MGR rotation and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in. Admins/treasurers/secretaries also get graphical group-performance reports here (contributions, balances, loan and fine exposure) with CSV export.",
+      "What's next in the merry-go-round and who's due to receive it, whether the rotation is keeping pace, and plain-language recommendations drawn from the group's own records — capital allocation, welfare fund health, and which members could use a check-in. Admins/treasurers/secretaries also get graphical group-performance reports here (contributions, balances, loan and fine exposure) with CSV export.",
   },
   {
     href: "/dashboard/collect",
@@ -173,7 +173,7 @@ export const navItems: NavItem[] = [
     href: "/dashboard/mgr",
     permission: "mgr.use",
     section: "money",
-    label: "Mzunguko",
+    label: "Merry-go-round",
     icon: RefreshCw,
     guide:
       "The rotating-payout schedule. You'll be asked to sign a one-time agreement before you can claim a slot in the active cycle. Members claim open slots themselves (or staff can auto-assign/reassign); staff mark a slot paid once the actual payout has happened outside the app — that action is permanently logged against their account and can't be edited or deleted later, specifically so payouts stay accountable.",
@@ -236,7 +236,7 @@ export const navItems: NavItem[] = [
     label: "Prepaid Wallet",
     icon: WalletCards,
     guide:
-      "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the MGR payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
+      "A prepaid balance for the platform's own fees only — never member savings, contributions, or loan funds, which are still tracked separately and reconciled via M-Pesa directly. Top it up once and platform fees (like the merry-go-round payout fee) get deducted instantly with no phone prompt each time, instead of triggering a fresh M-Pesa push per event.",
   },
   {
     href: "/dashboard/billing",

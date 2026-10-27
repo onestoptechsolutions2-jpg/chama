@@ -149,7 +149,7 @@ export async function announce(actor: Actor, recorded: RecordedContribution[]) {
 
 export const recordContribution = defineCommand({
   name: "contributions.record",
-  description: "Record money a member paid in (capital, security, savings, welfare, MGR, project, other).",
+  description: "Record money a member paid in (capital, security, savings, welfare, merry-go-round, project, other).",
   permission: "money.record",
   input: entrySchema,
   run: async (tx, actor, input) => {

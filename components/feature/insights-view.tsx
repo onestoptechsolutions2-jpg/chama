@@ -46,7 +46,7 @@ function NextUpHero({ event, pace }: { event: NextMgrEvent | null; pace: MgrPace
     return (
       <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-transparent to-transparent">
         <CardContent className="pt-6 text-sm text-muted-foreground">
-          No MGR cycle is active or scheduled yet — once one starts, the next payout shows up here.
+          No merry-go-round cycle is active or scheduled yet — once one starts, the next payout shows up here.
         </CardContent>
       </Card>
     );

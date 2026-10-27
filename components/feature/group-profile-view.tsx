@@ -169,7 +169,7 @@ export function GroupProfileView({
 
       {nextMgrEvent && (
         <Card className={nextMgrEvent.daysUntil < 0 ? "border-destructive/50 bg-destructive/5" : undefined}>
-          <CardHeader><CardTitle className="text-base">Next MGR payout</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">Next merry-go-round payout</CardTitle></CardHeader>
           <CardContent className="text-sm">
             <p className="text-lg font-semibold">{nextMgrEvent.recipientName ?? "Unassigned"}</p>
             <p className="text-muted-foreground">

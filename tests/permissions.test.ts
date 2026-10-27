@@ -85,7 +85,7 @@ describe("nav follows permissions", () => {
   it("hides product pages when the product is off", () => {
     const labels = getVisibleNavItems({ role: "admin", products: allOff }).map((i) => i.label);
     expect(labels).not.toContain("Loans");
-    expect(labels).not.toContain("Mzunguko");
+    expect(labels).not.toContain("Merry-go-round");
   });
 });
 

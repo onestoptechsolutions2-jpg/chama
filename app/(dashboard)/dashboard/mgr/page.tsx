@@ -143,7 +143,7 @@ export default async function MgrPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Merry-Go-Round" description="Rotation schedule, turns, and payouts." />
+      <PageHeader title="Merry-go-round" description="Rotation schedule, turns, and payouts." />
       {needsAgreement && activeCycle && (
         <MgrAgreementGate cycleId={activeCycle.id} platformTerms={group.platformTerms} groupTerms={group.mgrTerms} />
       )}

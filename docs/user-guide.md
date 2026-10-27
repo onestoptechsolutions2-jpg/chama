@@ -60,12 +60,12 @@ filled in once and reused automatically everywhere else you're a member.
 group's setup (invite officials, add members, connect M-Pesa, write rules,
 first collection), work waiting for officials (payments to match, join or
 loan requests, overdue loans), and your own reminders (a loan due, someone
-asking you to guarantee, a Mzunguko turn to choose, fines, finishing your
+asking you to guarantee, a merry-go-round turn to choose, fines, finishing your
 profile). Each item has a button that takes you to the right page. It
 follows fixed rules — the same records always give the same list.
 
 A few big buttons for the everyday jobs (staff: Add Money, Meetings, Loans,
-Fines; members: My Money, Ask for Loan, Get Help, Mzunguko), one line with
+Fines; members: My Money, Ask for Loan, Get Help, Merry-go-round), one line with
 the member count and the total saved together, the oldest unpaid fines, and
 the next meeting. Staff also see a banner if the group still needs a
 Treasurer and a Secretary. Recommendations and charts live under
@@ -76,7 +76,7 @@ Treasurer and a Secretary. Recommendations and charts live under
 What's coming up and what's worth a closer look, computed live from the
 group's own records — not a static report.
 
-- **Next MGR payout** (if MGR is on) — who's due to receive it, when, and
+- **Next merry-go-round payout** (if merry-go-round is on) — who's due to receive it, when, and
   whether the rotation is running on the schedule the group configured
   (a slower- or faster-than-usual pace gets flagged).
 - **Recommendations** — plain-language nudges: a group whose registration
@@ -110,13 +110,13 @@ Admins also have, under **More details** on each member:
   It cannot be used on admins, on yourself, or on someone who belongs to
   another group too (they must reset their own).
 - **Remove from group** — they can no longer open this group; their savings
-  history stays; any Mzunguko turn they hadn't been paid for becomes open
+  history stays; any merry-go-round turn they hadn't been paid for becomes open
   again. Refused while they still have a loan to repay, and for admins
   (change their role first) or yourself.
 
 Removed people appear under **Removed members** at the bottom of the page,
 each with a **Bring back** button that restores their login and their place
-in the Mzunguko queue (turns that were freed stay open).
+in the merry-go-round queue (turns that were freed stay open).
 
 ## Pending members (admin/treasurer)
 
@@ -163,13 +163,13 @@ is enforced automatically on both paths — staff can't approve past it
 either. The approve dialog shows accepted-vs-required guarantor count and
 won't let you confirm until the group's minimum is met.
 
-## Merry-Go-Round (MGR) — Mzunguko
+## Merry-go-round
 
 The rotating-payout schedule — everyone contributes each cycle, one member
 (or several, depending on config) receives the pooled amount. You'll be
 asked to sign a one-time agreement before you can claim a turn in the
 active cycle. Staff mark a turn **paid** once the money has actually moved
-outside the app (MGR payouts are cash/M-Pesa between members, never routed
+outside the app (merry-go-round payouts are cash/M-Pesa between members, never routed
 through the platform) — that is permanently logged and a paid turn can no
 longer be reassigned or un-paid, so payouts stay accountable.
 
@@ -187,7 +187,7 @@ moves under *Past rotations* with its dates and total paid out.
   paid*.
 - The **Turns** tab shows what you have paid into this rotation against
   your share so far (*Paid in Ksh 2,000 of Ksh 3,000 · owes Ksh 1,000*).
-  Record merry-go-round money as type MGR — the collection sheet has a
+  Record merry-go-round money as type Merry-go-round — the collection sheet has a
   column for it, or pay M-Pesa with account `12 mgr`.
 - On the **Turns** tab, *Which turn would you like?* lets you pick up to
   three cycles, best first. Choices are honoured fairly when turns are
@@ -382,7 +382,7 @@ a separate step you have to complete.
 
 A prepaid balance for the platform's own fees **only** — never member
 savings, contributions, or loan funds, which are tracked separately and
-reconciled via M-Pesa directly. Top it up once and platform fees (the MGR
+reconciled via M-Pesa directly. Top it up once and platform fees (the merry-go-round
 payout fee, a loan's disbursement fee, a subscription invoice) get
 deducted instantly with no phone prompt each time, instead of triggering a
 fresh M-Pesa push per event.
@@ -409,7 +409,7 @@ The group's configurable business rules, organized into tabs:
 - **Loans** — interest rate, loan-limit multiplier, repayment period, late
   penalty, how many guarantors are required (0 opts out entirely), the
   minimum loan amount, and how many loans a member may guarantee at once.
-- **Products** — turn Loans/MGR/Welfare/Projects on or off. Turning one off
+- **Products** — turn Loans/Merry-go-round/Welfare/Projects on or off. Turning one off
   only hides it — the underlying data isn't touched, so re-enabling later
   restores full history. Activating a vehicle for the first time walks
   through a short setup wizard (configure its terms if relevant, pick
