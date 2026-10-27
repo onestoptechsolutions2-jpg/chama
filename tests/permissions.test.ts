@@ -97,3 +97,10 @@ describe("isPlatformStaff", () => {
     expect(isPlatformStaff(null)).toBe(false);
   });
 });
+
+describe("daily backup", () => {
+  it("is for the chair, treasurer and secretary only", () => {
+    for (const role of ["admin", "treasurer", "secretary"] as const) expect(can({ role, products: allOn }, "backup.download")).toBe(true);
+    expect(can({ role: "member", products: allOn }, "backup.download")).toBe(false);
+  });
+});

@@ -21,3 +21,9 @@ describe("supportWriteError", () => {
     expect(supportWriteError({ mode: "act" }, "owner", "billing.pay")).not.toBeNull();
   });
 });
+
+describe("daily backups", () => {
+  it("are never handled by platform staff, even owners", () => {
+    expect(supportWriteError({ mode: "act" }, "owner", "backup.download")).not.toBeNull();
+  });
+});

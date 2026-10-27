@@ -74,6 +74,7 @@ who is also a real chama member uses a separate personal account.
 | `rules.manage` | ✓ | | | | |
 | `reports.view` — staff reports, CSV | ✓ | ✓ | ✓ | | |
 | `audit.view` — Activity log | ✓ | ✓ | ✓ | | |
+| `backup.download` — daily Excel backup (never in support mode) | ✓ | ✓ | ✓ | | |
 | `settings.view` | ✓ | ✓ | ✓ | | |
 | `settings.manage` — settings, products, paybill, benefit table, turn on the wallet | ✓ | | | | |
 | `money.withdraw` — ask to withdraw from the group wallet | ✓ | ✓ | | | |
@@ -145,7 +146,7 @@ on every page. The group's admins are notified. In support mode:
 
 - view-only blocks every write;
 - never: API keys, paying the platform, member passwords, personal KYC,
-  where wallet withdrawals go;
+  where wallet withdrawals go, the group's daily backup;
 - loans/MGR/welfare management and wallet withdrawals: platform owners only;
 - maker–checker applies to the member being acted as;
 - every write attempt — allowed or refused — is in the group's Activity log.

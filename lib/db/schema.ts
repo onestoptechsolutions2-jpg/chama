@@ -12,6 +12,7 @@ import {
   uniqueIndex,
   index,
   jsonb,
+  customType,
 } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 
@@ -902,6 +903,51 @@ export const shareOutLines = pgTable(
     stillOwes: numeric("still_owes", { precision: 14, scale: 2 }).notNull().default("0"),
   },
   (t) => [index("share_out_lines_share_out_idx").on(t.shareOutId), index("share_out_lines_member_idx").on(t.memberId)],
+);
+
+// ── Daily group backups — one Excel workbook per group per day ─────────────
+// Built by /api/cron/backups (lib/backup/*), kept BACKUP_KEEP_DAYS, offered
+// to the group's officials when they sign in and emailed to those with an
+// email address. Holds members' personal data and money, so it is
+// tenant-isolated like everything else and never sent to platform staff.
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+export const groupBackups = pgTable(
+  "group_backups",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    /** Nairobi calendar date the backup was taken. */
+    backupDate: date("backup_date").notNull(),
+    fileName: text("file_name").notNull(),
+    content: bytea("content").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("group_backups_group_date_unique").on(t.groupId, t.backupDate)],
+);
+
+/** Per official, per backup: whether they downloaded it or dismissed the sign-in prompt. */
+export const groupBackupReceipts = pgTable(
+  "group_backup_receipts",
+  {
+    id: serial("id").primaryKey(),
+    groupId: integer("group_id")
+      .notNull()
+      .references(() => groups.id, { onDelete: "cascade" }),
+    backupId: integer("backup_id")
+      .notNull()
+      .references(() => groupBackups.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    downloadedAt: timestamp("downloaded_at", { withTimezone: true }),
+    dismissedAt: timestamp("dismissed_at", { withTimezone: true }),
+    emailedAt: timestamp("emailed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("group_backup_receipts_backup_user_unique").on(t.backupId, t.userId)],
 );
 
 // ── Rate limits — shared counters for abuse protection (lib/auth/rate-limit.ts) ──

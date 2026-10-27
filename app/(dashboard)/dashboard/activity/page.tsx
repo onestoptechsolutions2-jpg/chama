@@ -26,6 +26,8 @@ const COMMAND_LABELS: Record<string, string> = {
   "wallet.requestWithdrawal": "Asked to withdraw",
   "wallet.approveWithdrawal": "Approved a withdrawal",
   "wallet.cancelWithdrawal": "Cancelled a withdrawal",
+  "backup.download": "Downloaded the daily backup",
+  "backup.emailed": "Daily backup emailed",
   "shareout.prepare": "Prepared the share-out",
   "shareout.confirm": "Confirmed the share-out",
   "shareout.cancel": "Cancelled a prepared share-out",

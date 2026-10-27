@@ -64,6 +64,7 @@ export const GROUP_PERMISSIONS = {
   "rules.manage": { roles: ADMIN, label: "Add or retire group rules" },
   "reports.view": { roles: OFFICIALS, label: "See staff reports and export CSV" },
   "audit.view": { roles: OFFICIALS, label: "See the group's activity log (who did what)" },
+  "backup.download": { roles: OFFICIALS, label: "Download the group's daily backup (Excel)" },
   "settings.view": { roles: OFFICIALS, label: "See group settings" },
   "settings.manage": { roles: ADMIN, label: "Change group settings and products" },
 

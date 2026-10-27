@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  DatabaseBackup,
   LayoutDashboard,
   ScrollText,
   Users,
@@ -273,6 +274,15 @@ export const navItems: NavItem[] = [
     icon: History,
     guide:
       "Every recorded change — money in, fines, repayments — with who did it and how (in the app, by M-Pesa, through the API, or by platform support on your behalf). It can't be edited or deleted.",
+  },
+  {
+    href: "/dashboard/backups",
+    permission: "backup.download",
+    section: "group",
+    label: "Backups",
+    icon: DatabaseBackup,
+    guide:
+      "A full copy of the group's records in one Excel file, made every day: members, contributions, merry-go-round, fines, welfare, projects, loans and meetings. Officials see it when they sign in and get it by email if they have an email address. The last 90 days are kept here.",
   },
   {
     href: "/dashboard/settings",
