@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/domain/dates";
 import { desc, inArray } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { paymentWebhookEvents, platformPayments, groups } from "@/lib/db/schema";
@@ -144,7 +145,7 @@ export default async function SuperAdminIntegrationsPage() {
                 return (
                   <TableRow key={event.id}>
                     <TableCell className="text-muted-foreground">
-                      {new Date(event.receivedAt).toLocaleString()}
+                      {formatDateTime(event.receivedAt)}
                     </TableCell>
                     <TableCell className="capitalize">{event.provider}</TableCell>
                     <TableCell className="max-w-40 truncate font-mono text-xs" title={event.invoiceId ?? undefined}>

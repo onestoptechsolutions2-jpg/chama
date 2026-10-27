@@ -4,7 +4,7 @@ import { isAuthorizedCronRequest, runCronJob } from "@/lib/cron/helpers";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { groups, members, contributionDues, fines } from "@/lib/db/schema";
 import { GRACE_DAYS, SECOND_REMINDER_DAYS, dueReminderKind, dueReminderText } from "@/lib/domain/contribution-dues";
-import { addDays, nairobiToday } from "@/lib/domain/dates";
+import { addDays, formatDate, nairobiToday } from "@/lib/domain/dates";
 import { alreadySentToday } from "@/lib/commands/reminders";
 import { sendSms } from "@/lib/notify/sms";
 
@@ -157,7 +157,7 @@ async function fineOverdueDues(): Promise<number> {
           groupId: due.groupId,
           memberId: due.memberId,
           amount: group.fineAbsence,
-          reason: `Missed contribution due ${due.dueDate}`,
+          reason: `Missed contribution due ${formatDate(due.dueDate)}`,
         })
         .returning();
 

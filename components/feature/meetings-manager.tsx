@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useActionState } from "react";
 import Link from "next/link";
 import type { meetings as meetingsTable } from "@/lib/db/schema";
@@ -99,7 +100,7 @@ export function MeetingsManager({ meetings }: { meetings: Meeting[] }) {
               className="flex items-center justify-between rounded-md border p-3 text-sm hover:bg-muted"
             >
               <div>
-                <span className="font-medium">{m.meetingDate}</span>
+                <span className="font-medium">{formatDay(m.meetingDate)}</span>
                 <span className="ml-2 capitalize text-muted-foreground">{m.meetingType}</span>
                 {m.venue && <span className="ml-2 text-muted-foreground">· {m.venue}</span>}
               </div>

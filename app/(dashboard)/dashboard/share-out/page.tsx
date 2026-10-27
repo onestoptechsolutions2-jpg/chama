@@ -4,7 +4,7 @@ import { can } from "@/lib/auth/permissions";
 import { withTenant } from "@/lib/db/rls";
 import { db } from "@/lib/db/client";
 import { shareOutLines, shareOuts, users } from "@/lib/db/schema";
-import { addDays, nairobiToday } from "@/lib/domain/dates";
+import { addDays, formatDate, formatRange, nairobiToday } from "@/lib/domain/dates";
 import type { ShareOutMethod } from "@/lib/domain/share-out";
 import { loadShareOut } from "@/lib/share-out/data";
 import { PageHeader } from "@/components/feature/page-header";
@@ -90,7 +90,7 @@ export default async function ShareOutPage({
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <p>
-              {preparerName} prepared the share-out for {draft.periodStart} to {draft.periodEnd}: {ksh(draftTotal)} to pay out to{" "}
+              {preparerName} prepared the share-out for {formatRange(draft.periodStart, draft.periodEnd)}: {ksh(draftTotal)} to pay out to{" "}
               {draftLines.length} members{draft.keepShares ? ", members keep their shares" : ""}. A different official confirms it — loans and
               fines are then settled from each share and savings are paid out.
             </p>
@@ -144,7 +144,7 @@ export default async function ShareOutPage({
       {notStarted ? (
         <Card>
           <CardContent className="pt-6 text-sm text-muted-foreground">
-            {last ? `The last share-out covered up to ${last.periodEnd}. ` : ""}The next period starts on {from}; its share-out can be worked out
+            {last ? `The last share-out covered up to ${formatDate(last.periodEnd)}. ` : ""}The next period starts on {formatDate(from)}; its share-out can be worked out
             from then.
           </CardContent>
         </Card>
@@ -169,7 +169,7 @@ export default async function ShareOutPage({
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-base">
-            {seeAll ? `Members (${lines.length})` : "Your share-out"} · {from} to {to}
+            {seeAll ? `Members (${lines.length})` : "Your share-out"} · {formatRange(from, to)}
           </CardTitle>
           <PrintButton />
         </CardHeader>
@@ -247,7 +247,7 @@ export default async function ShareOutPage({
               return (
                 <div key={h.id} className="py-2">
                   <p className="font-medium">
-                    {h.periodStart} → {h.periodEnd}
+                    {formatRange(h.periodStart, h.periodEnd)}
                     <span className="font-normal text-muted-foreground">
                       {" "}
                       · {ksh(Number(h.totalPayout))} paid out · earnings {ksh(Number(h.profit))}

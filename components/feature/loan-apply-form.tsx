@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useActionState, useState, useTransition } from "react";
 import type {
   loans as loansTable,
@@ -71,7 +72,7 @@ function ActiveLoanCard({ loan }: { loan: Loan }) {
           <span className="text-muted-foreground">Remaining:</span> {ksh(loan.amountRemaining)}
         </p>
         <p>
-          <span className="text-muted-foreground">Due:</span> {loan.dueDate}
+          <span className="text-muted-foreground">Due:</span> {loan.dueDate ? formatDay(loan.dueDate) : "—"}
         </p>
       </CardContent>
     </Card>

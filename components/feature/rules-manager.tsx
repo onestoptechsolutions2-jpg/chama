@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/dates";
 import { useMemo, useState, useActionState, useTransition } from "react";
 import type { rules as rulesTable } from "@/lib/db/schema";
 import { ruleCategories } from "@/lib/validation/rules";
@@ -246,7 +247,7 @@ export function RulesManager({
     <div className="space-y-6">
       {rulesAcceptedAt && (
         <p className="text-sm text-muted-foreground">
-          You accepted these rules on {new Date(rulesAcceptedAt).toLocaleDateString()}, the day
+          You accepted these rules on {formatDate(rulesAcceptedAt)}, the day
           you joined this group — binding automatically, not a separate step.
         </p>
       )}

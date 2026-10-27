@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useActionState, useState } from "react";
 import type {
   welfareRequests as welfareRequestsTable,
@@ -302,7 +303,7 @@ function AdvancesTable({ advances, isStaff }: { advances: Advance[]; isStaff: bo
                 {isStaff && <TableCell className="font-medium">{a.member.name}</TableCell>}
                 <TableCell className="text-right">{ksh(a.principal)}</TableCell>
                 <TableCell className="text-right">{ksh(a.amountRemaining)}</TableCell>
-                <TableCell>{a.dueDate}</TableCell>
+                <TableCell>{a.dueDate ? formatDay(a.dueDate) : "—"}</TableCell>
                 <TableCell>
                   <Badge variant={advanceStatusVariant[a.status]} className="capitalize">
                     {a.status.replace("_", " ")}

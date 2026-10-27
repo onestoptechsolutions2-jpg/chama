@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useState } from "react";
 import { toast } from "sonner";
 import type {
@@ -298,7 +299,7 @@ function ObligationsCard({ obligations }: { obligations: ComplianceObligation[] 
             <div>
               <p className="font-medium">{ob.title}</p>
               <p className="text-muted-foreground">
-                Due {ob.dueDate}
+                Due {formatDay(ob.dueDate)}
                 {ob.recurrenceMonths ? ` · repeats every ${ob.recurrenceMonths}mo` : ""}
               </p>
             </div>

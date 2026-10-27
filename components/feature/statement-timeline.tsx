@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useMemo, useState } from "react";
 import type {
   contributions as contributionsTable,
@@ -152,7 +153,7 @@ export function StatementTimeline({
               <div className="flex items-center gap-2 text-muted-foreground">
                 {item.status && <span className="capitalize">{item.status}</span>}
                 <span className="font-medium text-foreground">{ksh(item.amount)}</span>
-                <span>{new Date(item.date).toLocaleDateString()}</span>
+                <span>{formatDay(item.date)}</span>
               </div>
             </div>
           ))}

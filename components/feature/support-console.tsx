@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 import { runAgentAction, startSupportSessionAction } from "@/app/super-admin/support/actions";
@@ -86,7 +87,7 @@ export function SupportConsole({
                 </span>
                 <span className="text-muted-foreground">
                   {r.live && <Badge className="mr-2">Live</Badge>}
-                  {new Date(r.at).toLocaleString("en-KE", { timeZone: "Africa/Nairobi", dateStyle: "medium", timeStyle: "short" })}
+                  {formatDateTime(r.at)}
                 </span>
               </div>
             ))}

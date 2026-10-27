@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/dates";
 import { notFound } from "next/navigation";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
@@ -195,7 +196,7 @@ export default async function GroupProfilePage({
 
   return (
     <div className="space-y-6">
-      <PageHeader title={group.name} description={`${group.type} · created ${new Date(group.createdAt).toLocaleDateString()}`} />
+      <PageHeader title={group.name} description={`${group.type} · created ${formatDate(group.createdAt)}`} />
       <SupportStartForm
         groupId={groupId}
         canAct={canPlatform(session.user.platformRole, "support.act")}

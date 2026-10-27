@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate, formatDateTime, formatDay, formatRange } from "@/lib/domain/dates";
 import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type {
@@ -386,7 +387,7 @@ function CycleCard({
           <CardTitle className="text-base">
             Cycle {position}
             {cycle.scheduledDate && (
-              <span className="ml-2 font-normal text-muted-foreground">{cycle.scheduledDate}</span>
+              <span className="ml-2 font-normal text-muted-foreground">{formatDay(cycle.scheduledDate)}</span>
             )}
           </CardTitle>
           <div className="flex items-center gap-2">
@@ -454,7 +455,7 @@ function RotationHeader({ rotation, isStaff, today }: { rotation: RotationView; 
     <div className="space-y-2 rounded-xl border bg-card p-4">
       <p className="text-base font-semibold">Rotation {rotation.number}</p>
       <p className="text-sm text-muted-foreground">
-        {rotation.startDate > today ? "Starts" : "Started"} {rotation.startDate} · ends {rotation.endDate} — the end date is set by the
+        {rotation.startDate > today ? "Starts" : "Started"} {formatDate(rotation.startDate)} · ends {rotation.endDate ? formatDate(rotation.endDate) : "—"} — the end date is set by the
         system from your members, their turns and the {FREQUENCY_LABEL[rotation.frequency] ?? rotation.frequency} schedule. It
         archives itself when the last turn is paid.
       </p>
@@ -562,7 +563,7 @@ function ScheduleTab({
               <span className="font-medium">Rotation {r.number}</span>
               <span className="text-muted-foreground">
                 {" "}
-                · {r.startDate} → {r.endDate} · {slots.filter((s) => s.status === "paid").length} of {slots.length} turns paid ·{" "}
+                · {r.endDate ? formatRange(r.startDate, r.endDate) : formatDate(r.startDate)} · {slots.filter((s) => s.status === "paid").length} of {slots.length} turns paid ·{" "}
                 {ksh(r.paidOut)} paid out
               </span>
             </summary>
@@ -698,7 +699,7 @@ function MyPreferences({
               {upcoming.map((c) => (
                 <option key={c.id} value={c.cycleNumber}>
                   Cycle {pos.get(c.cycleNumber)}
-                  {c.scheduledDate ? ` · ${c.scheduledDate}` : ""}
+                  {c.scheduledDate ? ` · ${formatDay(c.scheduledDate)}` : ""}
                 </option>
               ))}
             </select>
@@ -1050,7 +1051,7 @@ function ActivityLog({ events, members }: { events: SlotEvent[]; members: Member
                 </span>
               </span>
               <span className="text-xs text-muted-foreground">
-                {new Date(e.createdAt).toLocaleString()}
+                {formatDateTime(e.createdAt)}
               </span>
             </div>
             <div className="text-xs text-muted-foreground">

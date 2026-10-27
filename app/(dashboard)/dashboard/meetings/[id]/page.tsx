@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/dates";
 import { notFound } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
@@ -40,7 +41,7 @@ export default async function MeetingAttendancePage({
   return (
     <div className="space-y-6">
       <PageHeader
-        title={`Attendance — ${meeting.meetingDate}`}
+        title={`Attendance — ${formatDate(meeting.meetingDate)}`}
         description={`${meeting.meetingType} meeting${meeting.venue ? ` at ${meeting.venue}` : ""}. Marking a member absent or late automatically issues a fine.`}
       />
       <AttendanceForm

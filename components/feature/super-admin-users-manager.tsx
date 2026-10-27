@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import { displayPhone } from "@/lib/domain/identity";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -320,7 +321,7 @@ export function SuperAdminUsersManager({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-medium capitalize">{entry.eventType.replace(/_/g, " ")}</span>
                   <span className="text-muted-foreground">
-                    {new Date(entry.createdAt).toLocaleString()}
+                    {formatDateTime(entry.createdAt)}
                   </span>
                 </div>
                 <p className="mt-1 text-muted-foreground">

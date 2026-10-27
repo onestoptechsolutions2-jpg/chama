@@ -26,5 +26,14 @@ describe("formatDay", () => {
     expect(formatDay("2026-10-28", "2026-10-27")).toBe("Tomorrow");
     expect(formatDay("2026-11-05", "2026-10-27")).toBe("Thu 5 Nov");
     expect(formatDay("2027-01-04", "2026-10-27")).toBe("Mon 4 Jan 2027");
+    expect(formatDay("2026-10-26", "2026-10-27")).toBe("Yesterday");
+  });
+  it("never says Today in stored text, and shows Nairobi time", async () => {
+    const { formatDate, formatDateTime, formatRange } = await import("@/lib/domain/dates");
+    expect(formatDate("2026-10-27", "2026-10-27")).toBe("Tue 27 Oct");
+    // 22:30 UTC is 01:30 the next day in Nairobi.
+    expect(formatDateTime("2026-10-27T22:30:00Z", "2026-10-27")).toBe("Tomorrow, 01:30");
+    expect(formatDateTime(new Date("2026-10-01T06:05:00Z"), "2026-10-27")).toBe("Thu 1 Oct, 09:05");
+    expect(formatRange("2026-11-02", "2027-01-18", "2026-10-27")).toBe("Mon 2 Nov – Mon 18 Jan 2027");
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { apiKeys as apiKeysTable, webhookEndpoints as webhookEndpointsTable, webhookDeliveries as webhookDeliveriesTable } from "@/lib/db/schema";
@@ -145,7 +146,7 @@ function ApiKeysCard({ keys }: { keys: ApiKey[] }) {
                 <TableCell className="font-medium">{key.name}</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{key.keyPrefix}…</TableCell>
                 <TableCell className="text-muted-foreground">
-                  {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : "Never"}
+                  {key.lastUsedAt ? formatDateTime(key.lastUsedAt) : "Never"}
                 </TableCell>
                 <TableCell>
                   <Badge variant={key.revokedAt ? "destructive" : "secondary"}>
@@ -358,7 +359,7 @@ function RecentDeliveriesCard({ deliveries }: { deliveries: WebhookDelivery[] })
             {deliveries.map((delivery) => (
               <TableRow key={delivery.id}>
                 <TableCell className="text-muted-foreground">
-                  {new Date(delivery.attemptedAt).toLocaleString()}
+                  {formatDateTime(delivery.attemptedAt)}
                 </TableCell>
                 <TableCell className="capitalize">{delivery.eventType}</TableCell>
                 <TableCell>

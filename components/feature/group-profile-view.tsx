@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime, formatDay, formatRange } from "@/lib/domain/dates";
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -162,7 +163,7 @@ export function GroupProfileView({
           <div><p className="text-muted-foreground">Phone</p><p className="font-medium">{group.contactPersonPhone || "—"}</p></div>
           <div><p className="text-muted-foreground">Email</p><p className="font-medium">{group.contactPersonEmail || "—"}</p></div>
           <div><p className="text-muted-foreground">Account owner</p><p className="font-medium">{platformUsers.find((u) => u.id === group.accountOwnerUserId)?.name ?? "Unassigned"}</p></div>
-          <div><p className="text-muted-foreground">Next follow-up</p><p className="font-medium">{group.nextFollowUpAt ? new Date(group.nextFollowUpAt).toLocaleString() : "None"}</p></div>
+          <div><p className="text-muted-foreground">Next follow-up</p><p className="font-medium">{group.nextFollowUpAt ? formatDateTime(group.nextFollowUpAt) : "None"}</p></div>
           {group.internalNotes && <div className="sm:col-span-2 lg:col-span-3"><p className="text-muted-foreground">Internal notes</p><p className="font-medium">{group.internalNotes}</p></div>}
         </CardContent>
       </Card>
@@ -173,7 +174,7 @@ export function GroupProfileView({
           <CardContent className="text-sm">
             <p className="text-lg font-semibold">{nextMgrEvent.recipientName ?? "Unassigned"}</p>
             <p className="text-muted-foreground">
-              Cycle {nextMgrEvent.cycleNumber} · {nextMgrEvent.scheduledDate} ·{" "}
+              Cycle {nextMgrEvent.cycleNumber} · {formatDay(nextMgrEvent.scheduledDate)} ·{" "}
               {nextMgrEvent.daysUntil < 0
                 ? `${Math.abs(nextMgrEvent.daysUntil)} day${Math.abs(nextMgrEvent.daysUntil) === 1 ? "" : "s"} overdue`
                 : nextMgrEvent.daysUntil === 0
@@ -223,7 +224,7 @@ export function GroupProfileView({
           {invoices.length === 0 && <p className="text-sm text-muted-foreground">No invoices generated yet.</p>}
           {invoices.map((inv) => (
             <div key={inv.id} className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">{inv.periodStart} → {inv.periodEnd}</span>
+              <span className="text-muted-foreground">{formatRange(inv.periodStart, inv.periodEnd)}</span>
               <span className="flex items-center gap-2">
                 <Badge variant={INVOICE_BADGE[inv.status] ?? "outline"} className="capitalize">{inv.status}</Badge>
                 <span className="font-medium tabular-nums">{money(inv.totalAmount)}</span>
@@ -241,7 +242,7 @@ export function GroupProfileView({
             <div key={activity.id} className="border-l-2 border-muted pl-3 text-sm">
               <p>{activity.note}</p>
               <p className="text-xs text-muted-foreground">
-                <span className="capitalize">{activity.activityType.replace("_", " ")}</span> · {new Date(activity.createdAt).toLocaleString()}
+                <span className="capitalize">{activity.activityType.replace("_", " ")}</span> · {formatDateTime(activity.createdAt)}
               </p>
             </div>
           ))}

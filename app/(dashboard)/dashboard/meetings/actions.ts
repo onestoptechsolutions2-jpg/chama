@@ -1,5 +1,6 @@
 "use server";
 
+import { formatDate } from "@/lib/domain/dates";
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
@@ -96,7 +97,7 @@ export async function saveAttendanceAction(
           memberId: record.memberId,
           type: fineType,
           amount,
-          reason: `${fineType === "absence" ? "Absence" : "Lateness"} — meeting on ${meeting.meetingDate}`,
+          reason: `${fineType === "absence" ? "Absence" : "Lateness"} — meeting on ${formatDate(meeting.meetingDate)}`,
           recordedBy: session.user.id,
         });
 

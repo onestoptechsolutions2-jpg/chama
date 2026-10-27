@@ -1,3 +1,4 @@
+import { formatDay } from "@/lib/domain/dates";
 import { and, desc, eq } from "drizzle-orm";
 import { requirePermission } from "@/lib/auth/session";
 import { withTenant } from "@/lib/db/rls";
@@ -41,7 +42,7 @@ export default async function BackupsPage() {
             return (
               <div key={b.id} className="flex items-center justify-between gap-3 py-3">
                 <div>
-                  <p className="font-medium">{b.date}</p>
+                  <p className="font-medium">{formatDay(b.date)}</p>
                   <p className="text-xs text-muted-foreground">
                     {Math.max(1, Math.round(b.size / 1024))} KB
                     {r?.downloadedAt ? " · you downloaded it" : ""}

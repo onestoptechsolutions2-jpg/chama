@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import { useTransition } from "react";
 import Link from "next/link";
 import { Info, CheckCircle2, TriangleAlert, OctagonAlert, CheckCheck } from "lucide-react";
@@ -52,7 +53,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
           <p className="text-sm text-muted-foreground">{notification.body}</p>
         )}
         <p className="text-xs text-muted-foreground">
-          {notification.createdAt.toLocaleString()}
+          {formatDateTime(notification.createdAt)}
         </p>
       </div>
     </div>

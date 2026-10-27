@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
 import type {
@@ -338,7 +339,7 @@ function LoansTable({
             <TableCell className="font-medium">{loan.member.name}</TableCell>
             <TableCell className="text-right">{ksh(loan.principal)}</TableCell>
             <TableCell className="text-right">{ksh(loan.amountRemaining)}</TableCell>
-            <TableCell>{loan.dueDate}</TableCell>
+            <TableCell>{loan.dueDate ? formatDay(loan.dueDate) : "—"}</TableCell>
             <TableCell>
               <Badge variant={statusVariant[loan.status]} className="capitalize">
                 {loan.status}

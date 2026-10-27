@@ -1,5 +1,6 @@
 "use client";
 
+import { formatRange } from "@/lib/domain/dates";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import type { subscriptionInvoices as subscriptionInvoicesTable } from "@/lib/db/schema";
@@ -130,7 +131,7 @@ function ChargeInvoiceDialog({ invoice, walletBalance }: { invoice: Invoice; wal
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            Charge invoice — {invoice.periodStart} to {invoice.periodEnd}
+            Charge invoice — {formatRange(invoice.periodStart, invoice.periodEnd)}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
@@ -205,7 +206,7 @@ function InvoicesTable({
         {invoices.map((inv) => (
           <TableRow key={inv.id}>
             <TableCell className="font-medium">
-              {inv.periodStart} – {inv.periodEnd}
+              {formatRange(inv.periodStart, inv.periodEnd)}
             </TableCell>
             <TableCell className="text-right">{inv.memberCount}</TableCell>
             <TableCell className="text-right">{ksh(inv.totalAmount)}</TableCell>

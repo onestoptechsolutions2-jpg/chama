@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { walletTransactions as walletTransactionsTable } from "@/lib/db/schema";
@@ -119,7 +120,7 @@ function TransactionHistory({ transactions }: { transactions: WalletTransaction[
                 {ksh(t.amount)}
               </span>
               <span className="text-xs text-muted-foreground">
-                {new Date(t.createdAt).toLocaleString()}
+                {formatDateTime(t.createdAt)}
               </span>
             </span>
           </div>

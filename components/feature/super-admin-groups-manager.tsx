@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate, formatDateTime } from "@/lib/domain/dates";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -638,7 +639,7 @@ export function SuperAdminGroupsManager({
                   <TableCell className="capitalize">{g.accountTier}</TableCell>
                   <TableCell>{platformUsers.find((user) => user.id === g.accountOwnerUserId)?.name ?? "Unassigned"}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {g.nextFollowUpAt ? new Date(g.nextFollowUpAt).toLocaleDateString() : "None"}
+                    {g.nextFollowUpAt ? formatDate(g.nextFollowUpAt) : "None"}
                   </TableCell>
                   <TableCell>
                     <Badge variant={billing.latestStatus === "paid" ? "secondary" : billing.latestStatus === "pending" ? "outline" : "secondary"}>
@@ -665,7 +666,7 @@ export function SuperAdminGroupsManager({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(g.createdAt).toLocaleDateString()}
+                    {formatDate(g.createdAt)}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -845,7 +846,7 @@ export function EditGroupDialog({
             </div>
             <div className="mt-4 space-y-2"><Label htmlFor="internal-notes">Internal notes</Label><Input id="internal-notes" value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} /></div>
             <div className="mt-4 space-y-2"><Label htmlFor="activity-note">Log follow-up note</Label><Input id="activity-note" placeholder="What happened or what needs attention?" value={activityNote} onChange={(event) => setActivityNote(event.target.value)} /></div>
-            {activities.length > 0 && <div className="mt-4 space-y-2"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>{activities.slice(0, 5).map((activity) => <div key={activity.id} className="rounded-md border p-2 text-sm"><p>{activity.note}</p><p className="text-xs text-muted-foreground">{new Date(activity.createdAt).toLocaleString()}</p></div>)}</div>}
+            {activities.length > 0 && <div className="mt-4 space-y-2"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recent activity</p>{activities.slice(0, 5).map((activity) => <div key={activity.id} className="rounded-md border p-2 text-sm"><p>{activity.note}</p><p className="text-xs text-muted-foreground">{formatDateTime(activity.createdAt)}</p></div>)}</div>}
           </div>
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={onClose}>Cancel</Button>

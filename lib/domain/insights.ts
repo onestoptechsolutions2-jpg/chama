@@ -7,6 +7,7 @@
  * app/(dashboard)/dashboard/insights/page.tsx do the fetching, these functions just
  * turn already-fetched rows into judgments.
  */
+import { formatDate } from "@/lib/domain/dates";
 import type { AllocationDrift } from "./capital";
 
 // ── MGR: what's next, and is the rotation keeping pace ─────────────────────
@@ -242,14 +243,14 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       id: "mgr-overdue",
       severity: "critical",
       title: "The current merry-go-round payout is overdue",
-      detail: `Cycle ${input.nextMgrEvent.cycleNumber}${input.nextMgrEvent.recipientName ? ` (${input.nextMgrEvent.recipientName})` : ""} was scheduled for ${input.nextMgrEvent.scheduledDate}, ${Math.abs(input.nextMgrEvent.daysUntil)} day(s) ago.`,
+      detail: `Cycle ${input.nextMgrEvent.cycleNumber}${input.nextMgrEvent.recipientName ? ` (${input.nextMgrEvent.recipientName})` : ""} was scheduled for ${formatDate(input.nextMgrEvent.scheduledDate)}, ${Math.abs(input.nextMgrEvent.daysUntil)} day(s) ago.`,
     });
   } else if (input.nextMgrEvent && input.nextMgrEvent.daysUntil <= 3) {
     recs.push({
       id: "mgr-upcoming",
       severity: "info",
       title: "Merry-go-round payout coming up",
-      detail: `${input.nextMgrEvent.recipientName ?? "The next recipient"} is due on ${input.nextMgrEvent.scheduledDate} (cycle ${input.nextMgrEvent.cycleNumber}).`,
+      detail: `${input.nextMgrEvent.recipientName ?? "The next recipient"} is due on ${formatDate(input.nextMgrEvent.scheduledDate)} (cycle ${input.nextMgrEvent.cycleNumber}).`,
     });
   }
 

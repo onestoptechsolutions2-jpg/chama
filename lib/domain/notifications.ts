@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/domain/dates";
 // Generic notification formatting — the notifications table itself
 // (lib/db/schema.ts) is deliberately not welfare-named, even though welfare
 // was the first feature to populate it. Each feature gets its own event
@@ -62,7 +63,7 @@ export function buildWelfareNotification(event: WelfareNotificationEvent): Notif
       return {
         category: "info",
         title: "Welfare advance repayment due",
-        body: `Ksh ${event.amount.toLocaleString()} is due on ${event.dueDate}.`,
+        body: `Ksh ${event.amount.toLocaleString()} is due on ${formatDate(event.dueDate)}.`,
       };
     case "advance_overdue":
       return {
@@ -130,13 +131,13 @@ export function buildGovernanceNotification(event: GovernanceNotificationEvent):
       return {
         category: "action_required",
         title: "Compliance obligation coming up",
-        body: `"${event.title}" is due ${event.dueDate}.`,
+        body: `"${event.title}" is due ${formatDate(event.dueDate)}.`,
       };
     case "obligation_overdue":
       return {
         category: "warning",
         title: "Compliance obligation overdue",
-        body: `"${event.title}" was due ${event.dueDate} and hasn't been marked complete.`,
+        body: `"${event.title}" was due ${formatDate(event.dueDate)} and hasn't been marked complete.`,
       };
   }
 }
@@ -203,7 +204,7 @@ export function buildMgrNotification(event: MgrNotificationEvent): NotificationT
       return {
         category: "action_required",
         title: "Merry-go-round contribution due tomorrow",
-        body: `Cycle ${event.cycleNumber} is on ${event.date}. Please have your contribution ready.`,
+        body: `Cycle ${event.cycleNumber} is on ${formatDate(event.date)}. Please have your contribution ready.`,
       };
     case "payout_tomorrow":
       return {
@@ -225,13 +226,13 @@ export function buildMgrNotification(event: MgrNotificationEvent): NotificationT
       return {
         category: "success",
         title: `Rotation ${event.rotationNumber} is complete`,
-        body: `Every turn is settled and the rotation (ended ${event.endDate}) is archived. The next one could start on ${event.nextStart}.`,
+        body: `Every turn is settled and the rotation (ended ${formatDate(event.endDate)}) is archived. The next one could start on ${formatDate(event.nextStart)}.`,
       };
     case "rotation_rescheduled":
       return {
         category: "info",
         title: "Merry-go-round dates have moved",
-        body: `The next payout is now on ${event.nextDate}. Rotation ${event.rotationNumber} now ends on ${event.endDate}.`,
+        body: `The next payout is now on ${formatDate(event.nextDate)}. Rotation ${event.rotationNumber} now ends on ${formatDate(event.endDate)}.`,
       };
   }
 }

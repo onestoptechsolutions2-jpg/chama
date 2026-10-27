@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/lib/domain/dates";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { mergeUsersAction } from "@/app/super-admin/users/actions";
@@ -50,7 +51,7 @@ export function DuplicateUsersPanel({ sets, canMerge }: { sets: DuplicateSet[]; 
                   <span className="font-medium">{u.name}</span> <span className="text-muted-foreground">#{u.id}</span>
                   <div className="text-muted-foreground">
                     {[displayPhone(u.phone), u.email].filter(Boolean).join(" · ")} · {u.groups} group(s) · since{" "}
-                    {u.createdAt.slice(0, 10)}
+                    {formatDate(u.createdAt)}
                   </div>
                 </div>
                 {canMerge && (

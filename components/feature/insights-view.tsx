@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDay } from "@/lib/domain/dates";
 import type { NextMgrEvent, MgrPace, Recommendation, MemberRiskFlag } from "@/lib/domain/insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -66,7 +67,7 @@ function NextUpHero({ event, pace }: { event: NextMgrEvent | null; pace: MgrPace
             </p>
             <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{event.recipientName ?? "Unassigned"}</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              Cycle {event.cycleNumber} · {event.scheduledDate}
+              Cycle {event.cycleNumber} · {formatDay(event.scheduledDate)}
             </p>
           </div>
           <Badge variant={overdue ? "destructive" : "secondary"} className="shrink-0 text-sm">

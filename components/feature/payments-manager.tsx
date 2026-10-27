@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/lib/domain/dates";
 import { useActionState, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -41,8 +42,7 @@ const PURPOSES: Record<string, string> = {
 };
 const SOURCES: Record<string, string> = { mpesa: "M-Pesa", bank: "Bank", checkoff: "Payroll" };
 const ksh = (n: number) => `Ksh ${Math.round(n).toLocaleString()}`;
-const when = (iso: string) =>
-  new Date(iso).toLocaleString("en-KE", { timeZone: "Africa/Nairobi", dateStyle: "medium", timeStyle: "short" });
+const when = (iso: string) => formatDateTime(iso);
 
 export function PaymentsManager({
   setup,

@@ -1,3 +1,4 @@
+import { formatDateTime } from "@/lib/domain/dates";
 import { sql } from "drizzle-orm";
 import { withPlatformAdmin } from "@/lib/db/rls";
 import { groups, users, groupMemberships, platformPayments } from "@/lib/db/schema";
@@ -127,7 +128,7 @@ export default async function SuperAdminStatsPage() {
                 <TableRow key={r.id}>
                   <TableCell className="font-medium">{r.jobName}</TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(r.startedAt).toLocaleString()}
+                    {formatDateTime(r.startedAt)}
                   </TableCell>
                   <TableCell>
                     <Badge variant={r.status === "success" ? "secondary" : "destructive"}>
