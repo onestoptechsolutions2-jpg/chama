@@ -164,7 +164,7 @@ export const RULE_TEMPLATES: RuleTemplate[] = [
     category: "mgr",
     title: "Staying in rotation",
     description:
-      "A member who misses two consecutive MGR contributions forfeits their claimed slot for the current cycle; the slot reopens for another member and they rejoin the rotation from the next cycle.",
+      "A member who misses two consecutive merry-go-round contributions forfeits their claimed slot for the current cycle; the slot reopens for another member and they rejoin the rotation from the next cycle.",
   },
   {
     id: "mgr-proof",

@@ -241,14 +241,14 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
     recs.push({
       id: "mgr-overdue",
       severity: "critical",
-      title: "The current MGR payout is overdue",
+      title: "The current merry-go-round payout is overdue",
       detail: `Cycle ${input.nextMgrEvent.cycleNumber}${input.nextMgrEvent.recipientName ? ` (${input.nextMgrEvent.recipientName})` : ""} was scheduled for ${input.nextMgrEvent.scheduledDate}, ${Math.abs(input.nextMgrEvent.daysUntil)} day(s) ago.`,
     });
   } else if (input.nextMgrEvent && input.nextMgrEvent.daysUntil <= 3) {
     recs.push({
       id: "mgr-upcoming",
       severity: "info",
-      title: "MGR payout coming up",
+      title: "Merry-go-round payout coming up",
       detail: `${input.nextMgrEvent.recipientName ?? "The next recipient"} is due on ${input.nextMgrEvent.scheduledDate} (cycle ${input.nextMgrEvent.cycleNumber}).`,
     });
   }
@@ -315,7 +315,7 @@ export function generateRecommendations(input: RecommendationInput): Recommendat
       id: "all-clear",
       severity: "info",
       title: "Nothing needs attention right now",
-      detail: "Registration, the MGR schedule, capital allocation, and member standing all look healthy.",
+      detail: "Registration, the merry-go-round schedule, capital allocation, and member standing all look healthy.",
     });
   }
 

@@ -869,7 +869,7 @@ function ConfigForm({
             <input type="checkbox" name="mgrRequireUpToDate" defaultChecked={config.mgrRequireUpToDate} className="mt-0.5 size-4" />
             <span>
               Only pay out to members who are up to date — a turn can&apos;t be marked paid while its member owes merry-go-round
-              contributions for this cycle or earlier ones. Record contributions as type &quot;MGR&quot; (or account &quot;12 mgr&quot; on M-Pesa).
+              contributions for this cycle or earlier ones. Record contributions as type &quot;Merry-go-round&quot; (or account &quot;12 mgr&quot; on M-Pesa).
             </span>
           </label>
           <p className="rounded-md bg-muted/50 p-3 text-sm sm:col-span-2 lg:col-span-4">

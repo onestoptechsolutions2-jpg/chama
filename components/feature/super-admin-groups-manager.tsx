@@ -68,7 +68,7 @@ const VEHICLE_OPTIONS = [
   },
   {
     key: "mgr" as const,
-    label: "Merry-Go-Round",
+    label: "Merry-go-round",
     description: "Rotation cycles, turns, and payouts.",
   },
   {

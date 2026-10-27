@@ -158,7 +158,7 @@ function BottomBar({ items, onMenu }: { items: NavItem[]; onMenu: () => void }) 
   const tabs = BOTTOM_BAR.map((href) => items.find((i) => i.href === href))
     .filter((i): i is NavItem => !!i)
     .slice(0, 4);
-  const base = "flex flex-1 flex-col items-center gap-1 py-2 text-xs font-medium";
+  const base = "flex flex-1 flex-col items-center gap-1 py-2 text-center text-xs font-medium leading-tight";
 
   return (
     <nav

@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-const DEFAULT_PLATFORM_TERMS = `By participating in this group's Merry-Go-Round (MGR) rotation, you agree that
-Chama Platform charges a 5% platform fee on each payout you receive, collected via
-M-Pesa STK push at the time of disbursement. The platform is not a party to, and
-accepts no liability for, the group's internal rotation agreement between members.`;
+const DEFAULT_PLATFORM_TERMS =
+  "By participating in this group's merry-go-round rotation, you agree that Chama Platform charges a 5% platform fee " +
+  "on each payout you receive, collected via M-Pesa STK push at the time of disbursement. The platform is not a party to, " +
+  "and accepts no liability for, the group's internal rotation agreement between members.";
 
 function GroupTermsBlock({ groupTerms }: { groupTerms: string | null }) {
   return (
@@ -38,7 +38,7 @@ export function MgrAgreementGate({
   return (
     <Card className="border-primary">
       <CardHeader>
-        <CardTitle>Agree to participate in this MGR cycle</CardTitle>
+        <CardTitle>Agree to take part in this merry-go-round cycle</CardTitle>
       </CardHeader>
       <CardContent>
         <form action={formAction} className="space-y-5">

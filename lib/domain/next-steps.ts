@@ -154,7 +154,7 @@ export function generateNextSteps(input: NextStepsInput): NextStep[] {
     add({ id: "welfare-cosign", severity: "warning", title: `${plural(me.pendingWelfareApprovals, "welfare request")} ${me.pendingWelfareApprovals === 1 ? "needs" : "need"} your approval`, detail: "Another official is waiting for your decision.", href: "/dashboard/welfare", action: "Decide" });
   }
   if (me.mgrChoicesOpen && !me.mgrHasChosen) {
-    add({ id: "mgr-choose", severity: "info", title: "Choose your Mzunguko turn", detail: "Pick the rounds you'd like to receive in before choices close.", href: "/dashboard/mgr", action: "Choose" });
+    add({ id: "mgr-choose", severity: "info", title: "Choose your merry-go-round turn", detail: "Pick the rounds you'd like to receive in before choices close.", href: "/dashboard/mgr", action: "Choose" });
   }
   if (me.unpaidFines > 0) {
     add({ id: "my-fines", severity: "info", title: `You have ${ksh(me.unpaidFines)} in fines`, detail: "Pay at the next meeting or by M-Pesa.", href: "/dashboard/statement", action: "See details" });

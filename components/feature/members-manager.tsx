@@ -321,7 +321,7 @@ function RemoveMemberDialog({ member }: { member: Member }) {
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
           They will no longer be able to open this group. Their savings history stays on record, and any
-          Mzunguko turn they have not been paid for becomes open again.
+          merry-go-round turn they have not been paid for becomes open again.
         </p>
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button variant="destructive" disabled={pending} onClick={remove} className="w-full">
