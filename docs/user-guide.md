@@ -283,6 +283,16 @@ stays). If anything changed in between — a new payment, loan or fine — it
 asks you to prepare again. The money itself is paid outside the app. Past
 share-outs stay on the page, and the next period starts the day after.
 
+## Backups (officials)
+
+Every morning the app makes a full copy of the group's records in one Excel
+file: members, contributions, merry-go-round, fines, welfare, projects, loans
+and meetings, with a cover sheet of totals. When the chair, treasurer or
+secretary signs in, a prompt offers today's copy — **Download**, or **Not
+now** until tomorrow's. Officials with an email address also receive it by
+email each morning. The last 90 days are on the **Backups** page. The file
+holds members' personal details and money: keep it private.
+
 ## Activity (officials)
 
 Every recorded change — payments, fines, repayments, matching — with who did

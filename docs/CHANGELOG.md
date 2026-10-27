@@ -302,6 +302,24 @@ in the group's own paybill/till or bank; groups pay a subscription).
 - Found by an end-to-end run on a local Postgres: M-Pesa callbacks and the
   agent read `groups` outside a tenant context, so RLS hid it — fixed.
 
+## Daily group backup for officials (Oct 2026)
+
+- Every morning (`/api/cron/backups`, 05:40 Nairobi) each active group gets
+  one Excel workbook (`lib/backup/workbook.ts`): a cover sheet with totals,
+  then Members, Contributions, Merry-go-round (turns, rotations, cycles),
+  Fines, Welfare (requests, fund, grants, advances), Projects (with their
+  contributions), Loans (with repayments) and Meetings (with attendance).
+  Stored in the database (`group_backups`, migration 0068), kept 90 days.
+- **Sign-in prompt** for the chair, treasurer and secretary while today's
+  backup is ready and they haven't downloaded it; *Not now* hides it until
+  tomorrow's. All kept backups are on the new **Backups** page.
+- **Email**: the workbook is attached and sent through the platform's own
+  SMTP mailbox (`SMTP_*` settings) to each official with an email address —
+  once a day, never to ordinary members, never to platform staff. Officials
+  without an email get the prompt only.
+- Every download and email is in the group's Activity log. New permission
+  `backup.download` (officials); blocked in support mode.
+
 ## Invoices generate themselves (Oct 2026)
 
 - A daily job (`/api/cron/invoices`) makes sure every active group has this

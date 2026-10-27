@@ -12,6 +12,8 @@ export const SUPPORT_NEVER: ReadonlySet<GroupPermission> = new Set([
   "billing.invoice",
   "platformFees.pay",
   "money.payoutDestination",
+  // A whole-group backup holds members' personal data: officials only, never platform staff.
+  "backup.download",
 ]);
 
 /** Money leaving the group (loans, payouts, welfare grants): platform owners only. */
